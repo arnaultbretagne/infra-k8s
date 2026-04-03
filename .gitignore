@@ -1,0 +1,20 @@
+# Age private keys
+*.agekey
+keys.txt
+
+# Decrypted secrets
+*.dec.yaml
+*.decrypted.yaml
+
+# k0s state
+/var/lib/k0s/
+
+# Editor
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

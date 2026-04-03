@@ -1,0 +1,82 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik
+  namespace: traefik
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: traefik
+      version: "34.*"
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # Gateway API provider
+    providers:
+      kubernetesGateway:
+        enabled: true
+      kubernetesCRD:
+        enabled: true
+
+    # OIDC auth plugin (ADR 0010)
+    experimental:
+      plugins:
+        traefik-oidc-auth:
+          moduleName: github.com/sevensolutions/traefik-oidc-auth
+          version: v0.18.0
+
+    # Entrypoints
+    ports:
+      web:
+        port: 80
+        exposedPort: 80
+        protocol: TCP
+      websecure:
+        port: 443
+        exposedPort: 443
+        protocol: TCP
+
+    # Let's Encrypt ACME (ADR 0008)
+    certResolvers:
+      letsencrypt:
+        email: admin@bretagne.dev
+        httpChallenge:
+          entryPoint: web
+        storage: /data/acme.json
+        # Uncomment for testing:
+        # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # ACME cert persistence
+    persistence:
+      enabled: true
+      size: 128Mi
+
+    # LoadBalancer service (MetalLB assigns VPS IP)
+    service:
+      type: LoadBalancer
+      spec:
+        loadBalancerIP: 85.17.246.41
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+    # Logs
+    logs:
+      general:
+        level: INFO

@@ -1,0 +1,20 @@
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
+metadata:
+  name: k0s
+spec:
+  api:
+    address: __PUBLIC_IP__
+    port: 6443
+    sans:
+      - __PUBLIC_IP__
+    extraArgs:
+      encryption-provider-config: /var/lib/k0s/pki/encryptionconfig.yaml
+  network:
+    provider: custom
+    podCIDR: 10.244.0.0/16
+    serviceCIDR: 10.96.0.0/12
+  storage:
+    type: kine
+  telemetry:
+    enabled: false
