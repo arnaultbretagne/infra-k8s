@@ -25,14 +25,16 @@ spec:
               value: production
             - name: TRUST_PROXY
               value: "true"
+            - name: DB_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: pocket-id-pg-app
+                  key: uri
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: pocket-id-secrets
                   key: ENCRYPTION_KEY
-          volumeMounts:
-            - name: data
-              mountPath: /app/backend/data
           resources:
             requests:
               cpu: 50m
@@ -43,15 +45,11 @@ spec:
             httpGet:
               path: /health
               port: 1411
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /health
               port: 1411
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: pocket-id-data

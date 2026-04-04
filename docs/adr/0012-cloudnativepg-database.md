@@ -88,16 +88,41 @@ The restore test is critical: an untested backup is not a backup. The test valid
 
 Pattern recommended by CloudNativePG: isolate each application in its own PostgreSQL cluster rather than a shared PostgreSQL with multiple databases.
 
-- **Blast radius**: a problem on the Dagster DB does not affect others
+- **Blast radius**: a problem on the Pocket-ID DB does not affect others
 - **Independent lifecycle**: backup, retention, scaling, PG version can differ per app
 - **In YAML**: it is just a duplicated manifest with a different name and S3 path
 
-### S3 Credentials
+### Namespace Strategy: Cluster CRD Lives With the App
 
-S3 access credentials for WAL archiving and base backups are managed by SOPS + Age (ADR 0003):
+Each CNPG Cluster CRD is deployed in the same namespace as the application that consumes it. This is the simplest approach: the operator (cluster-wide in `cnpg-system`) creates the PG pod and auto-generated credentials secret directly in the app's namespace. No cross-namespace secret references, no extra tooling.
 
 ```
-Git (SOPS-encrypted) → Flux decrypts → K8s Secret "cnpg-s3-creds" → CloudNativePG reads the Secret
+cnpg-system/              ← operator (one, cluster-wide)
+pocket-id/                ← Cluster CRD + PG pod + auto-generated secret + app deployment
+onecli/                   ← same pattern, fully isolated
+```
+
+Per-app isolation is maintained at every level: separate PG instances, separate namespaces, separate backup paths in S3. Each Cluster writes to its own `destinationPath` in the shared bucket (e.g., `s3://bretagne-pg-backups/pocket-id`, `s3://bretagne-pg-backups/onecli`).
+
+### S3 Credentials: Shared via Kustomize Base
+
+S3 backup credentials (R2 access key) are the same for all CNPG clusters since they share a single bucket. Rather than duplicating the SOPS-encrypted secret in every app namespace, the secret is defined once as a Kustomize base without a namespace:
+
+```
+infrastructure/bases/cnpg-s3-creds/
+  kustomization.yaml
+  secrets.yaml              ← SOPS-encrypted, no namespace field
+
+apps/pocket-id/
+  kustomization.yaml        ← references the base, sets namespace: pocket-id
+apps/onecli/
+  kustomization.yaml        ← references the base, sets namespace: onecli
+```
+
+Kustomize stamps the secret into each app namespace at build time. Flux decrypts SOPS after the build. The secret value is authored and encrypted once; only the namespace varies. This is a standard Kustomize pattern that avoids both secret duplication and the need for cross-namespace secret syncing controllers (Reflector, kubernetes-replicator, etc.).
+
+```
+Git (SOPS base, no ns) → kustomize build (adds namespace) → Flux decrypts → K8s Secret in app ns → CNPG reads it
 ```
 
 ## Implementation
@@ -106,16 +131,16 @@ Git (SOPS-encrypted) → Flux decrypts → K8s Secret "cnpg-s3-creds" → CloudN
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: dagster-pg
-  namespace: dagster
+  name: pocket-id-pg
+  namespace: pocket-id
 spec:
   instances: 1                     # single-node, no replica
   storage:
     size: 5Gi
   backup:
     barmanObjectStore:
-      destinationPath: s3://pg-backups/dagster
-      endpointURL: https://s3.example.com
+      destinationPath: s3://bretagne-pg-backups/pocket-id
+      endpointURL: https://<account-id>.r2.cloudflarestorage.com
       s3Credentials:
         accessKeyId:
           name: cnpg-s3-creds
@@ -131,12 +156,12 @@ spec:
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
-  name: dagster-pg-daily
-  namespace: dagster
+  name: pocket-id-pg-daily
+  namespace: pocket-id
 spec:
   schedule: "0 3 * * *"
   cluster:
-    name: dagster-pg
+    name: pocket-id-pg
   backupOwnerReference: self
 ```
 
@@ -150,9 +175,10 @@ The daily restore test would be a CronJob that:
 ## Consequences
 
 - CloudNativePG is deployed by Flux as a HelmRelease (ADR 0001, ADR 0002)
-- Each application that needs PostgreSQL declares its own `Cluster` CRD in the GitOps repo
-- S3 credentials are SOPS Secrets in the repo (ADR 0003), decrypted by Flux
+- Each application that needs PostgreSQL declares its own `Cluster` CRD in its own namespace
+- S3 credentials are defined once as a Kustomize base (SOPS-encrypted, ADR 0003), stamped into each app namespace at build time
+- Each cluster uses a distinct `destinationPath` in the shared S3 bucket for backup isolation
+- Applications connect to PG locally within their namespace: `<cluster>-rw:5432`
 - `instances: 1` on single-node — no HA replica. Resilience relies on WAL archiving + restore from S3. If scaling to multi-node, `instances: 2` with anti-affinity can be used
-- Pocket-ID stays on embedded SQLite (no need for PostgreSQL for now). If its needs evolve, a dedicated CloudNativePG cluster would be created
 - 3-day retention is calibrated for non-critical infrastructure databases. For irreplaceable business data (if they ever arrive), retention should be re-evaluated (30d+) and restore testing strengthened
 - Backup monitoring (Backup CRD status, failure alerts) must be connected to the monitoring stack when available

@@ -1,0 +1,30 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pocket-id-pg
+  namespace: pocket-id
+spec:
+  instances: 1
+  storage:
+    size: 1Gi
+    storageClass: local-path
+
+  bootstrap:
+    initdb:
+      database: pocketid
+      owner: pocketid
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/pocket-id
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-s3-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: snappy
+    retentionPolicy: "3d"
