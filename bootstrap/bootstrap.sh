@@ -12,8 +12,8 @@ BOOTSTRAP_DIR="$REPO_DIR/bootstrap"
 
 # -- Configuration -----------------------------------------------------------
 
-K0S_VERSION=""  # empty = latest
-FLUX_VERSION=""
+K0S_VERSION="1.35.2+k0s.0"
+FLUX_VERSION="2.8.3"
 SOPS_VERSION="3.9.4"
 FLANNEL_MANIFEST="$REPO_DIR/infrastructure/controllers/flannel/kube-flannel.yaml"
 
@@ -47,8 +47,8 @@ install_k0s() {
     log "k0s already installed: $(k0s version)"
     return
   fi
-  log "Installing k0s..."
-  curl -sSLf https://get.k0s.sh | sh
+  log "Installing k0s ${K0S_VERSION}..."
+  curl -sSLf https://get.k0s.sh | K0S_VERSION="v${K0S_VERSION}" sh
   log "k0s installed: $(k0s version)"
 }
 
@@ -57,8 +57,8 @@ install_flux() {
     log "flux already installed: $(flux --version)"
     return
   fi
-  log "Installing flux..."
-  curl -s https://fluxcd.io/install.sh | bash
+  log "Installing flux ${FLUX_VERSION}..."
+  curl -s https://fluxcd.io/install.sh | FLUX_VERSION="${FLUX_VERSION}" bash
   log "flux installed: $(flux --version)"
 }
 
@@ -139,9 +139,12 @@ install_k0s_cluster() {
   log "Starting k0s..."
   k0s start
 
-  log "Waiting for API server..."
+  log "Waiting for API server (timeout: 120s)..."
+  local waited=0
   until k0s kubectl get nodes &>/dev/null 2>&1; do
     sleep 2
+    waited=$((waited + 2))
+    [[ $waited -lt 120 ]] || err "API server not ready after 120s"
   done
 
   # Export kubeconfig

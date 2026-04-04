@@ -8,7 +8,6 @@ spec:
   retryInterval: 1m
   dependsOn:
     - name: infrastructure-gateway
-    - name: infrastructure-controllers
   path: ./apps
   prune: true
   sourceRef:

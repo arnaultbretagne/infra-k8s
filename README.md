@@ -31,8 +31,9 @@ bootstrap/          Idempotent bootstrap script for a fresh Debian VPS
 clusters/bretagne/  Flux Kustomization CRs (dependency chain entry point)
 infrastructure/
   sources/          HelmRepository definitions
-  controllers/      Flannel, Gateway API CRDs, MetalLB
+  controllers/      Flannel, Gateway API CRDs, MetalLB, CloudNativePG
   configs/          MetalLB IP pool, local-path-provisioner
+  bases/            Shared Kustomize bases (S3 credentials for CNPG backups)
   gateway/          Traefik HelmRelease, Gateway resource, middlewares
 apps/               Application manifests (Pocket-ID, ...)
 docs/adr/           Architecture Decision Records
@@ -49,7 +50,7 @@ flux-system
                       └─ apps
 ```
 
-Each layer is a Flux `Kustomization` with `dependsOn` on the previous one. The gateway and apps layers have SOPS decryption enabled.
+Each layer is a Flux `Kustomization` with `dependsOn` on the previous one. The gateway and apps layers have SOPS decryption enabled. Apps include CNPG Cluster CRDs alongside the application manifests, with S3 backup credentials pulled from a shared Kustomize base.
 
 ## Bootstrap
 

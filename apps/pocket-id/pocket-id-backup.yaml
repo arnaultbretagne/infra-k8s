@@ -2,7 +2,6 @@ apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
   name: pocket-id-pg-daily
-  namespace: pocket-id
 spec:
   schedule: "0 3 * * *"
   cluster:

@@ -15,10 +15,16 @@ spec:
         namespace: flux-system
   install:
     crds: CreateReplace
-    createNamespace: true
     remediation:
       retries: 3
   upgrade:
     crds: CreateReplace
     remediation:
       retries: 3
+  values:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
