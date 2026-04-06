@@ -196,14 +196,13 @@ bootstrap_flux() {
     err "GITHUB_TOKEN is not set. Export it before running: export GITHUB_TOKEN=\$(gh auth token)"
   fi
 
-  log "Bootstrapping Flux..."
+  log "Bootstrapping Flux (deploy key mode)..."
   flux bootstrap github \
     --owner="$GITHUB_OWNER" \
     --repository="$GITHUB_REPO" \
     --branch=main \
     --path="$CLUSTER_PATH" \
-    --personal \
-    --token-auth
+    --personal
 
   log "Flux bootstrapped successfully"
 }
