@@ -107,6 +107,43 @@ nft -f /etc/nftables.conf
 systemctl enable nftables 2>/dev/null
 ok "Firewall: 22/80/443 public — 6443/10250 internal only"
 
+# SSH hardening
+SSH_HARDENING="/etc/ssh/sshd_config.d/99-bootstrap-hardening.conf"
+if [ -f "$SSH_HARDENING" ]; then
+  ok "SSH hardening already in place"
+else
+  cat > "$SSH_HARDENING" <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+ChallengeResponseAuthentication no
+UsePAM yes
+PubkeyAuthentication yes
+EOF
+  chmod 600 "$SSH_HARDENING"
+  systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+  ok "SSH hardened: password auth disabled, root key-only"
+fi
+
+# Fail2ban
+if systemctl is-active --quiet fail2ban 2>/dev/null; then
+  ok "fail2ban already running"
+else
+  apt-get update -qq
+  apt-get install -y -qq --no-install-recommends fail2ban
+  systemctl enable --now fail2ban
+  ok "fail2ban installed and enabled"
+fi
+
+# Automatic security updates
+if systemctl is-active --quiet unattended-upgrades 2>/dev/null; then
+  ok "unattended-upgrades already running"
+else
+  apt-get install -y -qq --no-install-recommends unattended-upgrades
+  systemctl enable --now unattended-upgrades
+  ok "unattended-upgrades installed and enabled"
+fi
+
 # Sysctl
 cat > /etc/sysctl.d/99-k8s-hardening.conf <<'EOF'
 # Required for k8s networking
@@ -286,6 +323,9 @@ printf '\n'
 printf '    Cluster:   bretagne (k0s %s)\n' "$K0S_VERSION"
 printf '    API:       https://%s:6443 (blocked from internet)\n' "$PUBLIC_IP"
 printf '    Firewall:  22/80/443 public — 6443/10250 internal\n'
+printf '    SSH:       password disabled, root key-only\n'
+printf '    fail2ban:  active\n'
+printf '    Updates:   unattended-upgrades active\n'
 printf '    Flux:      watching main → %s\n' "$CLUSTER_PATH"
 printf '    SOPS:      age key loaded in flux-system/sops-age\n'
 printf '\n'
