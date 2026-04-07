@@ -162,7 +162,25 @@ d'un composant infra, tester en `warn` d'abord puis basculer en `enforce`.
 
 ---
 
-## 6. Recap — avant de merge
+## 6. Backup : restore test obligatoire
+
+Si l'app a un cluster CNPG, ajouter un CronJob de restore test.
+Un backup non-teste n'est pas un backup.
+
+Le CronJob doit :
+1. Lister les backups S3 (`barman-cloud-backup-list`)
+2. Restaurer le dernier (`barman-cloud-restore`)
+3. Demarrer PostgreSQL dessus
+4. Valider avec `pg_isready` + une requete SQL
+5. Sortir en erreur si une etape echoue → job `Failed` visible dans k8s
+
+Planifier **apres** le backup quotidien (ex: backup a 03:00, test a 04:30).
+Utiliser la meme image CNPG PostgreSQL que le cluster. Appliquer le
+meme securityContext que les autres pods (non-root, read-only, drop ALL).
+
+---
+
+## 7. Recap — avant de merge
 
 - [ ] Image testee en `--user 1000:1000 --read-only`
 - [ ] `securityContext` pod + container presents
@@ -172,3 +190,4 @@ d'un composant infra, tester en `warn` d'abord puis basculer en `enforce`.
 - [ ] `resources` requests + memory limit
 - [ ] Namespace avec label PSS `restricted`
 - [ ] Secrets via SOPS (pas de valeurs en clair)
+- [ ] Si CNPG : restore test CronJob present

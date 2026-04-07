@@ -1,0 +1,92 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pocket-id-pg-restore-test
+spec:
+  schedule: "30 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26
+            runAsGroup: 102
+            fsGroup: 102
+          containers:
+            - name: restore-test
+              image: ghcr.io/cloudnative-pg/postgresql:17
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cnpg-s3-creds
+                      key: ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cnpg-s3-creds
+                      key: SECRET_ACCESS_KEY
+                - name: PGDATA
+                  value: /tmp/pgdata
+              command:
+                - bash
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  S3_DEST="s3://bretagne-pg-backups/pocket-id"
+                  S3_ENDPOINT="https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com"
+                  SERVER="pocket-id-pg"
+
+                  echo "==> Listing backups..."
+                  barman-cloud-backup-list --endpoint-url "$S3_ENDPOINT" "$S3_DEST" "$SERVER"
+
+                  echo "==> Restoring latest backup..."
+                  barman-cloud-restore --endpoint-url "$S3_ENDPOINT" "$S3_DEST" "$SERVER" latest "$PGDATA"
+
+                  # Recover: replay WALs then promote immediately
+                  cat >> "$PGDATA/postgresql.auto.conf" <<PGCONF
+                  restore_command = 'barman-cloud-wal-restore --endpoint-url $S3_ENDPOINT $S3_DEST $SERVER %f %p'
+                  recovery_target = immediate
+                  recovery_target_action = promote
+                  PGCONF
+                  touch "$PGDATA/recovery.signal"
+
+                  echo "==> Starting PostgreSQL..."
+                  pg_ctl -D "$PGDATA" -o "-p 5433 -c listen_addresses=localhost" start -w -t 60
+
+                  echo "==> Checking readiness..."
+                  pg_isready -h localhost -p 5433
+
+                  echo "==> Running health query..."
+                  psql -h localhost -p 5433 -d pocketid -c "SELECT count(*) FROM information_schema.tables;" -t
+
+                  echo "==> Stopping PostgreSQL..."
+                  pg_ctl -D "$PGDATA" stop -m fast
+
+                  echo "==> Restore test PASSED"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi
