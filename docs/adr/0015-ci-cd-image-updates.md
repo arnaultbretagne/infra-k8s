@@ -16,8 +16,9 @@ Two patterns coexist in the GitOps ecosystem: Flux Image Automation (monitors a 
 
 ## Decision
 
-- **Custom apps**: GitHub Actions (CI) builds and pushes to GHCR, Flux Image Automation commits the new tag to infra-k8s
+- **Custom apps**: GitHub Actions (CI) builds and pushes to GHCR, Flux Image Automation detects the new tag and opens a PR on infra-k8s via a dedicated branch
 - **Public images + Helm charts**: Renovate (GitHub App) opens PRs on infra-k8s
+- **All changes to infra-k8s go through PRs** — no direct commits to main, whether from Flux or Renovate
 - **Custom image builds remain necessary** for apps that modify the base image (system packages, binaries, patches)
 
 ## Rationale
@@ -62,9 +63,11 @@ ab-craft/code-server
 
 No alternative evaluated — GitHub Actions is already in place on the org, free for public repos, and natively integrated with GHCR.
 
-### Custom Image Updates: Flux Image Automation
+### Custom Image Updates: Flux Image Automation (PR-based)
 
-When CI pushes a new image to GHCR, the tag in infra-k8s must be updated. Flux Image Automation monitors the registry and auto-commits:
+When CI pushes a new image to GHCR, the tag in infra-k8s must be updated. Flux Image Automation monitors the registry, but instead of committing directly to main, it pushes to a dedicated branch. A GitHub Actions workflow in infra-k8s then opens a PR from that branch.
+
+This preserves the PR gate: every change to infra-k8s — whether from a human, Renovate, or Flux Image Automation — goes through a pull request.
 
 ```yaml
 # Flux monitors GHCR for new versions
@@ -88,7 +91,7 @@ spec:
     semver:
       range: ">=1.0.0"
 
-# Flux automatically commits the new tag to infra-k8s
+# Flux commits to a branch, NOT main
 apiVersion: image.toolkit.fluxcd.io/v1beta2
 kind: ImageUpdateAutomation
 metadata:
@@ -100,12 +103,21 @@ spec:
         name: flux
         email: flux@bretagne.dev
     push:
-      branch: main
+      branch: flux-image-updates
   update:
     strategy: Setters
 ```
 
-The full flow: push code → CI build → GHCR → Flux detects → commit tag to infra-k8s → Flux reconciles → rolling update. Fully automatic, no manual intervention.
+The full flow: push code → CI build → GHCR → Flux detects (~5 min) → commit to branch → PR opened → human reviews + merges → Flux deploys.
+
+### Why the PR Gate Matters
+
+Flux Image Automation was originally designed to commit directly to main for fully automated deployments. We deliberately break that pattern because:
+- A push to an app repo should not automatically reach production — that's the whole point of separating app repos from infra-k8s
+- The PR is the only gate between "image exists" and "image is deployed" — removing it means trusting CI output blindly
+- PRs also serve as the trigger point for preview-in-prod testing (ADR 0017)
+
+The tradeoff is a human merge step. In practice this is a fast review of a one-line tag bump, not a bottleneck.
 
 ### Public Image and Helm Chart Updates: Renovate
 
@@ -130,27 +142,38 @@ kube-prometheus-stack 58.0 → 59.0 available
 - The free GitHub App runs on Mend infrastructure — no self-hosting needed. A `renovate.json` file at the repo root configures behavior
 
 **Why not Flux Image Automation for public images**:
-- Flux Image Automation auto-commits without review — acceptable for your own images (you control CI), risky for third-party images (a buggy version deploys automatically)
-- Renovate opens a PR → you review before merging. This is the right level of control for external dependencies
+- Renovate understands Helm values, Kustomize files, and arbitrary YAML — Flux Image Automation only handles image tags via setter markers
+- Renovate groups related updates, provides changelogs, and supports auto-merge policies per dependency
+- One tool for all external dependencies (images + charts) is simpler than splitting between two
 
 ### Workflow Summary
 
 ```
-Custom images (full auto):
-  Push code → GitHub Actions → GHCR → Flux Image Automation → deploy
+Custom images (PR via Flux Image Automation):
+  Push code → GitHub Actions → GHCR → Flux detects (~5 min) → branch → PR → merge → deploy
 
-Public images (PR review):
+Public images (PR via Renovate):
   New version → Renovate opens PR → review + merge → Flux deploy
 
-Helm charts (PR review):
+Helm charts (PR via Renovate):
   New version → Renovate opens PR → review + merge → Flux deploy
 ```
+
+All three paths converge on the same gate: a PR on infra-k8s that must be merged before anything reaches the cluster.
+
+### The Registry as Communication Channel
+
+A key architectural insight: GHCR is the communication channel between app repos and infra-k8s. App repos push images to GHCR. infra-k8s (via Flux Image Automation) pulls from GHCR. No app repo ever needs access to infra-k8s — the registry decouples them completely (ADR 0016).
+
+This also means the signal ("a new version exists") is the image itself. No webhook, no `repository_dispatch`, no cross-repo token needed.
 
 ## Consequences
 
 - Application repos with builds (code-server, obsidian) keep their GitHub Actions CI and Dockerfile. Images are pushed to GHCR with semver tags
 - Application repos without builds (stremio) disappear — their deployment is a manifest in infra-k8s
-- Flux Image Automation (ImageRepository + ImagePolicy + ImageUpdateAutomation) is deployed in the cluster to monitor GHCR
-- Renovate (GitHub App) is installed on the org with a `renovate.json` in infra-k8s
+- Flux Image Automation (ImageRepository + ImagePolicy + ImageUpdateAutomation) is deployed in the cluster to monitor GHCR. It pushes to the `flux-image-updates` branch, never to main
+- A GitHub Actions workflow in infra-k8s auto-creates PRs from the `flux-image-updates` branch
+- Renovate (GitHub App) is installed on the repo with a `renovate.json` in infra-k8s
+- Flux's deploy key needs write access to infra-k8s (for branch pushes), but this is Flux writing to its own repo — no external actor has write access (ADR 0016)
 - Dockerfile base images must be version-pinned (no `:latest`) — Renovate will propose bumps via PR
-- The deploy flow remains coherent with the current workflow (PR → merge → automatic deploy via Flux)
+- Every change to infra-k8s goes through a PR — the merge is the deployment trigger

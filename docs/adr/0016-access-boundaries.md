@@ -37,10 +37,10 @@ Some applications may be further split: reusable components packaged as Helm cha
 
 | Actor | Repo access | Mechanism | Write to infra-k8s? |
 |---|---|---|---|
-| **Flux** | `infra-k8s` only | SSH deploy key (created at bootstrap, scoped to one repo) | Yes — read manifests, write tag updates via Image Automation |
+| **Flux** | `infra-k8s` only | SSH deploy key (created at bootstrap, scoped to one repo) | Yes — read manifests, write to branches (never main) via Image Automation |
 | **AI agent** | App repos only | GitHub App (scoped to app repos) | **No** |
 | **GitHub Actions CI** | The app repo it runs in + GHCR | Automatic `GITHUB_TOKEN` + GHCR push | **No** |
-| **Flux Image Automation** | GHCR (read) + `infra-k8s` (write) | Flux's deploy key | Yes — auto-commits new image tags |
+| **Flux Image Automation** | GHCR (read) + `infra-k8s` (branch write) | Flux's deploy key | Branch only — commits tag updates to `flux-image-updates`, PR opened for merge |
 | **Renovate** | Public registries + `infra-k8s` (PRs only) | Renovate GitHub App | PRs only — human merges |
 | **Human operator** | Everything | Personal GitHub account | Yes — merges PRs, runs bootstrap |
 
@@ -66,8 +66,10 @@ The `GITHUB_TOKEN` (PAT) is used once at bootstrap time to create the deploy key
 ```
 Agent pushes code to app repo
   → GitHub Actions CI builds + pushes image to GHCR
-    → Flux Image Automation detects new tag, commits to infra-k8s
-      → Flux reconciles, rolling update
+    → Flux Image Automation detects new tag, pushes to branch
+      → PR opened on infra-k8s
+        → Human reviews + merges
+          → Flux reconciles, rolling update
 
 Renovate detects dependency update
   → Opens PR on infra-k8s
@@ -75,12 +77,16 @@ Renovate detects dependency update
       → Flux reconciles
 ```
 
-No actor can short-circuit this pipeline. The agent cannot push to `infra-k8s`. CI cannot deploy. Renovate cannot merge. Only Flux deploys, and only from what is merged in `infra-k8s`.
+Both paths converge on a PR. No actor can short-circuit this pipeline. The agent cannot push to `infra-k8s`. CI cannot deploy. Flux Image Automation cannot push to main. Renovate cannot merge. Only Flux deploys, and only from what is merged on main in `infra-k8s`.
+
+### The Registry as Boundary
+
+GHCR decouples app repos from infra-k8s completely. App repos push images to GHCR. Flux Image Automation polls GHCR from within the cluster. No app repo, no CI workflow, and no agent ever needs access to infra-k8s. The registry is the communication channel (ADR 0015).
 
 ## Consequences
 
 - The AI agent's GitHub App must explicitly exclude `infra-k8s` from its installation scope
-- Flux bootstrap creates a deploy key automatically — no additional credential management needed
-- Flux Image Automation (ADR 0015) reuses Flux's deploy key for committing tag updates
+- Flux bootstrap creates a deploy key (read/write) automatically — write is needed for Image Automation branch pushes, but Flux never writes to main
+- Flux Image Automation (ADR 0015) reuses Flux's deploy key for pushing to the `flux-image-updates` branch
 - If moving to an organization with multiple infra repos, the deploy key approach should be re-evaluated in favor of a GitHub App for Flux
 - The human operator is the only actor that can directly modify `infra-k8s` (via PRs or direct push on `main`)
