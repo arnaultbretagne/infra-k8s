@@ -8,6 +8,7 @@ spec:
   retryInterval: 1m
   dependsOn:
     - name: infrastructure-configs
+    - name: infrastructure-crds
   path: ./infrastructure/gateway
   prune: true
   sourceRef:

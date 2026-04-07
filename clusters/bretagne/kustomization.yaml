@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - infrastructure-sources.yaml
   - infrastructure-shared-secrets.yaml
+  - infrastructure-crds.yaml
   - infrastructure-controllers.yaml
   - infrastructure-configs.yaml
   - infrastructure-gateway.yaml
