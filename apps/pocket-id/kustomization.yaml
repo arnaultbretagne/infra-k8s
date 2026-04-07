@@ -4,8 +4,8 @@ namespace: pocket-id
 resources:
   - namespace.yaml
   - secrets.yaml
-  - pocket-id-cluster.yaml
-  - pocket-id-backup.yaml
+  - cluster.yaml
+  - scheduled-backup.yaml
   - restore-test.yaml
   - cnpg-s3-creds.yaml
   - deployment.yaml

@@ -50,17 +50,21 @@ spec:
               memory: 64Mi
             limits:
               memory: 128Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 1411
+            failureThreshold: 10
+            periodSeconds: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 1411
-            initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /health
               port: 1411
-            initialDelaySeconds: 10
             periodSeconds: 10
           volumeMounts:
             - name: data
