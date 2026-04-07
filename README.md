@@ -33,7 +33,7 @@ infrastructure/
   sources/          HelmRepository definitions
   controllers/      Flannel, Gateway API CRDs, MetalLB, CloudNativePG
   configs/          MetalLB IP pool, local-path-provisioner
-  bases/            Shared Kustomize bases (S3 credentials for CNPG backups)
+  shared-secrets/   SOPS secrets distributed via Flux Operator copyFrom
   gateway/          Traefik HelmRelease, Gateway resource, middlewares
 apps/               Application manifests (Pocket-ID, ...)
 docs/adr/           Architecture Decision Records

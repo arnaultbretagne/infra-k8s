@@ -104,26 +104,29 @@ onecli/                   ← same pattern, fully isolated
 
 Per-app isolation is maintained at every level: separate PG instances, separate namespaces, separate backup paths in S3. Each Cluster writes to its own `destinationPath` in the shared bucket (e.g., `s3://bretagne-pg-backups/pocket-id`, `s3://bretagne-pg-backups/onecli`).
 
-### S3 Credentials: Shared via Kustomize Base
+### S3 Credentials: Shared via Flux Operator copyFrom
 
-S3 backup credentials (R2 access key) are the same for all CNPG clusters since they share a single bucket. Rather than duplicating the SOPS-encrypted secret in every app namespace, the secret is defined once as a Kustomize base without a namespace:
+S3 backup credentials (R2 access key) are the same for all CNPG clusters since they share a single bucket. The SOPS-encrypted secret is defined once in `flux-system` namespace. Each app namespace gets a stub secret with the Flux Operator's `copyFrom` annotation — the operator fills it automatically from the source.
 
+```yaml
+# Source secret (flux-system namespace, SOPS-encrypted in Git)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cnpg-s3-creds
+  namespace: flux-system
+
+# Stub in each app namespace (Flux Operator copies the values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cnpg-s3-creds
+  namespace: pocket-id
+  annotations:
+    fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
 ```
-infrastructure/bases/cnpg-s3-creds/
-  kustomization.yaml
-  secrets.yaml              ← SOPS-encrypted, no namespace field
 
-apps/pocket-id/
-  kustomization.yaml        ← references the base, sets namespace: pocket-id
-apps/onecli/
-  kustomization.yaml        ← references the base, sets namespace: onecli
-```
-
-Kustomize stamps the secret into each app namespace at build time. Flux decrypts SOPS after the build. The secret value is authored and encrypted once; only the namespace varies. This is a standard Kustomize pattern that avoids both secret duplication and the need for cross-namespace secret syncing controllers (Reflector, kubernetes-replicator, etc.).
-
-```
-Git (SOPS base, no ns) → kustomize build (adds namespace) → Flux decrypts → K8s Secret in app ns → CNPG reads it
-```
+No duplication of encrypted values, no Kustomize base indirection. The Flux Operator (also used for preview environments, ADR 0017) handles the distribution natively.
 
 ## Implementation
 

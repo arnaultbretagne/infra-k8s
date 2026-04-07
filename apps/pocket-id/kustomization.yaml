@@ -6,7 +6,7 @@ resources:
   - secrets.yaml
   - pocket-id-cluster.yaml
   - pocket-id-backup.yaml
+  - cnpg-s3-creds.yaml
   - deployment.yaml
   - service.yaml
   - httproute.yaml
-  - ../../infrastructure/bases/cnpg-s3-creds

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cnpg-s3-creds
+  annotations:
+    fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
+type: Opaque
