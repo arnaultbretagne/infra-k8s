@@ -220,33 +220,33 @@ export KUBECONFIG=/root/.kube/config
 ok "Kubeconfig at /root/.kube/config"
 
 # ─── Phase 5: CNI bootstrap (chicken-and-egg) ────────────────────────
-log "Phase 5 — Flannel CNI (pre-Flux)"
+log "Phase 5 — Cilium CNI (pre-Flux)"
 
 # Flux needs pods → pods need CNI → CNI is a HelmRelease managed by Flux.
-# Break the cycle: install Flannel via helm. When Flux starts, its
-# helm-controller adopts the existing release.
+# Break the cycle: install Cilium via helm. When Flux starts, its
+# helm-controller adopts the existing release (ADR 0006).
 
-if helm status flannel -n kube-flannel &>/dev/null 2>&1; then
-  ok "Flannel Helm release already exists"
+if helm status cilium -n kube-system &>/dev/null 2>&1; then
+  ok "Cilium Helm release already exists"
 else
-  kubectl create namespace kube-flannel --dry-run=client -o yaml \
-    | kubectl apply --server-side -f -
-  kubectl label namespace kube-flannel \
-    pod-security.kubernetes.io/enforce=privileged --overwrite
-
-  helm repo add flannel https://flannel-io.github.io/flannel
-  helm repo update flannel
-  helm install flannel flannel/flannel \
-    --namespace kube-flannel \
-    --version v0.28.2 \
-    --set podCidr=10.244.0.0/16 \
-    --set flannel.backend=vxlan \
-    --set flannel.image.repository=ghcr.io/flannel-io/flannel \
-    --set flannel.args='{--ip-masq,--kube-subnet-mgr}' \
+  helm repo add cilium https://helm.cilium.io
+  helm repo update cilium
+  helm install cilium cilium/cilium \
+    --namespace kube-system \
+    --version 1.19.2 \
+    --set kubeProxyReplacement=true \
+    --set k8sServiceHost=localhost \
+    --set k8sServicePort=6443 \
+    --set ipam.operator.clusterPoolIPv4PodCIDRList='{10.244.0.0/16}' \
+    --set hubble.enabled=false \
+    --set operator.resources.requests.cpu=50m \
+    --set operator.resources.requests.memory=64Mi \
+    --set operator.resources.limits.memory=256Mi \
     --set resources.requests.cpu=100m \
-    --set resources.requests.memory=50Mi \
+    --set resources.requests.memory=128Mi \
+    --set resources.limits.memory=512Mi \
     --wait --timeout 120s
-  ok "Flannel installed via Helm"
+  ok "Cilium installed via Helm"
 fi
 
 wait_for "Node Ready" kubectl wait --for=condition=Ready node --all --timeout=120s
