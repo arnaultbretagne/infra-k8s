@@ -125,7 +125,19 @@ Ne pas mettre de `limits.cpu` (throttling est pire qu'un burst temporaire).
 
 ## 5. Namespace label PSS
 
-Chaque namespace applicatif doit avoir le label Pod Security Standards :
+Kubernetes refuse la creation d'un pod si celui-ci ne respecte pas
+le niveau de securite declare sur le namespace. Sans label, aucune
+verification n'est faite — n'importe quel pod (root, privileged) passe.
+
+### Les 3 niveaux
+
+| Niveau | Autorise | Usage |
+|--------|----------|-------|
+| `restricted` | Non-root, drop ALL caps, read-only fs, pas d'escalade | **Apps** — defaut pour tout ce qu'on deploie |
+| `baseline` | Bloque hostPID/hostNetwork/privileged, autorise root et certaines caps | **Infra** — Traefik, MetalLB, CNPG, local-path |
+| `privileged` | Tout | **CNI uniquement** — Flannel |
+
+### Comment l'appliquer
 
 ```yaml
 apiVersion: v1
@@ -136,8 +148,17 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
 ```
 
-Le niveau `restricted` est le defaut pour les apps.
-Seuls les composants infra privilegies (CNI, LB) utilisent `privileged`.
+Chaque namespace du repo doit avoir un label `enforce`.
+Si un nouveau namespace est cree sans label, c'est un oubli a corriger.
+
+### Pourquoi `enforce` et pas `warn` ou `audit`
+
+- `enforce` — refuse le pod. C'est le seul mode qui protege reellement.
+- `warn` — accepte le pod mais affiche un warning. Utile en migration.
+- `audit` — accepte le pod, log dans l'audit log. Invisible au quotidien.
+
+On utilise `enforce` partout. En cas de doute sur la compatibilite
+d'un composant infra, tester en `warn` d'abord puis basculer en `enforce`.
 
 ---
 
