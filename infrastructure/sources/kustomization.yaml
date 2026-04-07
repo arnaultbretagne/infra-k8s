@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - cloudnativepg.yaml
   - flannel.yaml
+  - flux-operator.yaml
   - gateway-api.yaml
   - local-path-provisioner.yaml
   - metallb.yaml
