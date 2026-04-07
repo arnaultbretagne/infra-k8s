@@ -128,6 +128,11 @@ metadata:
 
 No duplication of encrypted values, no Kustomize base indirection. The Flux Operator (also used for preview environments, ADR 0017) handles the distribution natively.
 
+**Alternatives considered:**
+- **Kustomize base without namespace** — define the secret once in a shared base, each app's kustomization.yaml references it and Kustomize stamps it into the app namespace at build time. Works without extra controllers, but adds path indirection (`../../infrastructure/bases/...`) and raises questions about SOPS metadata surviving the Kustomize build. Initially implemented, then replaced by `copyFrom` once the Flux Operator became a dependency anyway (ADR 0017).
+- **Reflector / kubernetes-replicator** — annotation-driven secret mirroring controllers. Widely used, but adds a controller solely for this purpose. Unnecessary once the Flux Operator provides `copyFrom` natively.
+- **Duplicate the secret per namespace** — simplest, but any credential rotation requires updating N SOPS files.
+
 ## Implementation
 
 ```yaml
