@@ -6,6 +6,7 @@
 #
 # Required inputs (env vars):
 #   AGE_KEY_FILE    — path to the age private key for SOPS decryption
+#   DEPLOY_KEY_FILE — path to the SSH deploy key for Flux git access
 #
 # Optional overrides:
 #   PUBLIC_IP       — auto-detected if not set
@@ -24,7 +25,7 @@ SOPS_VERSION="3.9.4"
 
 AES_KEY_FILE="${AES_KEY_FILE:-/root/.config/k0s/encryption-key}"
 
-REPO_URL="https://github.com/arnaultbretagne/infra-k8s.git"
+REPO_URL="ssh://git@github.com/ab-craft/infra-k8s.git"
 CLUSTER_PATH="clusters/bretagne"
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -55,6 +56,8 @@ done
 
 [ -n "${AGE_KEY_FILE:-}" ]    || fail "AGE_KEY_FILE not set"
 [ -f "$AGE_KEY_FILE" ]        || fail "AGE_KEY_FILE not found: $AGE_KEY_FILE"
+[ -n "${DEPLOY_KEY_FILE:-}" ] || fail "DEPLOY_KEY_FILE not set"
+[ -f "$DEPLOY_KEY_FILE" ]     || fail "DEPLOY_KEY_FILE not found: $DEPLOY_KEY_FILE"
 
 # Auto-detect public IP
 if [ -z "${PUBLIC_IP:-}" ]; then
@@ -300,7 +303,7 @@ else
   ok "sops-age secret created"
 fi
 
-# Bootstrap Flux (public repo, HTTPS read-only — no credentials needed)
+# Bootstrap Flux with deploy key (ADR 0016)
 if flux check &>/dev/null 2>&1; then
   ok "Flux already running"
 else
@@ -308,6 +311,7 @@ else
     --url="$REPO_URL" \
     --branch=main \
     --path="$CLUSTER_PATH" \
+    --private-key-file="$DEPLOY_KEY_FILE" \
     --silent
   ok "Flux bootstrapped"
 fi

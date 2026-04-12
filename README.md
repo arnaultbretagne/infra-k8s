@@ -54,21 +54,21 @@ Each layer is a Flux `Kustomization` with `dependsOn` on the previous one. The g
 
 ## Bootstrap
 
-Prerequisites: a Debian VPS with root SSH access. The repo is public — no GitHub token needed.
+Prerequisites: a Debian VPS with root SSH access, a GitHub PAT with `repo` scope.
 
 ```bash
 git clone https://github.com/arnaultbretagne/infra-k8s.git /srv/infra-k8s
 cd /srv/infra-k8s
-export AGE_KEY_FILE=/root/.config/sops/age/keys.txt
+export GITHUB_TOKEN=<your-token>
 ./bootstrap/bootstrap.sh
 ```
 
 The script is idempotent and handles:
-1. OS hardening (nftables, SSH, fail2ban, unattended-upgrades)
-2. Installing k0s, Flux CLI, Helm, age, sops
-3. Generating or loading AES key for encryption at rest
-4. Starting k0s with Cilium CNI
-5. Bootstrapping Flux (HTTPS, read-only), creating the SOPS Age secret
+1. Installing k0s, Flux CLI, age, sops
+2. Generating Age + AES keys (or loading existing ones)
+3. Configuring k0s with EncryptionConfiguration for secrets at rest
+4. Starting k0s, applying Flannel CNI
+5. Bootstrapping Flux, creating the SOPS Age secret
 
 After bootstrap, Flux reconciles the full dependency chain automatically.
 
