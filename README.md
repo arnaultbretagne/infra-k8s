@@ -64,11 +64,11 @@ export GITHUB_TOKEN=<your-token>
 ```
 
 The script is idempotent and handles:
-1. Installing k0s, Flux CLI, age, sops
-2. Generating Age + AES keys (or loading existing ones)
-3. Configuring k0s with EncryptionConfiguration for secrets at rest
-4. Starting k0s, applying Flannel CNI
-5. Bootstrapping Flux, creating the SOPS Age secret
+1. OS hardening (nftables, SSH, fail2ban, unattended-upgrades)
+2. Installing k0s, Flux CLI, Helm, age, sops
+3. Generating or loading AES key for encryption at rest
+4. Starting k0s with Cilium CNI
+5. Bootstrapping Flux with deploy key, creating the SOPS Age secret
 
 After bootstrap, Flux reconciles the full dependency chain automatically.
 

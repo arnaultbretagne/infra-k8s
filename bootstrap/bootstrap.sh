@@ -25,7 +25,7 @@ SOPS_VERSION="3.9.4"
 
 AES_KEY_FILE="${AES_KEY_FILE:-/root/.config/k0s/encryption-key}"
 
-REPO_URL="ssh://git@github.com/ab-craft/infra-k8s.git"
+REPO_URL="ssh://git@github.com/arnaultbretagne/infra-k8s.git"
 CLUSTER_PATH="clusters/bretagne"
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -243,6 +243,11 @@ else
   ok "Encryption at rest configured"
 
   k0s start
+
+  # kube-apiserver runs as its own user — fix ownership after k0s generates the user
+  wait_for "API server user exists" id kube-apiserver
+  chown kube-apiserver:root /var/lib/k0s/pki/encryptionconfig.yaml
+
   ok "k0s started"
 fi
 
@@ -286,19 +291,19 @@ else
   ok "Cilium installed via Helm"
 fi
 
-wait_for "Node Ready" kubectl wait --for=condition=Ready node --all --timeout=120s
+wait_for "Node Ready" k0s kubectl wait --for=condition=Ready node --all --timeout=120s
 
 # ─── Phase 6: Flux bootstrap ─────────────────────────────────────────
 log "Phase 6 — Flux"
 
 # Create namespace + SOPS secret before bootstrap
-kubectl create namespace flux-system --dry-run=client -o yaml \
-  | kubectl apply --server-side -f -
+k0s kubectl create namespace flux-system --dry-run=client -o yaml \
+  | k0s kubectl apply --server-side -f -
 
-if kubectl -n flux-system get secret sops-age &>/dev/null; then
+if k0s kubectl -n flux-system get secret sops-age &>/dev/null; then
   ok "sops-age secret already exists"
 else
-  kubectl -n flux-system create secret generic sops-age \
+  k0s kubectl -n flux-system create secret generic sops-age \
     --from-file=age.agekey="$AGE_KEY_FILE"
   ok "sops-age secret created"
 fi

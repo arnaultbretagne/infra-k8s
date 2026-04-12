@@ -3,3 +3,16 @@ kind: Kustomization
 resources:
 - gotk-components.yaml
 - gotk-sync.yaml
+patches:
+  # Flux default NetworkPolicies block kubelet probes when Cilium enforces
+  # policies (host traffic doesn't match podSelector). Remove them — network
+  # isolation is handled at the namespace level via Cilium policies if needed.
+  - target:
+      kind: NetworkPolicy
+      namespace: flux-system
+    patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: unused
