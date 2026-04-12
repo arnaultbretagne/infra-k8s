@@ -37,7 +37,7 @@ Some applications may be further split: reusable components packaged as Helm cha
 
 | Actor | Repo access | Mechanism | Write to infra-k8s? |
 |---|---|---|---|
-| **Flux** | `infra-k8s` only | SSH deploy key (created at bootstrap, scoped to one repo) | Yes — read manifests, write to branches (never main) via Image Automation |
+| **Flux** | `infra-k8s` only | HTTPS (public repo, read-only). SSH deploy key added later for Image Automation branch writes | Read at bootstrap. Branch write when Image Automation is enabled (never main) |
 | **AI agent** | App repos only | GitHub App (scoped to app repos) | **No** |
 | **GitHub Actions CI** | The app repo it runs in + GHCR | Automatic `GITHUB_TOKEN` + GHCR push | **No** |
 | **Flux Image Automation** | GHCR (read) + `infra-k8s` (branch write) | Flux's deploy key | Branch only — commits tag updates to `flux-image-updates`, PR opened for merge |
@@ -53,13 +53,14 @@ The agent executes LLM-generated code. Even with guardrails, the risk of uninten
 
 The agent's influence on the cluster is always indirect: push code → CI builds image → Flux deploys. Every step has a gate.
 
-### Why Deploy Key for Flux (Not PAT, Not GitHub App)
+### Why Public Repo + HTTPS for Flux (Not PAT, Not Deploy Key at Bootstrap)
+
+The repo is public. Flux clones via HTTPS with no credentials at bootstrap time — zero secrets for Git access.
 
 - **PAT**: Tied to a person, broad `repo` scope across all repositories. If stored in the cluster, a compromised pod could access all repos. Rejected.
-- **GitHub App**: Fine-grained, scoped permissions. Ideal for organizations with multiple repos/clusters. Overkill for a single personal repo — adds operational complexity (app creation, installation, private key management) without benefit.
-- **Deploy key (SSH)**: Created automatically by `flux bootstrap`, scoped to exactly one repository, read/write. No token stored in the cluster (the SSH key is the credential). Simple, secure, default Flux behavior.
-
-The `GITHUB_TOKEN` (PAT) is used once at bootstrap time to create the deploy key. It is never persisted in the cluster.
+- **GitHub App**: Fine-grained, scoped permissions. Ideal for organizations with multiple repos/clusters. Overkill for a single personal repo. Rejected.
+- **Deploy key (SSH)**: Scoped to one repo, simple. Not needed for read (public repo). Added later when Flux Image Automation requires branch write access.
+- **HTTPS (public repo)**: No credential stored in the cluster at bootstrap. The simplest option when write access is not yet needed.
 
 ### Deployment Flow
 
@@ -86,7 +87,7 @@ GHCR decouples app repos from infra-k8s completely. App repos push images to GHC
 ## Consequences
 
 - The AI agent's GitHub App must explicitly exclude `infra-k8s` from its installation scope
-- Flux bootstrap creates a deploy key (read/write) automatically — write is needed for Image Automation branch pushes, but Flux never writes to main
-- Flux Image Automation (ADR 0015) reuses Flux's deploy key for pushing to the `flux-image-updates` branch
+- Flux bootstraps via HTTPS (public repo) with no Git credentials
+- When Flux Image Automation is enabled, a deploy key (SSH, write) is added to the `GitRepository` source for branch pushes to `flux-image-updates` (never main)
 - If moving to an organization with multiple infra repos, the deploy key approach should be re-evaluated in favor of a GitHub App for Flux
 - The human operator is the only actor that can directly modify `infra-k8s` (via PRs or direct push on `main`)

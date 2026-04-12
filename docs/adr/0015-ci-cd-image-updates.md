@@ -174,6 +174,6 @@ This also means the signal ("a new version exists") is the image itself. No webh
 - Flux Image Automation (ImageRepository + ImagePolicy + ImageUpdateAutomation) is deployed in the cluster to monitor GHCR. It pushes to the `flux-image-updates` branch, never to main
 - A GitHub Actions workflow in infra-k8s auto-creates PRs from the `flux-image-updates` branch
 - Renovate (GitHub App) is installed on the repo with a `renovate.json` in infra-k8s
-- Flux's deploy key needs write access to infra-k8s (for branch pushes), but this is Flux writing to its own repo — no external actor has write access (ADR 0016)
+- Flux reads infra-k8s via HTTPS (public repo). When Image Automation is enabled, a deploy key (write) is added for branch pushes — Flux writing to its own repo, no external actor has write access (ADR 0016)
 - Dockerfile base images must be version-pinned (no `:latest`) — Renovate will propose bumps via PR
 - Every change to infra-k8s goes through a PR — the merge is the deployment trigger
