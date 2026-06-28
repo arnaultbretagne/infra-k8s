@@ -261,6 +261,119 @@ chmod 600 /root/.kube/config
 export KUBECONFIG=/root/.kube/config
 ok "Kubeconfig at /root/.kube/config"
 
+# ─── Phase 4b: netguard (SSH dead-man's switch) ──────────────────────
+log "Phase 4b — netguard connectivity watchdog"
+
+# Bound to k0scontroller's lifecycle (BindsTo + WantedBy): starts/stops WITH
+# k0s, so it can never be forgotten. If Cilium's datapath takes the host
+# network down for >3 min, netguard masks+stops k0s and restores the host
+# firewall (reboot only if that's not enough) — so SSH always comes back.
+cat > /usr/local/bin/netguard <<'NGEOF'
+#!/usr/bin/env bash
+# netguard — connectivity watchdog for the single-NIC k0s/Cilium VPS.
+#
+# Runs ONLY while k0scontroller is active (systemd BindsTo + WantedBy), so it
+# can never be "forgotten": you cannot bring Cilium up without the guard up.
+#
+# It probes external reachability. If the host loses ALL external connectivity
+# for >GRACE seconds, it reverts the only thing that takes over the host
+# datapath (k0s/Cilium) so SSH always comes back:
+#     mask + stop k0scontroller  ->  restore host nftables  ->  reboot if still dead.
+# mask survives a reboot, so the broken stack never auto-restarts into a loop.
+set -u
+
+GRACE=${NETGUARD_GRACE:-180}        # sustained total loss before acting (3 min)
+INTERVAL=${NETGUARD_INTERVAL:-15}   # probe cadence (s)
+TAG=netguard
+
+iface() { ip route show default 2>/dev/null | awk '/default/{print $5; exit}'; }
+gw()    { ip route show default 2>/dev/null | awk '/default/{print $3; exit}'; }
+
+# Reachable if ANY of: default gateway, two public IPs, or a public TCP:443.
+# In a Cilium datapath takeover ALL of these die together; in normal operation
+# at least one answers — so this only fires on genuine total network death.
+probe_ok() {
+  local g; g=$(gw)
+  [ -n "$g" ] && ping -c1 -W2 "$g" >/dev/null 2>&1 && return 0
+  ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 && return 0
+  ping -c1 -W2 8.8.8.8 >/dev/null 2>&1 && return 0
+  timeout 3 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' 2>/dev/null && return 0
+  return 1
+}
+
+revert() {
+  local IF; IF=$(iface)
+  logger -t "$TAG" "REVERT: sustained network loss — stop+mask k0scontroller, restore host firewall"
+  systemctl mask k0scontroller >/dev/null 2>&1 || true       # no auto-restart of the broken stack, even across reboot
+  timeout 45 systemctl stop k0scontroller >/dev/null 2>&1 || true
+  # best-effort: detach Cilium eBPF/datapath leftovers from the NIC
+  [ -n "$IF" ] && tc qdisc del dev "$IF" clsact >/dev/null 2>&1 || true
+  for l in cilium_host cilium_net cilium_vxlan; do ip link del "$l" >/dev/null 2>&1 || true; done
+  # restore the clean host firewall (in case docker/cilium mangled nft)
+  nft -f /etc/nftables.conf >/dev/null 2>&1 || true
+  sleep 25
+  if probe_ok; then
+    logger -t "$TAG" "RECOVERED without reboot. k0s is MASKED — fix the config, then: systemctl unmask k0scontroller"
+    exit 0
+  fi
+  logger -t "$TAG" "still unreachable after stop — rebooting (k0s masked => clean boot)"
+  systemctl reboot
+}
+
+case "${1:-watch}" in
+  selftest)
+    echo "iface=$(iface) gw=$(gw) grace=${GRACE}s interval=${INTERVAL}s"
+    if probe_ok; then echo "probe: REACHABLE"; else echo "probe: DOWN"; fi
+    ;;
+  revert)
+    revert
+    ;;
+  watch)
+    logger -t "$TAG" "watchdog up (grace=${GRACE}s interval=${INTERVAL}s iface=$(iface) gw=$(gw))"
+    last_ok=$(date +%s)
+    while true; do
+      if probe_ok; then
+        last_ok=$(date +%s)
+      else
+        now=$(date +%s)
+        if [ $(( now - last_ok )) -ge "$GRACE" ]; then
+          # launch revert DETACHED, so BindsTo stopping us (when k0s stops) can't abort it
+          systemd-run --unit=netguard-revert --collect /usr/local/bin/netguard revert >/dev/null 2>&1 \
+            || /usr/local/bin/netguard revert
+          exit 0
+        fi
+      fi
+      sleep "$INTERVAL"
+    done
+    ;;
+  *)
+    echo "usage: netguard [watch|selftest|revert]" >&2
+    exit 2
+    ;;
+esac
+NGEOF
+chmod +x /usr/local/bin/netguard
+
+cat > /etc/systemd/system/netguard.service <<'NGSVC'
+[Unit]
+Description=netguard — connectivity watchdog (auto-reverts k0s/Cilium if the host loses network)
+BindsTo=k0scontroller.service
+After=k0scontroller.service network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/netguard watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=k0scontroller.service
+NGSVC
+
+systemctl daemon-reload
+systemctl enable netguard.service 2>/dev/null
+ok "netguard installed — auto-arms whenever k0s runs (3-min grace)"
+
 # ─── Phase 5: CNI bootstrap (chicken-and-egg) ────────────────────────
 log "Phase 5 — Cilium CNI (pre-Flux)"
 
