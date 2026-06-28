@@ -71,7 +71,7 @@ Calico would solve the NetworkPolicy problem, but Cilium also provides the obser
 
 ### Deployment mode
 
-- **Hubble**: disabled at first. Enables flow visibility but adds ~100-150MB RAM. Will be enabled when the observability stack (ADR 0014) is deployed, so Grafana can consume Hubble metrics.
+- **Hubble**: **enabled** to drive the network-policy rollout (ADR 0020). Flow visibility + Cilium policy *audit mode* is how default-deny allow-lists are built without locking the cluster out (observe real flows → codify → enforce). ~100-150MB RAM, accepted. Its metrics later feed Grafana when the observability stack lands (ADR 0014).
 - **kube-proxy replacement**: enabled. Removes the need for kube-proxy iptables rules. k0s supports this via `network.kubeProxy.disabled: true` in k0s.yaml.
 - **Load balancing**: handled by Cilium natively — **no MetalLB**. With kube-proxy replacement enabled, Cilium provides LoadBalancer IPAM (`CiliumLoadBalancerIPPool`) + L2 announcement (`CiliumL2AnnouncementPolicy`), assigning the VPS public IP to the Traefik LoadBalancer Service. One whole component removed (MetalLB, ADR 0007 superseded) — fewer moving parts to operate, consistent with the agent-operated model.
 
@@ -112,7 +112,7 @@ With Flannel, this manifest is accepted by the API server but **silently ignored
 - NetworkPolicies are **load-bearing, not optional**: they are the control that makes preview-in-prod (ADR 0017) safe on a single node and that isolates the IdP (Pocket-ID). Flannel accepted them but silently ignored them — this is what makes Cilium **required**, not a preference
 - kube-proxy is disabled in k0s.yaml — Cilium handles Service load-balancing via eBPF
 - MetalLB (ADR 0007) is **removed** — Cilium assigns external LoadBalancer IPs via LB-IPAM + L2 announcement (`CiliumLoadBalancerIPPool` + `CiliumL2AnnouncementPolicy`)
-- Hubble is initially disabled; will be enabled alongside the observability stack (ADR 0014)
+- Hubble is **enabled** to build and verify NetworkPolicy allow-lists in audit mode (ADR 0020); its metrics later feed the observability stack (ADR 0014)
 - The Flannel namespace (`kube-flannel`) and its PSS label (`privileged`) are removed
 - Cilium runs in `kube-system` with PSS `privileged` (required for eBPF and host networking)
 - The bootstrap script installs Cilium via Helm before Flux — breaking the chicken-and-egg (Flux needs running pods → pods need a CNI); Flux's helm-controller adopts the release afterward
