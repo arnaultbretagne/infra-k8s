@@ -14,20 +14,25 @@ spec:
         name: traefik
         namespace: flux-system
   install:
-    crds: CreateReplace
+    crds: Skip   # CRDs managed centrally in infrastructure-crds, not by this chart
     remediation:
       retries: 3
   upgrade:
-    crds: CreateReplace
+    crds: Skip   # CRDs managed centrally in infrastructure-crds, not by this chart
     remediation:
       retries: 3
   values:
-    # Gateway API provider
+    # Pure Gateway API — no traefik.io CRDs / IngressRoute for now
     providers:
       kubernetesGateway:
         enabled: true
       kubernetesCRD:
-        enabled: true
+        enabled: false
+
+    # We use our own Gateway (bretagne-gateway), so disable the chart's default one.
+    # GatewayClass "traefik" is still created by the chart (gatewayClass.enabled default true).
+    gateway:
+      enabled: false
 
     # OIDC auth plugin (ADR 0010)
     experimental:
