@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — **amended 2026-06-28** (operational model: stateful / DB-backed / backup-driven recovery — see end of doc). Runs on CloudNativePG Postgres (ADR 0012), **not** the embedded SQLite mentioned below.
 
 ## Context
 
@@ -89,3 +89,36 @@ The additional cost (oauth2-proxy, ~20MB) is negligible compared to the daily UX
 - The `groups` claim in the OIDC token enables additional filtering on the oauth2-proxy side (`--allowed-group`)
 - No password management, no password reset — passkeys only. Users must have a WebAuthn-compatible device
 - If Authelia ships AMR support + admin UI + conditional UI (planned ~v4.41-42), the decision can be re-evaluated
+
+---
+
+## Amendment 2026-06-28 — Operational model: stateful, DB-backed, backup-driven recovery (NOT config-as-code)
+
+Records how we *run and recover* Pocket-ID (the selection above stands). Written so we never re-derive it.
+
+**Runs on Postgres (CNPG), not embedded SQLite.** Per ADR 0012, Pocket-ID v2 runs against a CloudNativePG cluster. **All** Pocket-ID state — users, passkeys, OIDC clients (+ secrets), groups, app config (incl. SMTP) — lives in that DB.
+
+**Pocket-ID is treated as a stateful app — we do NOT do config-as-code for it.**
+- Pocket-ID has no native config-as-code: clients/groups are UI/API-only. The Docker-era setup scripted the API (idempotent bash reconcilers). We **reject re-importing that** — it is exactly the brittle bordel we're migrating away from, for an IdP whose config changes a few times a year.
+- **The DB is the source of truth.** Config is done in the Pocket-ID **UI** (admin = the human). We accept losing PR-auditability of IdP config; the alternative (API-scripting) costs more than it's worth here.
+
+**Reproducibility = git-deploy + S3-restore (declarative, zero bash).**
+- **Git** holds: the k8s manifests (Deployment, CNPG `Cluster`, Service, HTTPRoute), the `ENCRYPTION_KEY` (SOPS), and — for DR — a CNPG `bootstrap.recovery` pointing at the S3 backup.
+- **Rebuild on a vierge VPS:** Flux deploys → CNPG **restores the DB from S3** → `ENCRYPTION_KEY` decrypts → Pocket-ID comes back whole (users, passkeys, clients, groups, SMTP). No provisioning scripts.
+
+**Secrets vs backup — the split.**
+- **SOPS/git = `ENCRYPTION_KEY` only** (ADR 0011). It is the *one* secret that cannot live in the DB, because it is what encrypts the DB at rest — hence the linchpin that makes the S3 backup usable.
+- **DB → S3 backup (ADR 0012) = everything else**: SMTP credentials, OIDC client secrets, users, passkeys (public keys), groups, app config — all encrypted at rest by `ENCRYPTION_KEY`.
+- **Postgres credentials = CNPG-managed k8s secret** (not git).
+- Mnemonic: **the key in git, the data in S3, CNPG manages its own lock.**
+
+**Passkeys are domain-bound; the genesis is irreducibly manual.**
+- A WebAuthn passkey is bound to the RP ID = the domain (`id.bretagne.dev`). It can only be enrolled once that domain is served by this instance → **at/after the edge flip (Phase 7)**, never via a `localhost` port-forward (RP ID would be localhost, useless after).
+- The IdP **genesis** — first admin + first passkey + first API key + initial UI config — **cannot be GitOps'd** (it is the root of trust; a human establishes it once). Normal and accepted. The restore-test (ADR 0012) validates the only irreplaceable thing: the user data (passkeys).
+
+**Cutover from the old Docker Pocket-ID — FRESH, no migration.**
+- The old instance was **SQLite in Docker** (`reverse-proxy_pocket_id_data`), **never** backed up to the new S3 → "restore from backup" is not available for the old data.
+- Inventory (extracted 2026-06-28, kept only as reference): **2 users** (arnault [admin], maxime.noulin [admin]), **2 passkeys** (1 each), **3 OIDC clients** (`client_vps` → VPS forward-auth; `claude_auth` → claude.ai MCP; `openai_auth` → chatgpt.com connector), **4 groups** (only `admin` used; `stremio`/`claude`/`beszel` were empty cruft).
+- **Decision: start FRESH** — no SQLite→Postgres migration. Re-enroll passkey(s), redefine groups/clients natively in the UI. Rationale: tiny scale, goal is a clean native setup (no old cruft), and the first admin re-enrolls a passkey at genesis anyway.
+- From the old `.env`, `client_vps`'s client_id + secret are recoverable → re-wiring the VPS forward-auth is **transparent**. The **two external connectors** (Claude, ChatGPT) get a new id/secret → **must be re-authorized** on those platforms (Pocket-ID stores only secret hashes; plaintext isn't recoverable).
+- Going forward likely single-user (Maxime's access is the human's call) → possibly just `admin`, maybe no groups at all.
