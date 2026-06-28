@@ -43,12 +43,13 @@ spec:
         clusterPoolIPv4PodCIDRList:
           - 10.244.0.0/16
 
-    # Hubble ON (ADR 0014/0020): flow observability ("the agent's eyes") + the audit basis
-    # for NetworkPolicies. relay aggregates flows; UI deferred to the flip (needs ingress).
+    # Hubble ON (ADR 0014/0020): agent-level flow observability ("the agent's eyes") + the
+    # audit basis for NetworkPolicies (`hubble observe`). relay + UI deferred to Phase 6 — the
+    # relay's mTLS bootstrap is finicky on single-node and isn't needed for the agent-level audit.
     hubble:
       enabled: true
       relay:
-        enabled: true
+        enabled: false
 
     # Resources
     operator:
