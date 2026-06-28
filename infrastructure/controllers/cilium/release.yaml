@@ -39,6 +39,7 @@ spec:
 
     # Resources
     operator:
+      replicas: 1          # single-node: avoid 2nd replica stuck Pending on hostPort conflict
       resources:
         requests:
           cpu: 50m
