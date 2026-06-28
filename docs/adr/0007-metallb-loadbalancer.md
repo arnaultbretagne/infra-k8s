@@ -2,7 +2,9 @@
 
 ## Status
 
-**Superseded by ADR 0006 (Cilium native load balancing) — April 2026.**
+**Superseded — April 2026 (Cilium native LB), then again 2026-06-28 (no LB at all → Traefik hostPort).**
+
+> **Amended 2026-06-28:** the Cilium LoadBalancer/L2 replacement is *also* dropped — it requires kube-proxy-replacement (removed, see ADR 0006 amendment) and is beta. On a single node with **one public IP the host already owns**, no LoadBalancer is needed: **Traefik binds `:80/:443` via `hostPort`** (container ports 8000/8443). Simplest, standard, and no ARP/L2 announcement — which was itself a lockout vector. MetalLB *and* Cilium-LB both stay out.
 
 > MetalLB was chosen under the original Flannel CNI decision. Since the cluster moved to Cilium (ADR 0006) with kube-proxy replacement, Cilium provides LoadBalancer IPAM (`CiliumLoadBalancerIPPool`) and L2 announcement (`CiliumL2AnnouncementPolicy`) natively — a dedicated load balancer is redundant. **MetalLB is removed.** The analysis below is kept for historical context (and remains valid should the cluster ever move off Cilium, e.g. to Calico).
 

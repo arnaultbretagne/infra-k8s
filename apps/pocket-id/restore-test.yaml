@@ -19,6 +19,8 @@ spec:
             runAsUser: 26
             runAsGroup: 102
             fsGroup: 102
+            seccompProfile:
+              type: RuntimeDefault    # PSS 'restricted' (pocket-id ns)
           containers:
             - name: restore-test
               image: ghcr.io/cloudnative-pg/postgresql:17

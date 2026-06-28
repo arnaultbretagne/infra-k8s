@@ -4,6 +4,8 @@
 
 Accepted (April 2026) — **Cilium**. Supersedes the original Flannel decision (February 2026, kept below for context). With kube-proxy replacement enabled, Cilium also provides LoadBalancer IPAM + L2 announcement, which supersedes MetalLB (ADR 0007).
 
+> **⚠️ Amended 2026-06-28 — kube-proxy replacement DROPPED (kube-proxy kept).** Cilium stays for CNI + Hubble + NetworkPolicy, but `kubeProxyReplacement: false` and stock kube-proxy is re-enabled (`k0s.yaml: kubeProxy.disabled: false`). Why: on this **single-NIC** VPS, kpr attaches Cilium's eBPF datapath (`cil_from_netdev`/`cil_to_netdev`) directly to `eth0` — the only NIC, which carries SSH — and the cold-bringup churn killed host connectivity for >3 min → **lockout** (upstream **cilium#46010**, same 1.19.x). The "Replaces kube-proxy (~50MB)" / "Integrated LB" rows below were the *only* reasons for kpr, and they optimise RAM/component-count — the axis we explicitly deprioritised under agent-operability. **Consequently the Cilium LoadBalancer + L2 announcement is also dropped** (it *requires* kpr and is beta): the public-IP edge becomes **Traefik `hostPort` :80/:443** (the host already owns the IP). MetalLB stays removed regardless.
+
 ## Original Decision (February 2026): Flannel
 
 k0s (ADR 0001) does not provide a CNI by default. One must be chosen to ensure network communication between pods.
