@@ -1,0 +1,108 @@
+# Default-deny + allow-list for the pocket-id namespace (ADR 0020, first rollout).
+# Two CiliumNetworkPolicies — one per workload — each restricting BOTH ingress and egress.
+# Allow-list derived from Hubble-observed flows (2026-06-28). The delicate part is CNPG:
+# the Postgres instance MUST keep reaching the kube-apiserver (instance manager), DNS, and
+# S3 (barman backups), and the CNPG operator MUST keep reaching the instance — else the DB
+# cluster degrades silently.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: pocket-id-app
+  namespace: pocket-id
+spec:
+  endpointSelector:
+    matchLabels:
+      app: pocket-id
+  ingress:
+    # Traefik serves id.bretagne.dev -> app :1411
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "1411", protocol: TCP }]
+    # kubelet health probe (/health) -> app :1411
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "1411", protocol: TCP }]
+  egress:
+    # -> Postgres (CNPG)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: pocket-id-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # NOTE: SMTP egress (to the mail provider) to be added when email is configured.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: pocket-id-pg
+  namespace: pocket-id
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: pocket-id-pg
+  ingress:
+    # app -> postgres
+    - fromEndpoints:
+        - matchLabels:
+            app: pocket-id
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # CNPG operator -> instance (status :8000 + SQL :5432 for management)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+            k8s:app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+            - { port: "5432", protocol: TCP }
+    # intra-cluster (replication / future HA) — same CNPG cluster
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: pocket-id-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    # kubelet probes -> status :8000
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+  egress:
+    # instance manager -> kube-apiserver
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # barman backups -> S3 / Cloudflare R2 (external HTTPS). Tighten to toFQDNs later.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    # intra-cluster (replication / future HA)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: pocket-id-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
