@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed
+**Proposed — deferred (April 2026).** Not on the migration path for now.
+
+> Parked after review: a MITM proxy that terminates all egress TLS and holds every credential in one young, single-maintainer component is a large, concentrated trust surface for a homelab. The near-term need — keep credentials away from workloads — is covered well enough by classic K8s Secrets (SOPS, ADR 0003) plus Cilium NetworkPolicies (ADR 0006) scoping egress. Revisit if/when untrusted AI agents run at scale in-cluster, where the injection-proxy pattern earns its cost. The analysis below is preserved for that revisit.
 
 ## Context
 

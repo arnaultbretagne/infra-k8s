@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+**Superseded by ADR 0006 (Cilium native load balancing) — April 2026.**
+
+> MetalLB was chosen under the original Flannel CNI decision. Since the cluster moved to Cilium (ADR 0006) with kube-proxy replacement, Cilium provides LoadBalancer IPAM (`CiliumLoadBalancerIPPool`) and L2 announcement (`CiliumL2AnnouncementPolicy`) natively — a dedicated load balancer is redundant. **MetalLB is removed.** The analysis below is kept for historical context (and remains valid should the cluster ever move off Cilium, e.g. to Calico).
 
 ## Context
 

@@ -8,7 +8,7 @@ Proposed
 
 The cluster needs monitoring (system and application metrics), centralized logs, dashboards, and alerting. The current infrastructure uses Beszel for system monitoring — a simple but non-customizable tool, limited to node-level metrics, and unable to monitor K8s workloads.
 
-The cluster is single-node on a VPS with limited resources (4-8GB RAM). Each observability component consumes RAM that is no longer available for workloads. The choice must balance completeness and footprint.
+The cluster is single-node on a VPS with 16GB RAM. Observability is RAM-hungry, but it is deliberately treated as a first-class workload here, not an afterthought (see Rationale — "Why the heavy standard stack"). The choice still balances completeness and footprint, but **footprint is not the deciding criterion** here.
 
 Three decision axes:
 1. **Metrics** — collection, storage, alerting
@@ -22,6 +22,15 @@ Options evaluated: kube-prometheus-stack + Loki + Alloy (multi-chart), grafana/k
 `grafana/k8s-monitoring` as a unified chart, deploying Prometheus, Loki, Grafana, and Alloy in a single HelmRelease.
 
 ## Rationale
+
+### Why the Heavy Standard Stack (and Not a Lighter One)
+
+This is the one place the project deliberately spends RAM instead of saving it, for two reasons:
+
+1. **It is the operator's sensory layer.** This cluster is meant to be operated largely by an AI agent, not babysat by a human (the "Agent SRE via MCP" direction). The agent operates through standard interfaces — PromQL, Loki queries, ServiceMonitor/PodMonitor, Grafana dashboards. A lighter, non-standard stack (OpenObserve's partial PromQL, no ServiceMonitor CRDs) would blind exactly the consumer that most needs to see. **Standard + observable beats lightweight + bespoke** here.
+2. **It is real-world practice.** No serious production runs without a Prometheus/Loki/Grafana-class stack. Running it *is* the point — it is where the operational skill (and the agent's competence) is built.
+
+So footprint frugality — the decisive criterion in ADRs 0001/0002/0009 — is consciously **not** decisive here. ~1.1–1.9GB on a 16GB box (~7–12%) is the accepted price.
 
 ### Why a Unified Chart Over Multi-Chart
 
@@ -149,7 +158,7 @@ The actual need (seeing CPU/RAM/disk trends over a few months) does not justify 
 | Grafana | 100-150MB |
 | **Total** | **~1.1 - 1.9GB** |
 
-On an 8GB VPS, that is 15-25% of RAM for observability — acceptable. On 4GB, it is tight but viable with Prometheus optimizations.
+On the 16GB VPS, that is ~7-12% of RAM for observability — accepted as a deliberate first-class cost (see "Why the heavy standard stack").
 
 ## Consequences
 
