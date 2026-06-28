@@ -3,4 +3,7 @@ kind: Namespace
 metadata:
   name: local-path-storage
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    # privileged: local-path-provisioner's helper pods mount hostPath to create PVs,
+    # which baseline/restricted forbid → PVCs stay Pending, all stateful apps blocked.
+    # Only this storage-provisioner namespace is privileged; app namespaces stay restricted.
+    pod-security.kubernetes.io/enforce: privileged
