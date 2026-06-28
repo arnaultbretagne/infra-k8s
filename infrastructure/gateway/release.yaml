@@ -62,11 +62,9 @@ spec:
       enabled: true
       size: 128Mi
 
-    # LoadBalancer service (MetalLB assigns VPS IP)
+    # LoadBalancer service — Cilium LB-IPAM assigns the pool IP (replaces MetalLB, ADR 0006)
     service:
       type: LoadBalancer
-      spec:
-        loadBalancerIP: 85.17.246.41
 
     # Resource limits
     resources:

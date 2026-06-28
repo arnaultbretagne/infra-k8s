@@ -1,0 +1,9 @@
+# Announce LoadBalancer IPs over L2/ARP on the node (single-node, all interfaces)
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: default
+spec:
+  loadBalancerIPs: true
+  nodeSelector:
+    matchLabels: {}

@@ -1,0 +1,8 @@
+# Cilium LoadBalancer IP pool — the single public VPS IP (replaces MetalLB, ADR 0006)
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: public
+spec:
+  blocks:
+    - cidr: 85.17.246.41/32
