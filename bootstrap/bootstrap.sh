@@ -395,7 +395,8 @@ else
     --set k8sServiceHost=localhost \
     --set k8sServicePort=6443 \
     --set ipam.operator.clusterPoolIPv4PodCIDRList='{10.244.0.0/16}' \
-    --set hubble.enabled=false \
+    --set hubble.enabled=true \
+    --set hubble.relay.enabled=true \
     --set operator.resources.requests.cpu=50m \
     --set operator.resources.requests.memory=64Mi \
     --set operator.resources.limits.memory=256Mi \
