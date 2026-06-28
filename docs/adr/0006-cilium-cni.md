@@ -2,7 +2,7 @@
 
 ## Status
 
-Amended (April 2026) — Cilium replaces Flannel before initial deployment.
+Accepted (April 2026) — **Cilium**. Supersedes the original Flannel decision (February 2026, kept below for context). With kube-proxy replacement enabled, Cilium also provides LoadBalancer IPAM + L2 announcement, which supersedes MetalLB (ADR 0007).
 
 ## Original Decision (February 2026): Flannel
 
@@ -73,7 +73,7 @@ Calico would solve the NetworkPolicy problem, but Cilium also provides the obser
 
 - **Hubble**: disabled at first. Enables flow visibility but adds ~100-150MB RAM. Will be enabled when the observability stack (ADR 0014) is deployed, so Grafana can consume Hubble metrics.
 - **kube-proxy replacement**: enabled. Removes the need for kube-proxy iptables rules. k0s supports this via `network.kubeProxy.disabled: true` in k0s.yaml.
-- **MetalLB**: kept (ADR 0007). Cilium has an integrated LB, but MetalLB is already configured and works. Migrating LB at the same time as CNI adds unnecessary risk. Can be consolidated later.
+- **Load balancing**: handled by Cilium natively — **no MetalLB**. With kube-proxy replacement enabled, Cilium provides LoadBalancer IPAM (`CiliumLoadBalancerIPPool`) + L2 announcement (`CiliumL2AnnouncementPolicy`), assigning the VPS public IP to the Traefik LoadBalancer Service. One whole component removed (MetalLB, ADR 0007 superseded) — fewer moving parts to operate, consistent with the agent-operated model.
 
 ### Example NetworkPolicy unlocked
 
@@ -109,9 +109,10 @@ With Flannel, this manifest is accepted by the API server but **silently ignored
 
 - Cilium is deployed by Flux as a HelmRelease, coherent with the GitOps approach (ADR 0002)
 - NetworkPolicies can now be defined per-app to restrict pod-to-pod traffic
+- NetworkPolicies are **load-bearing, not optional**: they are the control that makes preview-in-prod (ADR 0017) safe on a single node and that isolates the IdP (Pocket-ID). Flannel accepted them but silently ignored them — this is what makes Cilium **required**, not a preference
 - kube-proxy is disabled in k0s.yaml — Cilium handles Service load-balancing via eBPF
-- MetalLB (ADR 0007) remains for external LoadBalancer IP assignment
+- MetalLB (ADR 0007) is **removed** — Cilium assigns external LoadBalancer IPs via LB-IPAM + L2 announcement (`CiliumLoadBalancerIPPool` + `CiliumL2AnnouncementPolicy`)
 - Hubble is initially disabled; will be enabled alongside the observability stack (ADR 0014)
 - The Flannel namespace (`kube-flannel`) and its PSS label (`privileged`) are removed
 - Cilium runs in `kube-system` with PSS `privileged` (required for eBPF and host networking)
-- The bootstrap script installs Cilium via Helm before Flux (same chicken-and-egg pattern as Flannel)
+- The bootstrap script installs Cilium via Helm before Flux — breaking the chicken-and-egg (Flux needs running pods → pods need a CNI); Flux's helm-controller adopts the release afterward

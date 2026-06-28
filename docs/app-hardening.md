@@ -134,8 +134,8 @@ verification n'est faite — n'importe quel pod (root, privileged) passe.
 | Niveau | Autorise | Usage |
 |--------|----------|-------|
 | `restricted` | Non-root, drop ALL caps, read-only fs, pas d'escalade | **Apps** — defaut pour tout ce qu'on deploie |
-| `baseline` | Bloque hostPID/hostNetwork/privileged, autorise root et certaines caps | **Infra** — Traefik, MetalLB, CNPG, local-path |
-| `privileged` | Tout | **CNI uniquement** — Flannel |
+| `baseline` | Bloque hostPID/hostNetwork/privileged, autorise root et certaines caps | **Infra** — Traefik, CNPG, local-path |
+| `privileged` | Tout | **CNI uniquement** — Cilium (`kube-system`, eBPF) |
 
 ### Comment l'appliquer
 
