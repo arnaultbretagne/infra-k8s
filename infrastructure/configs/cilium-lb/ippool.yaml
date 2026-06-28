@@ -1,3 +1,8 @@
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ ⚠️  PHASE 7 (FLIP) ONLY — DO NOT reference from configs/kustomization.yaml   ║
+# ║ before the flip window. Announcing this IP (single public IP / single NIC)  ║
+# ║ makes Cilium's eBPF datapath seize eth0 → SSH LOCKOUT (post-mortem 26-06-28).║
+# ╚════════════════════════════════════════════════════════════════════════════╝
 # Cilium LoadBalancer IP pool — the single public VPS IP (replaces MetalLB, ADR 0006)
 apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool

@@ -1,3 +1,8 @@
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ ⚠️  PHASE 7 (FLIP) ONLY — DO NOT reference from configs/kustomization.yaml   ║
+# ║ before the flip window. This is the exact object that ARP-hijacks the public ║
+# ║ IP into Cilium's datapath → eth0 seized → SSH LOCKOUT (post-mortem 26-06-28).║
+# ╚════════════════════════════════════════════════════════════════════════════╝
 # Announce LoadBalancer IPs over L2/ARP on the node (single-node, all interfaces)
 apiVersion: cilium.io/v2alpha1
 kind: CiliumL2AnnouncementPolicy

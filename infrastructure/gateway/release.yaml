@@ -55,9 +55,11 @@ spec:
     # TLS certificates are provisioned by cert-manager via Gateway certificateRefs
     # (ADR 0008 updated) — Traefik's built-in ACME does not serve Gateway API anyway.
 
-    # LoadBalancer service — Cilium LB-IPAM assigns the pool IP (replaces MetalLB, ADR 0006)
+    # NodePort during build (Phases 1–6): Cilium must NOT announce the public IP until the
+    # flip (Phase 7), else the eBPF datapath seizes eth0 → SSH lockout. Validate out-of-band
+    # (port-forward / localhost). Flip to LoadBalancer + re-add cilium-lb at Phase 7.
     service:
-      type: LoadBalancer
+      type: NodePort
 
     # Resource limits
     resources:

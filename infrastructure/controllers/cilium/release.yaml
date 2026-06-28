@@ -27,9 +27,11 @@ spec:
     k8sServiceHost: "localhost"
     k8sServicePort: "6443"
 
-    # LoadBalancer via Cilium L2 announcement (replaces MetalLB — ADR 0007 superseded)
+    # L2 announcement feature: OFF until the flip (Phase 7). On a single public IP / single
+    # NIC, announcing it mid-build makes Cilium's eBPF datapath seize eth0 → SSH lockout
+    # (post-mortem 2026-06-28). Re-enable together with cilium-lb at Phase 7.
     l2announcements:
-      enabled: true
+      enabled: false
     k8sClientRateLimit:
       qps: 50
       burst: 100
