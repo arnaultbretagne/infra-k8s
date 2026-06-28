@@ -17,6 +17,8 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault    # required by PSS 'restricted' (was the only missing field)
       containers:
         - name: pocket-id
           image: ghcr.io/pocket-id/pocket-id:v2.5.0
