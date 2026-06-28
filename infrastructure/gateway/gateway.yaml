@@ -3,6 +3,10 @@ kind: Gateway
 metadata:
   name: bretagne-gateway
   namespace: traefik
+  annotations:
+    # cert-manager provisions the listener certs (ADR 0008 updated).
+    # Staging first; flip to letsencrypt-prod once green.
+    cert-manager.io/cluster-issuer: letsencrypt-staging
 spec:
   gatewayClassName: traefik
   listeners:
@@ -15,8 +19,12 @@ spec:
     - name: https
       port: 443
       protocol: HTTPS
+      hostname: id.bretagne.dev
       tls:
         mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
       allowedRoutes:
         namespaces:
           from: All

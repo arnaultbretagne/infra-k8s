@@ -4,3 +4,4 @@ resources:
   - cilium
   - cloudnativepg
   - flux-operator
+  - cert-manager

@@ -47,20 +47,8 @@ spec:
         exposedPort: 443
         protocol: TCP
 
-    # Let's Encrypt ACME (ADR 0008)
-    certResolvers:
-      letsencrypt:
-        email: admin@bretagne.dev
-        httpChallenge:
-          entryPoint: web
-        storage: /data/acme.json
-        # Uncomment for testing:
-        # caServer: https://acme-staging-v02.api.letsencrypt.org/directory
-
-    # ACME cert persistence
-    persistence:
-      enabled: true
-      size: 128Mi
+    # TLS certificates are provisioned by cert-manager via Gateway certificateRefs
+    # (ADR 0008 updated) — Traefik's built-in ACME does not serve Gateway API anyway.
 
     # LoadBalancer service — Cilium LB-IPAM assigns the pool IP (replaces MetalLB, ADR 0006)
     service:

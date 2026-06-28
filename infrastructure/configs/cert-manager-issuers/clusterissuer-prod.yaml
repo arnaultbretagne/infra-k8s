@@ -1,0 +1,18 @@
+# Let's Encrypt PRODUCTION — flip the Gateway annotation to this once staging is green
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@bretagne.dev
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: bretagne-gateway
+                namespace: traefik
+                kind: Gateway
