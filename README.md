@@ -27,10 +27,11 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Preview / QA | Preview-in-prod (ephemeral, in-cluster) | [0017](docs/adr/0017-preview-in-prod.md) |
 | Storage class | local-path-provisioner | [0018](docs/adr/0018-local-path-provisioner.md) |
 | Repo strategy | Monorepo | [0019](docs/adr/0019-monorepo-gitops.md) |
+| Network guardrails | Default-deny + per-namespace allow-lists (Cilium) | [0020](docs/adr/0020-network-policy-guardrails.md) |
 
 ¹ Supersedes MetalLB ([0007](docs/adr/0007-metallb-loadbalancer.md)) — Cilium handles LoadBalancer IP assignment natively.
 
-> **Status note:** ADRs are *decisions*, not all implemented yet. Built today: k0s / Flux / Cilium / Traefik / Gateway API / CNPG / local-path + Pocket-ID. Decided but not yet built: observability (0014), CI/CD automation (0015), auth-enforcement wiring (0010), preview-in-prod (0017). Deferred: OneCLI (0013). MetalLB manifests are still present pending removal (ADR 0007 superseded).
+> **Status note:** ADRs are *decisions*, not all implemented yet. Built today: k0s / Flux / Cilium / Traefik / Gateway API / CNPG / local-path + Pocket-ID. Decided but not yet built: observability (0014), CI/CD automation (0015), auth-enforcement wiring (0010), preview-in-prod (0017), network guardrails (0020). Deferred: OneCLI (0013). MetalLB manifests are still present pending removal (ADR 0007 superseded).
 
 ## Repository structure
 
