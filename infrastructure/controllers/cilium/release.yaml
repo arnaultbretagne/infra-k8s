@@ -22,8 +22,9 @@ spec:
     remediation:
       retries: 3
   values:
-    # kube-proxy replacement (ADR 0006)
-    kubeProxyReplacement: true
+    # kube-proxy KEPT (ADR 0006 amended 2026-06-28): kpr attaches eBPF to eth0 → host SSH lockout
+    # on this single-NIC VPS (cilium #46010). Cilium stays for CNI + Hubble + NetworkPolicy.
+    kubeProxyReplacement: false
     k8sServiceHost: "localhost"
     k8sServicePort: "6443"
 

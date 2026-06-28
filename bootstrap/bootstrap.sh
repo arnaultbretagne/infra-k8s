@@ -303,8 +303,9 @@ probe_ok() {
 
 revert() {
   local IF; IF=$(iface)
-  logger -t "$TAG" "REVERT: sustained network loss — stop+mask k0scontroller, restore host firewall"
-  systemctl mask k0scontroller >/dev/null 2>&1 || true       # no auto-restart of the broken stack, even across reboot
+  logger -t "$TAG" "REVERT: sustained network loss — disable+stop k0scontroller, restore host firewall"
+  systemctl disable k0scontroller >/dev/null 2>&1 || true    # EFFECTIVE anti-loop: mask can't mask a /etc unit; disable kills boot auto-start
+  systemctl mask k0scontroller >/dev/null 2>&1 || true       # best-effort extra (blocks manual start where mask applies)
   timeout 45 systemctl stop k0scontroller >/dev/null 2>&1 || true
   # best-effort: detach Cilium eBPF/datapath leftovers from the NIC
   [ -n "$IF" ] && tc qdisc del dev "$IF" clsact >/dev/null 2>&1 || true
@@ -389,7 +390,8 @@ else
   helm install cilium cilium/cilium \
     --namespace kube-system \
     --version 1.19.2 \
-    --set kubeProxyReplacement=true \
+    --set kubeProxyReplacement=false \
+    --set operator.replicas=1 \
     --set k8sServiceHost=localhost \
     --set k8sServicePort=6443 \
     --set ipam.operator.clusterPoolIPv4PodCIDRList='{10.244.0.0/16}' \
