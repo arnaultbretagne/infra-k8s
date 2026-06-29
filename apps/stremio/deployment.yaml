@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aiostreams
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO PVC: don't run two pods against the same volume
+  selector:
+    matchLabels:
+      app: aiostreams
+  template:
+    metadata:
+      labels:
+        app: aiostreams
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: aiostreams
+          image: viren070/aiostreams:v2.26.0
+          ports:
+            - containerPort: 3000
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: BASE_URL
+              value: https://stremio.bretagne.dev
+            - name: SEL_SYNC_ACCESS
+              value: all
+            - name: REGEX_FILTER_ACCESS
+              value: all
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aiostreams-secrets
+                  key: SECRET_KEY
+            - name: AIOSTREAMS_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: aiostreams-secrets
+                  key: AIOSTREAMS_AUTH
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /
+              port: 3000
+            failureThreshold: 20
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: aiostreams-data

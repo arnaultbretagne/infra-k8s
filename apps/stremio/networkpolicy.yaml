@@ -1,0 +1,41 @@
+# Default-deny + allow-list for the stremio namespace (ADR 0020 pattern).
+# aiostreams is file-based (no in-cluster DB) — it only needs DNS + broad
+# external HTTPS/HTTP egress to reach debrid services, indexers, and to sync
+# its anime-database / seadex sources. Egress to `world` is intentionally broad
+# here (an addon aggregator talks to arbitrary upstreams); tighten if ever scoped.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: aiostreams
+  namespace: stremio
+spec:
+  endpointSelector:
+    matchLabels:
+      app: aiostreams
+  ingress:
+    # Traefik serves stremio.bretagne.dev -> app :3000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # kubelet health probes -> app :3000
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+  egress:
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> external upstreams (debrid / indexers / database sync)
+    - toEntities: [world]
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+            - { port: "80", protocol: TCP }
