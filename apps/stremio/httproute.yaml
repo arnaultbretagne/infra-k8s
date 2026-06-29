@@ -6,7 +6,7 @@ spec:
   parentRefs:
     - name: bretagne-gateway
       namespace: traefik
-      sectionName: https
+      sectionName: https-stremio
   hostnames:
     - stremio.bretagne.dev
   rules:

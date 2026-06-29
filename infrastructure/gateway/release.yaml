@@ -55,11 +55,14 @@ spec:
     # TLS certificates are provisioned by cert-manager via Gateway certificateRefs
     # (ADR 0008 updated) — Traefik's built-in ACME does not serve Gateway API anyway.
 
-    # NodePort during build (Phases 1–6): Cilium must NOT announce the public IP until the
-    # flip (Phase 7), else the eBPF datapath seizes eth0 → SSH lockout. Validate out-of-band
-    # (port-forward / localhost). Flip to LoadBalancer + re-add cilium-lb at Phase 7.
+    # FLIP (Phase 7): bind the host public IP :80/:443 via Service externalIPs.
+    # This rides kube-proxy (kept — kubeProxyReplacement=false), so it does NOT
+    # touch the eBPF eth0 datapath / SSH, unlike Cilium L2 announcement (cilium-lb,
+    # still deferred). externalIPs DNAT (kube-proxy) -> Traefik pod :8000/:8443.
     service:
       type: NodePort
+      externalIPs:
+        - 85.17.246.41
 
     # Resource limits
     resources:
