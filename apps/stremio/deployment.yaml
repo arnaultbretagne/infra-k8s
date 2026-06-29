@@ -27,6 +27,11 @@ spec:
             capabilities:
               drop: [ALL]
           env:
+            # The one-time initial sync (Fribb 42k entries + Manami + seadex)
+            # loads everything into the V8 heap. Node auto-sizes old-space from
+            # the cgroup limit, so give it an explicit ceiling with headroom.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=768"
             - name: BASE_URL
               value: https://stremio.bretagne.dev
             - name: SEL_SYNC_ACCESS
@@ -46,9 +51,9 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 128Mi          # steady-state is small; the spike is one-time sync
             limits:
-              memory: 512Mi
+              memory: 1Gi            # must cover the initial full-sync heap peak
           startupProbe:
             httpGet:
               path: /
