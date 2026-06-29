@@ -13,13 +13,13 @@ spec:
   gatewayClassName: traefik
   listeners:
     - name: http
-      port: 80
+      port: 8000
       protocol: HTTP
       allowedRoutes:
         namespaces:
           from: All
     - name: https
-      port: 443
+      port: 8443
       protocol: HTTPS
       hostname: id.bretagne.dev
       tls:
@@ -33,7 +33,7 @@ spec:
     # Per-host listener for aiostreams. Shares bretagne-tls -> cert-manager adds
     # stremio.bretagne.dev as a SAN on the same multi-SAN cert. Add one block per app.
     - name: https-stremio
-      port: 443
+      port: 8443
       protocol: HTTPS
       hostname: stremio.bretagne.dev
       tls:
