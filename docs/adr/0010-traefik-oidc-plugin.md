@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+**Superseded by [ADR 0021](0021-oauth2-proxy-oidc-gate.md) (2026-06-30).** The plugin is a
+`traefik.io` Middleware CRD, which conflicts with our pure-Gateway-API Traefik (`kubernetesCRD:
+false`); it failed in practice. We use **oauth2-proxy** instead. Original decision preserved below.
 
 ## Context
 
