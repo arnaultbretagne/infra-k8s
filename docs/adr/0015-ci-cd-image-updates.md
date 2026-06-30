@@ -2,6 +2,40 @@
 
 ## Status
 
+Accepted — **amended 2026-06-29** (see Amendment: 3-tier app taxonomy)
+
+## Amendment 2026-06-29 — From binary to 3-tier app taxonomy; code-server + terminal are config-only
+
+The original binary split (app-with-build vs app-without-build) mis-classified
+**code-server** as "app-with-build". On review, code-server contains **no original
+source** — it is `codercom/code-server` + a provisioning layer (apt packages, a few
+wrapper scripts, VS Code settings, cosmetic patches). That is not an *app*; it is a
+*provisioned environment*. The classification is refined to **three tiers**:
+
+1. **Product app** — original source code. Owns a repo + Dockerfile + GitHub Actions
+   CI → GHCR. Imported by infra via Flux Image Automation (the machinery above).
+   → `obsidian-mcp`, `obsidian-clipper`. **These are the only tier-1 apps.**
+2. **Config-only** — public image + config/secrets/PVC. No repo, no build, no CI.
+   Just manifests in infra-k8s. → `aiostreams`, `pocket-id`, `beszel`,
+   **and now `code-server` + `terminal`**.
+3. (former "thin-build") — folded away: if a customization can't be expressed as
+   ConfigMaps + a seeded PVC, prefer dropping the feature over minting a build.
+
+**Why code-server is config-only (decided 2026-06-29):** its Dockerfile decomposes as
+— *droppable*: in-container `sshd` (k8s has `kubectl exec` + the `terminal` app),
+`product.json`/favicon cosmetic patches; — *user-space → home PVC*: `claude`, `codex`,
+`gh`, `node` (claude already installs to `~/.local/bin`); — *declarative → ConfigMap*:
+gh/git wrappers, entrypoint, VS Code settings, guardrails. Nothing genuinely requires a
+root-built image. So: **stock `codercom/code-server` image + ConfigMaps + a home PVC
+pre-seeded by an idempotent entrypoint/init-container that installs the CLIs user-space.**
+Same lens applies to `terminal`.
+
+**Consequence:** GHCR/CI/Flux-Image-Automation now matters **only for the obsidian apps**.
+When a custom image *is* built, it is published under the operator's **personal account
+(`ghcr.io/arnaultbretagne/...`), not `ab-craft`.**
+
+## Status (original)
+
 Accepted
 
 ## Context
