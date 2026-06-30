@@ -44,3 +44,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-agent
+      port: 8443
+      protocol: HTTPS
+      hostname: agent.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
