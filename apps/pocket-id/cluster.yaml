@@ -4,6 +4,12 @@ metadata:
   name: pocket-id-pg
 spec:
   instances: 1
+
+  # Prometheus scrapes the instance (:9187) via the operator-managed PodMonitor —
+  # feeds the CNPG backup/WAL-archiving alerts (observability/rules.yaml).
+  monitoring:
+    enablePodMonitor: true
+
   storage:
     size: 1Gi
     storageClass: local-path

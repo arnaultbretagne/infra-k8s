@@ -2,7 +2,38 @@
 
 ## Status
 
-Proposed
+Accepted — **amended 2026-07-01: implemented with kube-prometheus-stack + Loki + Alloy, not `grafana/k8s-monitoring`** (see Amendment)
+
+## Amendment (2026-07-01) — the unified-chart premise was wrong
+
+The Decision below picked `grafana/k8s-monitoring` on the premise that it "deploys
+Prometheus, Loki, Grafana, and Alloy in a single HelmRelease". **Verified at
+implementation time (chart v4.1.7): it does not.** The chart is *collectors-only* —
+it deploys Alloy, node-exporter and kube-state-metrics and ships telemetry to
+`destinations` (Grafana Cloud or self-hosted backends), but contains **no
+Prometheus, no Loki, no Grafana sub-chart**. Using it would still require deploying
+all three backends separately, giving four HelmReleases instead of three — strictly
+worse than the "multi-chart" option this ADR rejected.
+
+Implemented instead (the rejected option, whose downsides were overstated):
+
+- **`kube-prometheus-stack`** — Prometheus operator + Prometheus + Alertmanager +
+  Grafana + node-exporter + kube-state-metrics + default dashboards and alert rules.
+  Wiring Loki into the bundled Grafana is one `additionalDataSources` entry, not the
+  feared spelunking through 50 templates.
+- **`grafana/loki`** — single-binary mode, filesystem storage, 7d retention, 512Mi cap.
+- **`grafana/alloy`** — logs-only collector (`loki.source.kubernetes` via the kubelet
+  API + cluster events). Metrics collection stays with the Prometheus operator
+  (ServiceMonitor/PodMonitor), so there is no Alloy/Promtail coexistence problem.
+
+Everything else in this ADR stands: retention (30d metrics / 7d logs), expendable
+local storage (ADR 0005), RAM budget as first-class cost, Prometheus over
+VictoriaMetrics, no Thanos/Mimir. Grafana is exposed at `grafana.bretagne.dev`
+with **native OIDC against Pocket-ID** (role mapping from the `groups` claim:
+`admin` → GrafanaAdmin, others → Viewer) rather than behind oauth2-proxy (ADR 0021
+gates apps that have no usable auth; Grafana needs the identity for authorization).
+**Still open: the alert notification channel** — Alertmanager runs with no external
+receiver; alerts are visible in Grafana/Alertmanager only.
 
 ## Context
 

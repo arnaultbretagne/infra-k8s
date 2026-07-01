@@ -44,6 +44,18 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-grafana
+      port: 8443
+      protocol: HTTPS
+      hostname: grafana.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: https-agent
       port: 8443
       protocol: HTTPS

@@ -1,0 +1,9 @@
+# PSS `privileged` (not `restricted` like app namespaces): node-exporter needs
+# hostNetwork + hostPID + hostPath /proc,/sys,/ to read node metrics. Everything
+# else in this namespace runs restricted-compatible (enforced per-pod by the charts).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    pod-security.kubernetes.io/enforce: privileged

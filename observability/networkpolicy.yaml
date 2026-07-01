@@ -1,0 +1,31 @@
+# Ingress guard for the ONLY internet-exposed component of this namespace.
+# DEBT (ADR 0020, partial rollout): the rest of the namespace (Prometheus,
+# Loki, Alertmanager, Alloy, exporters) is not policed yet — Prometheus'
+# egress is by nature "scrape everything", and a wrong allow-list here would
+# silently re-blind the cluster. To be tightened with the guardrail bundle.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  ingress:
+    # Traefik serves grafana.bretagne.dev -> grafana :3000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # kubelet health probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # Prometheus scrapes grafana's own metrics
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]

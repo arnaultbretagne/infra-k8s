@@ -1,0 +1,49 @@
+# The P0 alerts this cluster went blind without (infra-migration-review §3.2):
+# CNPG backup health, host disk, cert expiry. Job/CronJob failures (e.g. the
+# pocket-id restore-test) are already covered by kube-prometheus-stack's
+# default KubeJobFailed rule.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bretagne-critical
+  namespace: observability
+spec:
+  groups:
+    - name: cnpg-backup
+      rules:
+        - alert: CNPGWALArchivingFailing
+          expr: cnpg_collector_pg_wal_archive_status{value="failed"} > 0
+          for: 30m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'CNPG {{ $labels.namespace }}/{{ $labels.pod }}: WAL archiving to S3 is failing'
+            description: 'WAL segments are piling up on the PVC (local-path does not enforce size limits) and point-in-time recovery is broken.'
+        - alert: CNPGBackupTooOld
+          expr: time() - cnpg_collector_last_available_backup_timestamp > 10800
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'CNPG {{ $labels.namespace }}/{{ $labels.pod }}: no successful backup for 3h'
+            description: 'Backups are scheduled hourly; the S3 restore chain is stale. The "rebuild from S3" promise does not hold right now.'
+    - name: host
+      rules:
+        - alert: HostRootDiskUsageHigh
+          expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 0.80
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Root filesystem above 80% on {{ $labels.instance }}'
+            description: 'PVCs (local-path), the container runtime and kine all share /. Disk pressure evicts pods at random.'
+    - name: certificates
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 86400
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in less than 14 days'
+            description: 'cert-manager should renew at 30 days before expiry — if this fires, renewal is broken (ACME/HTTP-01 path).'

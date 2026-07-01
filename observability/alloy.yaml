@@ -1,0 +1,90 @@
+# Log collection (ADR 0014): Alloy tails every pod's logs via the kubelet API
+# (loki.source.kubernetes — no hostPath mounts needed) + captures cluster events,
+# and pushes to Loki. Metrics collection is NOT done here — kube-prometheus-stack
+# owns that (ServiceMonitors/PodMonitors); Alloy is logs-only.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: observability
+spec:
+  interval: 1h
+  timeout: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: "1.10.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    alloy:
+      configMap:
+        create: true
+        content: |
+          // ---- Pod logs: discover all pods, tail via kubelet ----
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pods.targets
+
+            // Only tail running pods
+            rule {
+              source_labels = ["__meta_kubernetes_pod_phase"]
+              regex         = "Pending|Succeeded|Failed|Unknown"
+              action        = "drop"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_label_app"]
+              target_label  = "app"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_name"]
+              separator     = "/"
+              target_label  = "job"
+            }
+          }
+
+          loki.source.kubernetes "pods" {
+            targets    = discovery.relabel.pod_logs.output
+            forward_to = [loki.write.local.receiver]
+          }
+
+          // ---- Cluster events (kubectl get events, but persisted 7d) ----
+          loki.source.kubernetes_events "events" {
+            log_format = "json"
+            forward_to = [loki.write.local.receiver]
+          }
+
+          loki.write "local" {
+            endpoint {
+              url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi

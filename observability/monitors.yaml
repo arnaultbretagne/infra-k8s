@@ -1,0 +1,38 @@
+# Scrape targets beyond what kube-prometheus-stack wires up itself.
+# CNPG instance metrics come via the operator's own PodMonitor
+# (Cluster.spec.monitoring.enablePodMonitor in apps/pocket-id/cluster.yaml).
+---
+# cert-manager controller metrics (:9402) — feeds the cert-expiry alert.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cert-manager
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [cert-manager]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cert-manager
+      app.kubernetes.io/component: controller
+  endpoints:
+    - port: tcp-prometheus-servicemonitor
+      interval: 60s
+---
+# Flux controllers (:8080 http-prom) — reconciliation / workqueue metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: flux-system
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [flux-system]
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [helm-controller, kustomize-controller, source-controller, notification-controller]
+  podMetricsEndpoints:
+    - port: http-prom
+      interval: 60s

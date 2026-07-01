@@ -1,0 +1,168 @@
+# Metrics + alerting + dashboards (ADR 0014, amended: multi-chart, not k8s-monitoring —
+# the "unified" chart turned out to be collectors-only, see the ADR amendment).
+# CRDs (ServiceMonitor, PodMonitor, PrometheusRule, ...) are installed by this
+# HelmRelease (Create/CreateReplace) — other objects in this layer that use them
+# fail server-side validation on the very first reconcile and converge on retry.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: observability
+spec:
+  interval: 1h
+  timeout: 15m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "87.5.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: kps
+    cleanPrometheusOperatorObjectNames: true
+
+    # k0s single-node: control-plane components run as host processes (no
+    # scrapable pods), the datastore is kine/SQLite (no etcd), and kube-proxy
+    # binds its metrics to 127.0.0.1. Scraping/alerting on them = permanent
+    # false positives.
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    defaultRules:
+      rules:
+        etcd: false
+        kubeControllerManager: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        kubeProxy: false
+
+    prometheusOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
+
+    prometheus:
+      prometheusSpec:
+        # 30s scrape + 30d retention (ADR 0014). retentionSize keeps the TSDB
+        # below the PVC size — local-path does NOT enforce PVC size (cf. the
+        # 15GB WAL incident), so Prometheus must self-limit.
+        scrapeInterval: 30s
+        evaluationInterval: 30s
+        retention: 30d
+        retentionSize: 14GB
+        externalLabels:
+          cluster: bretagne
+        # Scrape every ServiceMonitor/PodMonitor/PrometheusRule in the cluster,
+        # not just the ones with the Helm release label (apps declare their own).
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        scrapeConfigSelectorNilUsesHelmValues: false
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: local-path
+              accessModes: [ReadWriteOnce]
+              resources:
+                requests:
+                  storage: 20Gi
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+          limits:
+            memory: 2Gi
+
+    alertmanager:
+      alertmanagerSpec:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+      # NOTE: no external receiver yet — the notification channel (email /
+      # Telegram / healthchecks.io) is an open decision (ADR 0014 gap). Alerts
+      # are visible in Grafana + Alertmanager UI until a channel is wired.
+
+    grafana:
+      fullnameOverride: grafana
+      defaultDashboardsTimezone: Europe/Paris
+      admin:
+        # Break-glass local admin; day-to-day login is OIDC via Pocket-ID.
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+      envFromSecret: grafana-oidc   # GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+      grafana.ini:
+        server:
+          root_url: https://grafana.bretagne.dev
+        analytics:
+          reporting_enabled: false
+          check_for_updates: false
+        auth.generic_oauth:
+          enabled: true
+          name: Pocket-ID
+          client_id: 4f0dcb8c-2f26-4a3f-a3e1-e42fb8c2a7a1
+          scopes: openid profile email groups
+          auth_url: https://id.bretagne.dev/authorize
+          token_url: https://id.bretagne.dev/api/oidc/token
+          api_url: https://id.bretagne.dev/api/oidc/userinfo
+          use_pkce: true
+          use_refresh_token: true
+          allow_sign_up: true
+          # Pocket-ID `admin` group -> full Grafana admin; any other Pocket-ID
+          # account gets read-only Viewer.
+          role_attribute_path: contains(groups[*], 'admin') && 'GrafanaAdmin' || 'Viewer'
+          allow_assign_grafana_admin: true
+      additionalDataSources:
+        - name: Loki
+          uid: loki
+          type: loki
+          access: proxy
+          url: http://loki.observability.svc.cluster.local:3100
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+      testFramework:
+        enabled: false
+
+    prometheus-node-exporter:
+      fullnameOverride: node-exporter
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+
+    kube-state-metrics:
+      fullnameOverride: kube-state-metrics
+      resources:
+        requests:
+          cpu: 20m
+          memory: 64Mi
+        limits:
+          memory: 128Mi

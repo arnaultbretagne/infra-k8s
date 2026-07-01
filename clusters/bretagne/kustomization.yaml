@@ -7,4 +7,5 @@ resources:
   - infrastructure-controllers.yaml
   - infrastructure-configs.yaml
   - infrastructure-gateway.yaml
+  - observability.yaml
   - apps.yaml

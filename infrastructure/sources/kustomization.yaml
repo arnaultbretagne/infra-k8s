@@ -8,3 +8,5 @@ resources:
   - local-path-provisioner.yaml
   - traefik.yaml
   - cert-manager.yaml
+  - grafana.yaml
+  - prometheus-community.yaml

@@ -80,6 +80,13 @@ spec:
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "8000", protocol: TCP }]
+    # Prometheus (observability) -> CNPG metrics :9187 (PodMonitor)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
   egress:
     # instance manager -> kube-apiserver
     - toEntities: [kube-apiserver]

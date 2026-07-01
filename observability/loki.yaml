@@ -1,0 +1,83 @@
+# Log storage (ADR 0014): Loki single-binary on filesystem, 7d retention,
+# hard memory cap — logs are expendable data (ADR 0005), no S3, no backup.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: observability
+spec:
+  interval: 1h
+  timeout: 10m
+  chart:
+    spec:
+      chart: loki
+      version: "7.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    deploymentMode: SingleBinary
+
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: filesystem
+      schemaConfig:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: index_
+              period: 24h
+      limits_config:
+        retention_period: 168h   # 7 days (ADR 0014)
+      compactor:
+        retention_enabled: true
+        delete_request_store: filesystem
+      ingester:
+        chunk_encoding: snappy
+
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 10Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi   # strict cap: broad queries must not OOM the node
+
+    # Simple-scalable components off (single-binary mode)
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    backend:
+      replicas: 0
+
+    # No nginx gateway (clients hit the loki Service directly), no canary,
+    # no memcached caches — every one of those is RAM we don't need to spend.
+    gateway:
+      enabled: false
+    lokiCanary:
+      enabled: false
+    test:
+      enabled: false
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
