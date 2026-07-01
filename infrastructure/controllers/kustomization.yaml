@@ -5,3 +5,4 @@ resources:
   - cloudnativepg
   - flux-operator
   - cert-manager
+  - prometheus-operator-crds

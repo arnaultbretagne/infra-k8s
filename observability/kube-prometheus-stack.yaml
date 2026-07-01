@@ -1,8 +1,8 @@
 # Metrics + alerting + dashboards (ADR 0014, amended: multi-chart, not k8s-monitoring —
 # the "unified" chart turned out to be collectors-only, see the ADR amendment).
-# CRDs (ServiceMonitor, PodMonitor, PrometheusRule, ...) are installed by this
-# HelmRelease (Create/CreateReplace) — other objects in this layer that use them
-# fail server-side validation on the very first reconcile and converge on retry.
+# CRDs are NOT installed here (crds.enabled=false) — they come from the
+# prometheus-operator-crds HelmRelease in infrastructure-controllers, so that
+# monitors/rules in this layer pass Flux's server-side dry-run validation.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -30,6 +30,10 @@ spec:
   values:
     fullnameOverride: kps
     cleanPrometheusOperatorObjectNames: true
+
+    # CRDs come from prometheus-operator-crds (infrastructure-controllers)
+    crds:
+      enabled: false
 
     # k0s single-node: control-plane components run as host processes (no
     # scrapable pods), the datastore is kine/SQLite (no etcd), and kube-proxy

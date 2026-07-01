@@ -1,0 +1,30 @@
+# Prometheus operator CRDs (ServiceMonitor, PodMonitor, PrometheusRule, ...)
+# installed at the controllers layer, SEPARATE from kube-prometheus-stack
+# (observability layer, which sets crds.enabled=false). Two reasons:
+# 1. Flux server-side dry-runs every object of a Kustomization before applying —
+#    monitors/rules living in the same layer as the chart that installs their
+#    CRDs would deadlock on "no matches for kind".
+# 2. Apps (CNPG PodMonitor, future ServiceMonitors) can rely on the CRDs
+#    existing regardless of the observability stack's state.
+# Version must track kube-prometheus-stack's operator appVersion (v0.92.x).
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus-operator-crds
+  namespace: flux-system
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: prometheus-operator-crds
+      version: "30.0.1"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
