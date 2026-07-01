@@ -11,15 +11,21 @@ spec:
   groups:
     - name: cnpg-backup
       rules:
-        - alert: CNPGWALArchivingFailing
-          expr: cnpg_collector_pg_wal_archive_status{value="failed"} > 0
+        - alert: CNPGWALArchivingStalled
+          # value="ready" counts WAL segments waiting to be archived to S3.
+          # Healthy steady-state is ~0; a sustained backlog means archiving is
+          # failing or can't keep up (verified live: 373 ready during the
+          # 2026-06-28 archiving incident).
+          expr: cnpg_collector_pg_wal_archive_status{value="ready"} > 20
           for: 30m
           labels:
             severity: critical
           annotations:
-            summary: 'CNPG {{ $labels.namespace }}/{{ $labels.pod }}: WAL archiving to S3 is failing'
+            summary: 'CNPG {{ $labels.namespace }}/{{ $labels.pod }}: WAL archiving backlog ({{ $value }} segments)'
             description: 'WAL segments are piling up on the PVC (local-path does not enforce size limits) and point-in-time recovery is broken.'
         - alert: CNPGBackupTooOld
+          # last_available_backup_timestamp == 0 means no successful backup at
+          # all since instance start — time()-0 is huge, so this also fires.
           expr: time() - cnpg_collector_last_available_backup_timestamp > 10800
           for: 15m
           labels:

@@ -155,6 +155,11 @@ spec:
 
     prometheus-node-exporter:
       fullnameOverride: node-exporter
+      # No hostNetwork: the host nftables policy (input drop, 22/80/443 only)
+      # silently drops pod->hostIP:9100 scrapes. Pod-network + hostPath mounts
+      # (/proc, /sys, /) give identical node metrics without opening the host.
+      hostNetwork: false
+      hostPID: true
       resources:
         requests:
           cpu: 20m
