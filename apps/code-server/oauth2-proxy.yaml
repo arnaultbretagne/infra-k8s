@@ -1,0 +1,98 @@
+# OIDC gate (ADR 0021). Tighter than the agent namespace's proxy (review §2.2):
+# ALLOWED_GROUPS=admin — a Pocket-ID account alone is NOT enough to reach a
+# Claude-with-bypassPermissions workspace; membership in `admin` is required
+# (checked here AND client-side: the Pocket-ID client is group-restricted).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+          args:
+            - --http-address=0.0.0.0:4180
+          securityContext:
+            runAsUser: 2000
+            runAsGroup: 2000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: OAUTH2_PROXY_PROVIDER
+              value: oidc
+            - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+              value: https://id.bretagne.dev
+            - name: OAUTH2_PROXY_REDIRECT_URL
+              value: https://code.bretagne.dev/oidc/callback
+            - name: OAUTH2_PROXY_PROXY_PREFIX
+              value: /oidc
+            - name: OAUTH2_PROXY_UPSTREAMS
+              value: http://code-server.code-server.svc.cluster.local:8080
+            - name: OAUTH2_PROXY_SCOPE
+              value: openid email profile groups
+            - name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM
+              value: groups
+            - name: OAUTH2_PROXY_ALLOWED_GROUPS
+              value: admin
+            - name: OAUTH2_PROXY_EMAIL_DOMAINS
+              value: '*'
+            - name: OAUTH2_PROXY_COOKIE_SECURE
+              value: "true"
+            - name: OAUTH2_PROXY_COOKIE_DOMAINS
+              value: code.bretagne.dev
+            - name: OAUTH2_PROXY_WHITELIST_DOMAINS
+              value: code.bretagne.dev
+            - name: OAUTH2_PROXY_REVERSE_PROXY
+              value: "true"
+            - name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON
+              value: "true"
+            # Pocket-ID does not emit email_verified (known upstream gap, ADR 0021)
+            - name: OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: oauth2-proxy
+          ports:
+            - containerPort: 4180
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 4180
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+spec:
+  selector:
+    app: oauth2-proxy
+  ports:
+    - port: 4180
+      targetPort: 4180

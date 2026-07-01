@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - pocket-id
   - stremio
+  - code-server

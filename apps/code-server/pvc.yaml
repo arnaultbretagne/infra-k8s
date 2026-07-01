@@ -1,0 +1,14 @@
+# Stateful exception (ADR 0005): the whole /home/coder — projects, repos,
+# Claude/gh credentials, VS Code state. Seeded from the legacy Docker
+# volumes at migration; no S3 backup (git remotes are the real backup for
+# code; credentials are re-issuable).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code-server-home
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 15Gi

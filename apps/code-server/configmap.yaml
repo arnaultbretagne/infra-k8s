@@ -1,0 +1,209 @@
+# Config-only provisioning (ADR 0015 amendment): stock codercom/code-server
+# image + this ConfigMap + a home PVC. The bootstrap script is the idempotent
+# "provisioning layer" that replaced the custom Dockerfile — everything it
+# installs goes user-space into the PVC (survives pod restarts, no root).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: code-server-config
+data:
+  bootstrap.sh: |
+    #!/bin/bash
+    # Idempotent home seeding, then exec code-server. Runs as coder (1000).
+    set -u
+    SEED=/etc/code-server-config
+    export PATH="$HOME/.local/bin:$PATH"
+    mkdir -p ~/.local/bin ~/.local/share/code-server/User ~/projects
+
+    # VS Code settings: seed once, then the user owns them
+    [ -f ~/.local/share/code-server/User/settings.json ] \
+      || cp "$SEED/settings.json" ~/.local/share/code-server/User/settings.json
+    [ -f ~/.local/share/code-server/coder.json ] \
+      || echo '{"query":{"folder":"/home/coder/projects"}}' > ~/.local/share/code-server/coder.json
+
+    # Wrappers + agent identity (GitHub App token injection)
+    install -m 0755 "$SEED/gh-wrapper.sh" ~/.local/bin/gh
+    install -m 0755 "$SEED/git-wrapper.sh" ~/.local/bin/git
+    install -m 0644 "$SEED/agent-env.sh" ~/.agent-env.sh
+    grep -qF '.local/bin' ~/.bashrc 2>/dev/null \
+      || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    grep -qF '.agent-env.sh' ~/.bashrc 2>/dev/null \
+      || echo '[ -f ~/.agent-env.sh ] && source ~/.agent-env.sh' >> ~/.bashrc
+    grep -qF 'alias claude=' ~/.bashrc 2>/dev/null \
+      || echo "alias claude='claude --dangerously-skip-permissions'" >> ~/.bashrc
+
+    # Claude Code CLI — native installer targets ~/.local/bin (user-space)
+    command -v claude >/dev/null 2>&1 \
+      || curl -fsSL https://claude.ai/install.sh | bash || true
+
+    # gh CLI — static tarball, user-space (no apt)
+    if [ ! -x ~/.local/share/gh/bin/gh ]; then
+      mkdir -p ~/.local/share/gh
+      curl -fsSL https://github.com/cli/cli/releases/download/v2.95.0/gh_2.95.0_linux_amd64.tar.gz \
+        | tar -xz --strip-components=1 -C ~/.local/share/gh || true
+    fi
+
+    # git credential flow through the wrapped gh (GitHub App token)
+    /usr/bin/git config --global credential."https://github.com".helper "" || true
+    /usr/bin/git config --global credential."https://github.com".helper \
+      '!'"$HOME/.local/bin/gh auth git-credential" || true
+
+    # Auth is oauth2-proxy's job (ADR 0021); code-server itself runs open
+    exec /usr/bin/entrypoint.sh --bind-addr 0.0.0.0:8080 --auth none /home/coder/projects
+
+  settings.json: |
+    {
+      "workbench.colorTheme": "Default Dark Modern",
+      "explorer.confirmDragAndDrop": false,
+      "chat.disableAIFeatures": true,
+      "workbench.secondarySideBar.visible": false,
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "workbench.startupEditor": "none",
+      "terminal.integrated.defaultLocation": "editor"
+    }
+
+  agent-env.sh: |
+    #!/bin/bash
+    # Source this file to use GitHub with the agent identity.
+    # Token is regenerated automatically when expired (cache: 55 min).
+    _AGENT_CREDS_DIR="$HOME/.agent-secrets"
+    _AGENT_CACHE="/tmp/agent-token.cache"
+    _AGENT_CACHE_TTL=3300
+    agent-token() {
+      if [ -f "$_AGENT_CACHE" ]; then
+        local cached_ts; cached_ts=$(head -1 "$_AGENT_CACHE")
+        local now; now=$(date +%s)
+        if [ $((now - cached_ts)) -lt $_AGENT_CACHE_TTL ]; then
+          tail -1 "$_AGENT_CACHE"; return 0
+        fi
+      fi
+      local APP_ID KEY now header payload sig jwt inst_id token
+      APP_ID=$(cat "$_AGENT_CREDS_DIR/app-id")
+      KEY="$_AGENT_CREDS_DIR/app-key.pem"
+      now=$(date +%s)
+      header=$(printf '{"alg":"RS256","typ":"JWT"}' | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      payload=$(printf '{"iss":"%s","iat":%d,"exp":%d}' "$APP_ID" "$((now - 60))" "$((now + 600))" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$KEY" -binary | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      jwt="$header.$payload.$sig"
+      inst_id=$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        https://api.github.com/app/installations | jq '.[0].id')
+      [ -z "$inst_id" ] || [ "$inst_id" = "null" ] && { echo "ERROR: could not get installation ID" >&2; return 1; }
+      token=$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/app/installations/$inst_id/access_tokens" | jq -r '.token')
+      [ -z "$token" ] || [ "$token" = "null" ] && { echo "ERROR: could not generate installation token" >&2; return 1; }
+      printf '%s\n%s\n' "$(date +%s)" "$token" > "$_AGENT_CACHE"
+      echo "$token"
+    }
+    gh() { GH_TOKEN=$(agent-token) command gh "$@"; }
+    git() { GH_TOKEN=$(agent-token) command git "$@"; }
+    export -f agent-token gh git
+
+  gh-wrapper.sh: |
+    #!/bin/sh
+    # Injects a GitHub App token, then calls the user-space gh tarball.
+    CREDS_DIR="$HOME/.agent-secrets"
+    CACHE_FILE="/tmp/agent-token.cache"
+    CACHE_TTL=3300
+    get_token() {
+      if [ -f "$CACHE_FILE" ]; then
+        cached_ts=$(head -1 "$CACHE_FILE"); now=$(date +%s)
+        if [ $((now - cached_ts)) -lt $CACHE_TTL ]; then tail -1 "$CACHE_FILE"; return 0; fi
+      fi
+      APP_ID=$(cat "$CREDS_DIR/app-id"); KEY="$CREDS_DIR/app-key.pem"; now=$(date +%s)
+      header=$(printf '{"alg":"RS256","typ":"JWT"}' | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      payload=$(printf '{"iss":"%s","iat":%d,"exp":%d}' "$APP_ID" "$((now - 60))" "$((now + 600))" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$KEY" -binary | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      jwt="$header.$payload.$sig"
+      inst_id=$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        https://api.github.com/app/installations | jq '.[0].id')
+      if [ -z "$inst_id" ] || [ "$inst_id" = "null" ]; then echo "ERROR: could not get installation ID" >&2; return 1; fi
+      token=$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/app/installations/$inst_id/access_tokens" | jq -r '.token')
+      if [ -z "$token" ] || [ "$token" = "null" ]; then echo "ERROR: could not generate installation token" >&2; return 1; fi
+      printf '%s\n%s\n' "$(date +%s)" "$token" > "$CACHE_FILE"
+      echo "$token"
+    }
+    export GH_TOKEN=$(get_token)
+    exec "$HOME/.local/share/gh/bin/gh" "$@"
+
+  git-wrapper.sh: |
+    #!/bin/sh
+    # Bypasses code-server's GIT_ASKPASS and injects a GitHub App token.
+    unset GIT_ASKPASS VSCODE_GIT_ASKPASS_NODE VSCODE_GIT_ASKPASS_MAIN
+    CREDS_DIR="$HOME/.agent-secrets"
+    CACHE_FILE="/tmp/agent-token.cache"
+    CACHE_TTL=3300
+    get_token() {
+      if [ -f "$CACHE_FILE" ]; then
+        cached_ts=$(head -1 "$CACHE_FILE"); now=$(date +%s)
+        if [ $((now - cached_ts)) -lt $CACHE_TTL ]; then tail -1 "$CACHE_FILE"; return 0; fi
+      fi
+      APP_ID=$(cat "$CREDS_DIR/app-id"); KEY="$CREDS_DIR/app-key.pem"; now=$(date +%s)
+      header=$(printf '{"alg":"RS256","typ":"JWT"}' | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      payload=$(printf '{"iss":"%s","iat":%d,"exp":%d}' "$APP_ID" "$((now - 60))" "$((now + 600))" | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      sig=$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$KEY" -binary | openssl base64 -e -A | tr '+/' '-_' | tr -d '=')
+      jwt="$header.$payload.$sig"
+      inst_id=$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        https://api.github.com/app/installations | jq '.[0].id')
+      if [ -z "$inst_id" ] || [ "$inst_id" = "null" ]; then echo "ERROR: could not get installation ID" >&2; return 1; fi
+      token=$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/app/installations/$inst_id/access_tokens" | jq -r '.token')
+      if [ -z "$token" ] || [ "$token" = "null" ]; then echo "ERROR: could not generate installation token" >&2; return 1; fi
+      printf '%s\n%s\n' "$(date +%s)" "$token" > "$CACHE_FILE"
+      echo "$token"
+    }
+    export GH_TOKEN=$(get_token)
+    exec /usr/bin/git "$@"
+
+  git-guardrails.sh: |
+    #!/bin/bash
+    # Git guardrails for Claude Code agents.
+    # Mounted read-only so the agent cannot modify it.
+    INPUT=$(cat)
+    COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+    if ! echo "$COMMAND" | grep -q "git "; then
+        exit 0
+    fi
+    if echo "$COMMAND" | grep -qE "git push\b" && \
+       echo "$COMMAND" | grep -qE "(^|\s)(origin\s+)?(main|master)\b"; then
+        echo "BLOCKED: push to main/master not allowed. Create a branch and open a PR." >&2
+        exit 2
+    fi
+    if echo "$COMMAND" | grep -qE "git push\b.*(-f\b|--force\b|--force-with-lease\b)"; then
+        echo "BLOCKED: force push not allowed." >&2
+        exit 2
+    fi
+    if echo "$COMMAND" | grep -qE "git reset\b.*--hard\b"; then
+        echo "BLOCKED: git reset --hard not allowed." >&2
+        exit 2
+    fi
+    if echo "$COMMAND" | grep -qE "git clean\b.*-[a-zA-Z]*f"; then
+        echo "BLOCKED: git clean -f not allowed." >&2
+        exit 2
+    fi
+    if echo "$COMMAND" | grep -qE "git branch\b.*-[dD]\b.*\b(main|master)\b"; then
+        echo "BLOCKED: deleting main/master not allowed." >&2
+        exit 2
+    fi
+    exit 0
+
+  managed-settings.json: |
+    {
+      "cleanupPeriodDays": 9999,
+      "permissions": {
+        "defaultMode": "bypassPermissions"
+      },
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "/hooks/git-guardrails.sh"
+              }
+            ]
+          }
+        ]
+      }
+    }

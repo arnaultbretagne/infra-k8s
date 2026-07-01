@@ -1,0 +1,91 @@
+# Default-deny + allow-list (ADR 0020) — and the AR/0003 boundary the review
+# demanded for agent workloads (§1.4): code-server runs a Claude agent with
+# bypassPermissions, so its egress is internet-only. NO intra-cluster egress:
+# it must never reach flux-system (sops-age!), the apiserver, CNPG, or any
+# other namespace. The blast radius of a prompt-injected agent = this pod.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: code-server
+  namespace: code-server
+spec:
+  endpointSelector:
+    matchLabels:
+      app: code-server
+  ingress:
+    # only the OIDC gate reaches the workspace
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    # -> DNS (CoreDNS) only — no other intra-cluster destination
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> internet (git, GitHub API, Anthropic API, npm, apt-free tarballs)
+    - toEntities: [world]
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+            - { port: "80", protocol: TCP }
+            - { port: "22", protocol: TCP }   # git+ssh remotes
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: code-server
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    # Traefik serves code.bretagne.dev -> proxy :4180
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    # -> DNS
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> upstream workspace
+    - toEndpoints:
+        - matchLabels:
+            app: code-server
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token). The public IP resolves to the
+    # node, then kube-proxy DNATs to the Traefik pod — allow both paths.
+    - toEntities: [world, host]
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

@@ -1,0 +1,92 @@
+# The pod IS the boundary (agent-runtime AR/0003 lesson, review §1.4): a Claude
+# agent runs in here with bypassPermissions, so — non-root, no SA token, read-only
+# guardrails, and a CNP that denies all intra-cluster egress (networkpolicy.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO home PVC
+  selector:
+    matchLabels:
+      app: code-server
+  template:
+    metadata:
+      labels:
+        app: code-server
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+      containers:
+        - name: code-server
+          image: codercom/code-server:4.126.0
+          command: ["/bin/bash", "/etc/code-server-config/bootstrap.sh"]
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            # ~/.local/bin first: the gh/git wrappers must shadow /usr/bin for
+            # code-server's own git integration, not just interactive shells.
+            - name: PATH
+              value: /home/coder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 3Gi        # headroom for claude sessions + builds
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 30   # first boot installs claude+gh into the PVC
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: home
+              mountPath: /home/coder
+            - name: config
+              mountPath: /etc/code-server-config
+              readOnly: true
+            - name: github-app
+              mountPath: /home/coder/.agent-secrets
+              readOnly: true
+            - name: config
+              mountPath: /etc/claude-code/settings.json
+              subPath: managed-settings.json
+              readOnly: true
+            - name: config
+              mountPath: /hooks/git-guardrails.sh
+              subPath: git-guardrails.sh
+              readOnly: true
+      volumes:
+        - name: home
+          persistentVolumeClaim:
+            claimName: code-server-home
+        - name: config
+          configMap:
+            name: code-server-config
+            defaultMode: 0755
+        - name: github-app
+          secret:
+            secretName: github-app
