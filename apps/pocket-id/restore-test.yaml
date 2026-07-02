@@ -80,8 +80,10 @@ spec:
                   touch "$PGDATA/recovery.signal"
 
                   # throwaway pod: allow passwordless local connections for the health query
-                  # (the CNPG superuser has no password and app creds aren't mounted here)
-                  printf '%s\n' "local all all trust" "host all all 127.0.0.1/32 trust" "host all all ::1/128 trust" >> "$PGDATA/pg_hba.conf"
+                  # (CNPG superuser has no password, app creds aren't mounted here).
+                  # PREPEND — pg_hba is first-match, CNPG's scram rules must not win first.
+                  { printf '%s\n' "local all all trust" "host all all 127.0.0.1/32 trust" "host all all ::1/128 trust"; cat "$PGDATA/pg_hba.conf"; } > "$PGDATA/pg_hba.conf.tmp"
+                  mv "$PGDATA/pg_hba.conf.tmp" "$PGDATA/pg_hba.conf"
 
                   echo "==> Starting PostgreSQL..."
                   pg_ctl -D "$PGDATA" -o "-p 5433 -c listen_addresses=localhost" start -w -t 60
