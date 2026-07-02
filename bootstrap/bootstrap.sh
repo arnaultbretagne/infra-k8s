@@ -87,7 +87,7 @@ table inet firewall {
     # SSH
     tcp dport 22 accept
 
-    # HTTP / HTTPS (Traefik via MetalLB)
+    # HTTP / HTTPS (Traefik owns the host public IP via Service externalIPs)
     tcp dport { 80, 443 } accept
 
     # K8s API — pod and service CIDRs only, blocked from internet
@@ -107,12 +107,12 @@ nft -f /etc/nftables.conf
 systemctl enable nftables 2>/dev/null
 ok "Firewall: 22/80/443 public — 6443/10250 internal only"
 
-# SSH hardening
-SSH_HARDENING="/etc/ssh/sshd_config.d/99-bootstrap-hardening.conf"
-if [ -f "$SSH_HARDENING" ]; then
-  ok "SSH hardening already in place"
-else
-  cat > "$SSH_HARDENING" <<'EOF'
+# SSH hardening.
+# GOTCHA: sshd reads sshd_config.d/*.conf in lexical order and keeps the FIRST value per
+# keyword. cloud-init ships 50-cloud-init.conf with `PasswordAuthentication yes`, which WINS
+# over a 99-* drop-in (50 < 99). So our hardening file alone is a no-op — we must also
+# neutralise cloud-init's directive (both the live file and any future cloud-init re-run).
+cat > /etc/ssh/sshd_config.d/99-bootstrap-hardening.conf <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin prohibit-password
@@ -120,9 +120,21 @@ ChallengeResponseAuthentication no
 UsePAM yes
 PubkeyAuthentication yes
 EOF
-  chmod 600 "$SSH_HARDENING"
-  systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null || true
-  ok "SSH hardened: password auth disabled, root key-only"
+chmod 600 /etc/ssh/sshd_config.d/99-bootstrap-hardening.conf
+
+# Kill cloud-init's `PasswordAuthentication yes` at the source + prevent regeneration.
+if [ -f /etc/ssh/sshd_config.d/50-cloud-init.conf ]; then
+  sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+fi
+mkdir -p /etc/cloud/cloud.cfg.d
+echo 'ssh_pwauth: false' > /etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg
+
+# Validate before applying; reload (never restart) so a live SSH session is never dropped.
+if sshd -t; then
+  systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+  ok "SSH hardened: password auth disabled (incl. cloud-init override), root key-only"
+else
+  warn "sshd -t failed — SSH config NOT reloaded; review sshd_config.d drop-ins"
 fi
 
 # Fail2ban
@@ -135,14 +147,21 @@ else
   ok "fail2ban installed and enabled"
 fi
 
-# Automatic security updates
-if systemctl is-active --quiet unattended-upgrades 2>/dev/null; then
-  ok "unattended-upgrades already running"
-else
-  apt-get install -y -qq --no-install-recommends unattended-upgrades
-  systemctl enable --now unattended-upgrades
-  ok "unattended-upgrades installed and enabled"
-fi
+# Automatic security updates.
+# GOTCHA: installing + enabling the service is NOT enough — the apt-daily-upgrade
+# timer only acts if APT::Periodic is configured. Without 20auto-upgrades, nothing
+# is ever applied (the service reports "active" but patches nothing).
+apt-get install -y -qq --no-install-recommends unattended-upgrades
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";
+EOF
+# No automatic reboot (Automatic-Reboot stays false): security packages install on
+# the daily timer; a kernel update needs a manual reboot to take effect.
+systemctl enable --now unattended-upgrades 2>/dev/null || true
+ok "unattended-upgrades enabled (APT::Periodic configured; no auto-reboot)"
 
 # Sysctl
 cat > /etc/sysctl.d/99-k8s-hardening.conf <<'EOF'
