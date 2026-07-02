@@ -1,0 +1,62 @@
+# Bounds the agent platform per agent-runtime ADR 0003 ("libre dedans, borné dehors").
+# Cilium is default-deny for any endpoint a policy selects, so each pod below is
+# locked to exactly the flows it needs.
+
+# --- the runtime pod: free to reach the internet (Anthropic), bounded intra-cluster ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-runtime
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agent-runtime
+  ingress:
+    # the hub (control plane) -> supervisor API :8080 — the only product caller
+    - fromEndpoints: [{ matchLabels: { app: website } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    # kubelet health probes
+    - fromEntities: [host]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+  egress:
+    # DNS (CoreDNS)
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # the channel (spawned inside this pod) dials the hub :8600 — the one intra-cluster egress
+    - toEndpoints: [{ matchLabels: { app: website } }]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+    # internet egress (Anthropic API, ...) — NOT other intra-cluster, NOT kube-apiserver
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }, { port: "80", protocol: TCP }]
+---
+# --- the hub: trusted infra, but still tight — no internet, only DNS + supervisor ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: website
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: website
+  ingress:
+    # the OIDC gate -> hub (human traffic)
+    - fromEndpoints: [{ matchLabels: { app: oauth2-proxy } }]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+    # the channels (from the runtime pod) -> hub WS
+    - fromEndpoints: [{ matchLabels: { app: agent-runtime } }]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+    # kubelet health probes
+    - fromEntities: [host]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+  egress:
+    # DNS (CoreDNS)
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # the hub drives the supervisor control plane :8080 (only)
+    - toEndpoints: [{ matchLabels: { app: agent-runtime } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]

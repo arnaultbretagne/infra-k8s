@@ -1,0 +1,105 @@
+# The agent-runtime pod (agent-runtime ADR 0001/0004): the thin supervisor + the
+# Claude runtime(s) it spawns, and the agora channel each spawned claude loads.
+# "Libre dedans, borné dehors" — the CiliumNetworkPolicy bounds it (networkpolicy.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-runtime
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO PVC (~/.claude): never two pods on the same volume
+  selector:
+    matchLabels:
+      app: agent-runtime
+  template:
+    metadata:
+      labels:
+        app: agent-runtime
+    spec:
+      securityContext:
+        fsGroup: 1000         # so uid-1000 (node) can write the local-path PVC + emptyDir
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # 1. stage the channel plugin (from the agora product image) into a shared dir
+        - name: fetch-channel
+          image: ghcr.io/arnaultbretagne/agora-website:latest
+          command: ["sh", "-c", "cp -a /opt/agora/. /channel-src/"]
+          volumeMounts:
+            - { name: channel-src, mountPath: /channel-src }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+        # 2. seed the PVC once: creds (if absent) + install the channel plugin (if absent)
+        - name: seed
+          image: ghcr.io/arnaultbretagne/agent-runtime:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              if [ ! -f "$HOME/.claude/.credentials.json" ]; then
+                echo "seeding creds"; cp /seed/credentials.json "$HOME/.claude/.credentials.json"
+                chmod 600 "$HOME/.claude/.credentials.json"
+              else
+                echo "creds already present (refreshed in place) — keeping"
+              fi
+              if [ ! -d "$HOME/.claude/plugins/cache/agora" ]; then
+                echo "installing agora channel plugin"
+                claude plugin marketplace add /channel-src
+                claude plugin install agora@agora
+              else
+                echo "agora plugin already installed — keeping"
+              fi
+          env:
+            - { name: HOME, value: /home/node }
+          volumeMounts:
+            - { name: claude, mountPath: /home/node/.claude }
+            - { name: channel-src, mountPath: /channel-src }
+            - { name: creds-seed, mountPath: /seed, readOnly: true }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+      containers:
+        - name: supervisor
+          image: ghcr.io/arnaultbretagne/agent-runtime:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - { name: PORT, value: "8080" }
+            - { name: HOST, value: "0.0.0.0" }
+            - { name: RUNTIME_CWD, value: /home/node/work }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 2Gi }          # the supervisor + its claude children live here
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: claude, mountPath: /home/node/.claude }
+      volumes:
+        - name: claude
+          persistentVolumeClaim:
+            claimName: agent-claude
+        - name: channel-src
+          emptyDir: {}
+        - name: creds-seed
+          secret:
+            secretName: claude-creds
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent                 # the supervisor control-plane service (:8080), in-cluster only
+spec:
+  selector:
+    app: agent-runtime
+  ports:
+    - { port: 8080, targetPort: 8080 }

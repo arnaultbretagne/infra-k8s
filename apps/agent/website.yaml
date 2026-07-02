@@ -1,0 +1,63 @@
+# The agora website (the hub, agora ADR 0004): the human façade + the pipe endpoint.
+# Owns the neutral conversation store (agora-data PVC, ADR 0005). Talks to the
+# supervisor (control plane) and receives the channels' WS (data plane).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO PVC (/data = the sole-source-of-truth history)
+  selector:
+    matchLabels:
+      app: website
+  template:
+    metadata:
+      labels:
+        app: website
+    spec:
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: website
+          image: ghcr.io/arnaultbretagne/agora-website:latest
+          ports:
+            - containerPort: 8600
+          env:
+            - { name: PORT, value: "8600" }
+            - { name: HOST, value: "0.0.0.0" }
+            - { name: DATA_DIR, value: /data }
+            - { name: SUPERVISOR_URL, value: http://agent.agent.svc.cluster.local:8080 }
+            # what spawned channels (in the runtime pod) dial back to reach the hub
+            - { name: CHANNEL_HUB_URL, value: ws://website.agent.svc.cluster.local:8600/ws/channel }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 512Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8600 }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8600 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: agora-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: website               # the hub façade (:8600) — behind oauth2-proxy, in-cluster
+spec:
+  selector:
+    app: website
+  ports:
+    - { port: 8600, targetPort: 8600 }

@@ -1,0 +1,17 @@
+# agent.bretagne.dev → oauth2-proxy (the OIDC gate). Same listener/cert as the rest
+# (multi-SAN bretagne-tls). Everything behind the gate; no unauthenticated path in.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agent
+spec:
+  parentRefs:
+    - name: bretagne-gateway
+      namespace: traefik
+      sectionName: https-agent
+  hostnames:
+    - agent.bretagne.dev
+  rules:
+    - backendRefs:
+        - name: oauth2-proxy
+          port: 4180

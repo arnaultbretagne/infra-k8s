@@ -1,0 +1,25 @@
+# The runtime's ~/.claude (creds + installed plugins + per-session state). Survives
+# pod restarts; creds auto-refresh in place (agent-runtime ADR 0006). RWO local-path.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-claude
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+# The hub's neutral conversation store — the SOLE source of truth (agora ADR 0005).
+# NOT the runtime PVC: the history must not depend on a runtime's disk.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agora-data
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

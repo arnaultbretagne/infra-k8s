@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agent
+resources:
+  - namespace.yaml
+  - secrets.yaml          # oauth2-proxy (SOPS). claude-creds is created out-of-band (see README-note below)
+  - pvc.yaml
+  - agent-runtime.yaml
+  - website.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml
+# NOTE: the `claude-creds` Secret (Claude Max OAuth creds seed) is intentionally NOT in git
+# — this is a public repo. It is created out-of-band:
+#   k0s kubectl create secret generic claude-creds -n agent \
+#     --from-file=credentials.json=<~/.claude/.credentials.json>
+# The runtime refreshes creds in place on the PVC; the secret is only the first-boot seed.
+# Future: replace with a re-runnable `claude auth login` bootstrap Job (agent-runtime ADR 0006).
