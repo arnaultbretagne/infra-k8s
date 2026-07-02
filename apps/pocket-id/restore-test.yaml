@@ -70,8 +70,12 @@ spec:
                   restore_command = 'barman-cloud-wal-restore --endpoint-url $S3_ENDPOINT $S3_DEST $SERVER %f %p'
                   recovery_target = immediate
                   recovery_target_action = promote
+                  # Neutralise every CNPG runtime setting that points at /controller/*
+                  # (absent in this standalone pod). auto.conf is read last => wins.
                   ssl = off
                   archive_mode = off
+                  logging_collector = off
+                  unix_socket_directories = '/tmp'
                   PGCONF
                   touch "$PGDATA/recovery.signal"
 
