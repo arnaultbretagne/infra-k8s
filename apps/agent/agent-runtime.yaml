@@ -25,7 +25,8 @@ spec:
         # 1. stage the channel plugin (from the agora product image) into a shared dir
         - name: fetch-channel
           image: ghcr.io/arnaultbretagne/agora-website:latest
-          command: ["sh", "-c", "cp -a /opt/agora/. /channel-src/"]
+          # -r, not -a: the emptyDir is non-root-owned, so preserving attrs (-a) EPERMs
+          command: ["sh", "-c", "cp -r /opt/agora/. /channel-src/"]
           volumeMounts:
             - { name: channel-src, mountPath: /channel-src }
           securityContext:
