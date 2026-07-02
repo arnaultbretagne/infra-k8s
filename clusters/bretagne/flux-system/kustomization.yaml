@@ -16,3 +16,18 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: unused
+  # PSS: enforce 'restricted' on flux-system (S4). Verified 2026-07-02 — no existing
+  # Flux controller pod violates restricted (server dry-run was clean). Applied at
+  # bootstrap (this dir isn't in the continuous reconcile path); the ingress CNP that
+  # complements it lives in infrastructure/configs/flux-hardening (self-healing).
+  - target:
+      kind: Namespace
+      name: flux-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: flux-system
+        labels:
+          pod-security.kubernetes.io/enforce: restricted
+          pod-security.kubernetes.io/enforce-version: latest

@@ -1,0 +1,26 @@
+# flux-system ingress guardrail (S4 / ADR 0020 — platform namespace, the one that holds
+# the sops-age key that decrypts every secret). Default-deny ingress + a tight allow-list,
+# so a compromised app pod cannot pivot to the Flux controllers or their secrets.
+# Verified live 2026-07-02: Flux keeps reconciling, Prometheus keeps scraping (up=1),
+# and a pod in an unlisted namespace is denied (http_code 000).
+# EGRESS is intentionally NOT restricted here — Flux needs git/Helm/registry/API egress;
+# that allow-list will be built later from Hubble audit data (ADR 0020).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: flux-system-ingress
+  namespace: flux-system
+spec:
+  endpointSelector: {}
+  ingress:
+    # intra-flux-system: source-controller artifacts (:9090), notification events, etc.
+    - fromEndpoints:
+        - {}
+    # Prometheus scrape of http-prom :8080 (PodMonitor observability/flux-system)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # kubelet health probes (:9440) — host is trusted
+    - fromEntities: [host]

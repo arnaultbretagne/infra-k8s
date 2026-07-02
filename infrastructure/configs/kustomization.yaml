@@ -7,3 +7,4 @@ resources:
   #    seizes eth0 → SSH lockout (post-mortem 2026-06-28). Keep UNREFERENCED until the flip.
   # - cilium-lb
   - cert-manager-issuers
+  - flux-hardening
