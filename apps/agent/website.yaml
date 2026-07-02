@@ -33,6 +33,8 @@ spec:
             - { name: SUPERVISOR_URL, value: http://agent.agent.svc.cluster.local:8080 }
             # what spawned channels (in the runtime pod) dial back to reach the hub
             - { name: CHANNEL_HUB_URL, value: ws://website.agent.svc.cluster.local:8600/ws/channel }
+            # channel logs land in the runtime pod's /logs emptyDir (observability)
+            - { name: CHANNEL_LOG_DIR, value: /logs }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }

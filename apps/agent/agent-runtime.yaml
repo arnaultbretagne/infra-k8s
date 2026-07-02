@@ -71,6 +71,7 @@ spec:
             - { name: PORT, value: "8080" }
             - { name: HOST, value: "0.0.0.0" }
             - { name: RUNTIME_CWD, value: /home/node/work }
+            - { name: PTY_LOG_DIR, value: /logs }   # observability: per-session PTY drain
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
@@ -85,11 +86,17 @@ spec:
             periodSeconds: 10
           volumeMounts:
             - { name: claude, mountPath: /home/node/.claude }
+            # the channel marketplace was `directory`-added at /channel-src during seed;
+            # keep that path valid at runtime (claude re-reads the marketplace on start)
+            - { name: channel-src, mountPath: /channel-src, readOnly: true }
+            - { name: logs, mountPath: /logs }
       volumes:
         - name: claude
           persistentVolumeClaim:
             claimName: agent-claude
         - name: channel-src
+          emptyDir: {}
+        - name: logs
           emptyDir: {}
         - name: creds-seed
           secret:
