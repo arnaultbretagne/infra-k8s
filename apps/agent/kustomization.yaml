@@ -4,7 +4,7 @@ namespace: agent
 resources:
   - namespace.yaml
   - secrets.yaml          # oauth2-proxy (SOPS). claude-creds is created out-of-band (see README-note below)
-  - claude-oauth.secrets.yaml   # static setup-token OAuth token (SOPS) — runtime auth, ADR 0008
+  - claude-oauth.secrets.yaml   # static setup-token OAuth token (SOPS) — runtime auth, agent-runtime ADR 0007
   - pvc.yaml
   - agent-runtime.yaml
   - website.yaml
