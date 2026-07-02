@@ -78,6 +78,10 @@ spec:
             - name: CLAUDE_CODE_OAUTH_TOKEN
               valueFrom:
                 secretKeyRef: { name: claude-oauth-token, key: token }
+            # Freeze claude at the image-pinned version: kill the runtime auto-updater (observed
+            # jumping 2.1.197→2.1.198 mid-session). Version behaviour (auth/transcript/resume) must
+            # change only on a deliberate image rebuild — agent-runtime ADR 0007 / agora ADR 0007.
+            - { name: DISABLE_AUTOUPDATER, value: "1" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
