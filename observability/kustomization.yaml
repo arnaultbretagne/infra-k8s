@@ -4,6 +4,7 @@ namespace: observability
 resources:
   - namespace.yaml
   - secrets.yaml
+  - alertmanager-config.secret.yaml
   - kube-prometheus-stack.yaml
   - loki.yaml
   - alloy.yaml

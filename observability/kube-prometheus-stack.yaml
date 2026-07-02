@@ -98,15 +98,16 @@ spec:
 
     alertmanager:
       alertmanagerSpec:
+        # Config from the SOPS secret alertmanager-config (key alertmanager.yaml):
+        # real alerts -> email via Resend; the always-firing Watchdog -> healthchecks.io
+        # as the external dead-man's switch (box/cluster death stops the ping -> alert).
+        configSecret: alertmanager-config
         resources:
           requests:
             cpu: 10m
             memory: 32Mi
           limits:
             memory: 128Mi
-      # NOTE: no external receiver yet — the notification channel (email /
-      # Telegram / healthchecks.io) is an open decision (ADR 0014 gap). Alerts
-      # are visible in Grafana + Alertmanager UI until a channel is wired.
 
     grafana:
       fullnameOverride: grafana
