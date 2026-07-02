@@ -10,6 +10,14 @@ spec:
   hostnames:
     - id.bretagne.dev
   rules:
-    - backendRefs:
+    - filters:
+        # HSTS (S8). Conservative 1-day max-age for the initial rollout — reversible if a
+        # cert breaks; raise to 31536000 (1y) after a validation window. No preload.
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"
+      backendRefs:
         - name: pocket-id
           port: 1411

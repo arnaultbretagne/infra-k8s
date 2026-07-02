@@ -203,12 +203,30 @@ Traefik CRDs). To serve `myapp.bretagne.dev`:
 1. Add a **listener** to `infrastructure/gateway/gateway.yaml` — one HTTPS block per host, all sharing
    the `bretagne-tls` secret (cert-manager adds the host as a SAN automatically). Give it a `sectionName`.
 2. Add an **`HTTPRoute`** in your app → `parentRefs: bretagne-gateway` + `sectionName: <listener>` +
-   `hostnames: [myapp.bretagne.dev]` + `backendRefs: [your Service]`.
+   `hostnames: [myapp.bretagne.dev]` + `backendRefs: [your Service]`, and the **HSTS filter** below.
 3. **DNS**: point `myapp.bretagne.dev` at the VPS IP (`85.17.246.41`).
 4. **TLS is automatic** (cert-manager HTTP-01 via `letsencrypt-prod`). No manual certs.
 
-There is **no HTTP→HTTPS redirect yet** (plain HTTP 404s); if the app needs one it's a Gateway-level
-change (flag it).
+**HTTP→HTTPS is redirected globally** (S8): a catch-all `RequestRedirect` HTTPRoute on the `http`
+listener 301s every plaintext request to HTTPS. You don't add anything — it just works, and the ACME
+challenge path still resolves (its exact-path route out-prioritises the `/` catch-all).
+
+**HSTS** is per-route (Gateway API has no gateway-wide header hook; a `Strict-Transport-Security`
+header is only honoured over HTTPS, so it can't live on the redirect). Add this filter to every
+HTTPRoute rule:
+
+```yaml
+  rules:
+    - filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"   # 1-day rollout; → 31536000 once proven. No preload.
+      backendRefs:
+        - name: myapp
+          port: 80
+```
 
 ---
 
@@ -383,7 +401,7 @@ needs `INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true` (documented workaround).
 - [ ] `priorityClassName` decided; `strategy: Recreate` if single-instance
 - [ ] `LimitRange` present; `ResourceQuota` if warranted / for preview
 - [ ] Secrets **SOPS-encrypted**; shared secrets via ResourceSet `copyFrom`
-- [ ] `HTTPRoute` + Gateway listener; DNS record; TLS via cert-manager (automatic)
+- [ ] `HTTPRoute` + Gateway listener; DNS record; TLS via cert-manager (automatic); **HSTS filter**
 - [ ] `CiliumNetworkPolicy` default-deny + allow-list (DNS always; no flux-system/apiserver egress)
 - [ ] If DB: CNPG `Cluster` (bounded) + `ScheduledBackup` (6-field cron!) + **restore-test**
 - [ ] Behind **oauth2-proxy** with `allowed-groups` if it needs auth
