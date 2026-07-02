@@ -11,9 +11,6 @@ resources:
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
-# NOTE: the `claude-creds` Secret (Claude Max OAuth creds seed) is intentionally NOT in git
-# — this is a public repo. It is created out-of-band:
-#   k0s kubectl create secret generic claude-creds -n agent \
-#     --from-file=credentials.json=<~/.claude/.credentials.json>
-# The runtime refreshes creds in place on the PVC; the secret is only the first-boot seed.
-# Future: replace with a re-runnable `claude auth login` bootstrap Job (agent-runtime ADR 0006).
+# NOTE: auth is now a static `setup-token` (CLAUDE_CODE_OAUTH_TOKEN, SOPS above) — agent-runtime
+# ADR 0007. The old rotating `claude-creds` Secret + the seed initContainer's creds-copy are gone
+# (removed 2026-07-02); the runtime never logs in itself, it only carries the static token.

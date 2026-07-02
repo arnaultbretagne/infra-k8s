@@ -32,7 +32,8 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
-        # 2. seed the PVC once: creds (if absent) + install the channel plugin (if absent)
+        # 2. seed the PVC once: install the channel plugin (if absent). Creds are NOT seeded here
+        #    anymore — auth is a static setup-token via env CLAUDE_CODE_OAUTH_TOKEN (ADR 0007).
         - name: seed
           image: ghcr.io/arnaultbretagne/agent-runtime:latest
           command:
@@ -40,12 +41,6 @@ spec:
             - -c
             - |
               set -e
-              if [ ! -f "$HOME/.claude/.credentials.json" ]; then
-                echo "seeding creds"; cp /seed/credentials.json "$HOME/.claude/.credentials.json"
-                chmod 600 "$HOME/.claude/.credentials.json"
-              else
-                echo "creds already present (refreshed in place) — keeping"
-              fi
               if [ ! -d "$HOME/.claude/plugins/cache/agora" ]; then
                 echo "installing agora channel plugin"
                 claude plugin marketplace add /channel-src
@@ -58,7 +53,6 @@ spec:
           volumeMounts:
             - { name: claude, mountPath: /home/node/.claude }
             - { name: channel-src, mountPath: /channel-src }
-            - { name: creds-seed, mountPath: /seed, readOnly: true }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
@@ -108,9 +102,6 @@ spec:
           emptyDir: {}
         - name: logs
           emptyDir: {}
-        - name: creds-seed
-          secret:
-            secretName: claude-creds
 ---
 apiVersion: v1
 kind: Service
