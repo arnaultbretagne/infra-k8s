@@ -7,7 +7,6 @@ resources:
   - cluster.yaml
   - scheduled-backup.yaml
   - restore-test.yaml
-  - cnpg-s3-creds.secret.yaml
   - deployment.yaml
   - service.yaml
   - httproute.yaml

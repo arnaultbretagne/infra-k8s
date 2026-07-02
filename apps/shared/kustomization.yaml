@@ -1,0 +1,6 @@
+# App-layer shared resources. No `namespace:` override here — the ResourceSet must stay in
+# flux-system (cluster-admin) to distribute secrets into app namespaces.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cnpg-s3-creds.yaml

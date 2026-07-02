@@ -1,0 +1,27 @@
+# Single-source S3 credential distribution (ADR 0012, corrected).
+#
+# The real R2 key lives ONCE in flux-system/cnpg-s3-creds (SOPS, infrastructure/shared-secrets).
+# This ResourceSet copies it into each CNPG app namespace via the flux-operator's copyFrom.
+# WHY a ResourceSet: copyFrom is only honoured on ResourceSet-OWNED secrets — the ADR's original
+# plain kustomize stub was never processed by the operator, so it stayed empty and broke backups
+# (2026-07-01..02). Lives in flux-system so it runs with cluster-admin (per flux-operator docs).
+#
+# Add one resource entry per new CNPG app. Preview namespaces (ADR 0017) reuse the same mechanism.
+# NOTE: to auto-propagate a key rotation instantly, label the SOURCE secret
+# `reconcile.fluxcd.io/watch: Enabled`; without it the copy refreshes on the ResourceSet's periodic
+# reconcile (fine for a rarely-rotated key).
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: cnpg-s3-creds
+  namespace: flux-system
+spec:
+  resources:
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cnpg-s3-creds
+        namespace: pocket-id
+        annotations:
+          fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
+      type: Opaque
