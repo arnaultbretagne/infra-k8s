@@ -7,17 +7,20 @@
     {
       "name": "agent",
       "callbackURLs": ["https://agent.bretagne.dev/oidc/callback"],
-      "allowedGroups": ["admin"]
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     },
     {
       "name": "code-server",
       "callbackURLs": ["https://code.bretagne.dev/oidc/callback"],
-      "allowedGroups": ["admin"]
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     },
     {
       "name": "grafana",
       "callbackURLs": ["https://grafana.bretagne.dev/login/generic_oauth"],
-      "allowedGroups": ["admin"]
+      "allowedGroups": ["admin"],
+      "pkceEnabled": true
     }
   ]
 }
