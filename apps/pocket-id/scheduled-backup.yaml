@@ -3,7 +3,9 @@ kind: ScheduledBackup
 metadata:
   name: pocket-id-pg-daily
 spec:
-  schedule: "0 3 * * *"
+  # CNPG uses robfig/cron with a leading SECONDS field (6 fields). A 5-field expr like
+  # "0 3 * * *" parses as sec=0 min=3 hour=* → runs hourly, not daily. This is 03:00:00 daily.
+  schedule: "0 0 3 * * *"
   cluster:
     name: pocket-id-pg
   backupOwnerReference: self

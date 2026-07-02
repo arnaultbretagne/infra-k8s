@@ -17,7 +17,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Load balancer | Cilium LB-IPAM + L2 announcement | [0006](docs/adr/0006-cilium-cni.md) ¹ |
 | Ingress controller | Traefik (ACME, middlewares, Gateway API) | [0008](docs/adr/0008-traefik-ingress-controller.md) |
 | Identity | Pocket-ID (passkey-first OIDC) | [0009](docs/adr/0009-pocket-id-identity.md) |
-| Auth middleware | Traefik OIDC plugin (in-process) | [0010](docs/adr/0010-traefik-oidc-plugin.md) |
+| Auth middleware | oauth2-proxy (ForwardAuth OIDC gate) | [0021](docs/adr/0021-oauth2-proxy-oidc-gate.md) ² |
 | Encryption at rest | EncryptionConfiguration (AES-CBC) | [0011](docs/adr/0011-encryption-at-rest.md) |
 | Database | CloudNativePG + Barman S3 backup | [0012](docs/adr/0012-cloudnativepg-database.md) |
 | Credential injection | OneCLI (MITM proxy) — *deferred* | [0013](docs/adr/0013-onecli-credential-gateway.md) |
@@ -30,6 +30,8 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Network guardrails | Default-deny + per-namespace allow-lists (Cilium) | [0020](docs/adr/0020-network-policy-guardrails.md) |
 
 ¹ Supersedes MetalLB ([0007](docs/adr/0007-metallb-loadbalancer.md)) — Cilium handles LoadBalancer IP assignment natively.
+
+² Supersedes the Traefik OIDC plugin ([0010](docs/adr/0010-traefik-oidc-plugin.md)) — the plugin is a `traefik.io` Middleware CRD, incompatible with our pure Gateway API setup.
 
 > **Status note (2026-07-02).** *Built & live:* k0s / Flux / Cilium (+ Hubble) / Traefik (Gateway API) /
 > cert-manager / CloudNativePG (+ backup & tested restore) / local-path / Pocket-ID / oauth2-proxy OIDC gate /

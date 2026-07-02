@@ -34,12 +34,9 @@ spec:
     gateway:
       enabled: false
 
-    # OIDC auth plugin (ADR 0010)
-    experimental:
-      plugins:
-        traefik-oidc-auth:
-          moduleName: github.com/sevensolutions/traefik-oidc-auth
-          version: v0.18.0
+    # No Traefik OIDC plugin: ADR 0010 (sevensolutions/traefik-oidc-auth) was superseded by
+    # ADR 0021 — that plugin is a traefik.io Middleware CRD, incompatible with our pure
+    # Gateway API setup (kubernetesCRD: false). Auth is oauth2-proxy (ForwardAuth) per app.
 
     # Entrypoints
     ports:
