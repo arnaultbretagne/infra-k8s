@@ -9,3 +9,4 @@ resources:
   - service.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - limitrange.yaml

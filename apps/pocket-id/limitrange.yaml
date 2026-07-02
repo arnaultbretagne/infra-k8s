@@ -1,0 +1,15 @@
+# Safety-net defaults (S5): any container in this namespace that omits requests/limits
+# gets these, so nothing runs truly unbounded. Explicit per-container values (deployment,
+# CNPG cluster) still win. Defaults-only — this never rejects a pod.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 25m
+        memory: 64Mi
+      default:
+        memory: 256Mi

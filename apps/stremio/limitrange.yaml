@@ -1,0 +1,14 @@
+# Safety-net defaults (S5): any container that omits requests/limits gets these.
+# Explicit per-container values still win. Defaults-only — never rejects a pod.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 25m
+        memory: 64Mi
+      default:
+        memory: 256Mi

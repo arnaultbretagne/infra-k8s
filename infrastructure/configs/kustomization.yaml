@@ -8,3 +8,4 @@ resources:
   # - cilium-lb
   - cert-manager-issuers
   - flux-hardening
+  - priorityclasses

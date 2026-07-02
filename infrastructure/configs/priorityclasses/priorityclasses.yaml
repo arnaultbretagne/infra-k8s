@@ -1,0 +1,19 @@
+# Priority classes (S5 / ADR 0020). The node runs memory limits at ~126% of allocatable
+# (verified 2026-07-02), so under real memory pressure the kubelet WILL evict — and without
+# priorities it evicts by QoS/arbitrary order. This makes the IdP survive over everything else.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: bretagne-critical
+value: 1000000
+globalDefault: false
+description: "Must-survive workloads (the IdP and its DB). Evicted last under node pressure."
+---
+# For workloads that should be shed FIRST (aiostreams, and preview PR pods once ADR 0017 lands).
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: bretagne-low
+value: -100
+globalDefault: false
+description: "Best-effort / expendable workloads — evicted first under node pressure."

@@ -12,6 +12,8 @@ spec:
       labels:
         app: pocket-id
     spec:
+      # Survive node memory pressure over aiostreams/previews (S5) — the IdP.
+      priorityClassName: bretagne-critical
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
