@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: pocket-id
+resources:
+  - api-key.secret.yaml
+  - networkpolicy.yaml
+  - cronjob.yaml
+configMapGenerator:
+  - name: oidc-reconciler-script
+    files:
+      - reconcile.py
+  - name: oidc-clients-spec
+    files:
+      - spec.json
+generatorOptions:
+  # Stable names: the reconciler reads both fresh each run; no rollout to trigger.
+  disableNameSuffixHash: true

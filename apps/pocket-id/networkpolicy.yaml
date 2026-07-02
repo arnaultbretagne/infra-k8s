@@ -25,6 +25,12 @@ spec:
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "1411", protocol: TCP }]
+    # OIDC client reconciler (same ns, ADR 0022) -> app API :1411
+    - fromEndpoints:
+        - matchLabels:
+            app: oidc-reconciler
+      toPorts:
+        - ports: [{ port: "1411", protocol: TCP }]
   egress:
     # -> Postgres (CNPG)
     - toEndpoints:

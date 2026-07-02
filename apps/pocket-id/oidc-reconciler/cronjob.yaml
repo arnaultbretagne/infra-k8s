@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: oidc-reconciler
+spec:
+  # Daily. The reconciler is idempotent; run it on demand after editing spec.json with:
+  #   kubectl -n pocket-id create job --from=cronjob/oidc-reconciler oidc-reconciler-manual
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app: oidc-reconciler
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: reconciler
+              image: python:3.12-alpine
+              command: ["python", "/app/reconcile.py"]
+              env:
+                - name: POCKET_ID_URL
+                  value: http://pocket-id.pocket-id.svc.cluster.local:1411/api
+                # dry-run by default in the script; enforce here for steady state.
+                - name: MODE
+                  value: enforce
+                - name: PYTHONDONTWRITEBYTECODE
+                  value: "1"
+                - name: POCKET_ID_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: pocket-id-api-key
+                      key: POCKET_ID_API_KEY
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests: { cpu: 20m, memory: 32Mi }
+                limits: { memory: 96Mi }
+              volumeMounts:
+                - { name: script, mountPath: /app }
+                - { name: spec, mountPath: /spec }
+          volumes:
+            - name: script
+              configMap:
+                name: oidc-reconciler-script
+            - name: spec
+              configMap:
+                name: oidc-clients-spec

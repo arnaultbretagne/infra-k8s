@@ -1,0 +1,23 @@
+{
+  "_comment": "Desired state of Pocket-ID OIDC clients + groups (ADR 0022). BIJECTIVE: anything not listed here is PRUNED by the reconciler. It manages policy only, never client secrets. To add an app: create its client here, run the reconciler, then bootstrap the new client_secret into that app's SOPS by hand.",
+  "groups": [
+    { "name": "admin", "friendlyName": "admin" }
+  ],
+  "clients": [
+    {
+      "name": "agent",
+      "callbackURLs": ["https://agent.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"]
+    },
+    {
+      "name": "code-server",
+      "callbackURLs": ["https://code.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"]
+    },
+    {
+      "name": "grafana",
+      "callbackURLs": ["https://grafana.bretagne.dev/login/generic_oauth"],
+      "allowedGroups": ["admin"]
+    }
+  ]
+}

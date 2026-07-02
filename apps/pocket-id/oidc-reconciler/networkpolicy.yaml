@@ -1,0 +1,28 @@
+# Egress allow-list for the OIDC reconciler CronJob (ADR 0020 / 0022): it only needs
+# to reach the Pocket-ID app API (:1411, same ns) and DNS. Nothing connects to it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oidc-reconciler
+  namespace: pocket-id
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oidc-reconciler
+  ingress: []          # nothing talks to the reconciler
+  egress:
+    # -> Pocket-ID app API
+    - toEndpoints:
+        - matchLabels:
+            app: pocket-id
+      toPorts:
+        - ports: [{ port: "1411", protocol: TCP }]
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
