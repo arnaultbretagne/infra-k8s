@@ -4,3 +4,4 @@ resources:
   - namespace.yaml
   - release.yaml
   - gateway.yaml
+  - redirect-http-to-https.yaml
