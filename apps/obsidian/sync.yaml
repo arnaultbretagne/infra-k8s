@@ -1,0 +1,57 @@
+# Headless Obsidian running the official Sync plugin — the writer of the vault.
+# Auth lives in the sync-config state (auth_token + device session), seeded
+# from the legacy Docker bind-mount at cutover; no env secrets needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: obsidian-sync
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # single sync session; two writers would fight
+  selector:
+    matchLabels:
+      app: obsidian-sync
+  template:
+    metadata:
+      labels:
+        app: obsidian-sync
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+      containers:
+        - name: sync
+          image: ghcr.io/arnaultbretagne/obsidian-sync:0.2.0
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 20m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          # no HTTP surface; liveness = the sync process is alive
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "ob"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+          volumeMounts:
+            - name: data
+              mountPath: /vault
+              subPath: vault
+            - name: data
+              mountPath: /home/node/.config/obsidian-headless
+              subPath: sync-config
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: obsidian-data

@@ -68,6 +68,18 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https-vault
+      port: 8443
+      protocol: HTTPS
+      hostname: vault.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: https-agent
       port: 8443
       protocol: HTTPS

@@ -1,0 +1,111 @@
+# Default-deny + allow-list (ADR 0020). Three workloads, three boundaries:
+# sync only talks OUT to Obsidian's servers; the clipper renders arbitrary
+# web pages (broad egress by design) but is only reachable from the MCP;
+# the MCP is the only internet-facing piece (via Traefik) and needs Pocket-ID
+# for JWKS.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: obsidian-sync
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app: obsidian-sync
+  ingress: []                 # nothing ever connects to sync
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> Obsidian Sync servers
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: web-clipper
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app: web-clipper
+  ingress:
+    # only the MCP server may submit clip jobs
+    - fromEndpoints:
+        - matchLabels:
+            app: obsidian-mcp
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> arbitrary pages to clip (that's its job)
+    - toEntities: [world]
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+            - { port: "80", protocol: TCP }
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: obsidian-mcp
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app: obsidian-mcp
+  ingress:
+    # Traefik serves vault.bretagne.dev -> mcp :4000
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4000", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "4000", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> clip jobs
+    - toEndpoints:
+        - matchLabels:
+            app: web-clipper
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # -> id.bretagne.dev JWKS (public IP hairpins via host/kube-proxy DNAT
+    #    to the Traefik pod — same three-way allow as the oauth2-proxy CNPs)
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

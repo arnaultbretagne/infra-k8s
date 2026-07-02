@@ -1,0 +1,92 @@
+# Playwright/Chromium clipping service. Chromium runs --no-sandbox (in-code),
+# so PSS restricted holds; /dev/shm is a Memory emptyDir (the k8s equivalent
+# of the compose `ipc: host` workaround for Chromium's shared memory).
+# Service MUST be named web-clipper: the MCP server hardcodes
+# http://web-clipper:3000/clip.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-clipper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-clipper
+  template:
+    metadata:
+      labels:
+        app: web-clipper
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+      containers:
+        - name: clipper
+          image: ghcr.io/arnaultbretagne/obsidian-clipper:0.2.0
+          ports:
+            - containerPort: 3000
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: MODE
+              value: server
+            - name: PORT
+              value: "3000"
+            - name: VAULT_PATH
+              value: /vault
+            - name: LOG_LEVEL
+              value: info
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 2Gi        # Chromium render peaks (legacy compose limit)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            failureThreshold: 12
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /vault
+              subPath: vault
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: obsidian-data
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-clipper
+spec:
+  selector:
+    app: web-clipper
+  ports:
+    - port: 3000
+      targetPort: 3000

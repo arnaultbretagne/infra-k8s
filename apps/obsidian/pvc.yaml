@@ -1,0 +1,15 @@
+# Stateful exception (ADR 0005): the Obsidian vault + the sync session state.
+# One PVC, two subPaths (vault/, sync-config/), shared by the 3 pods — RWO is
+# node-scoped, fine on single-node. The vault's real backup is Obsidian Sync
+# itself (server-side copy + every enrolled device); sync-config is re-issuable
+# by re-running `ob sync-setup` with a fresh token.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: obsidian-data
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
