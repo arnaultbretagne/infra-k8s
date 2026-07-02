@@ -72,6 +72,12 @@ spec:
             - { name: HOST, value: "0.0.0.0" }
             - { name: RUNTIME_CWD, value: /home/node/work }
             - { name: PTY_LOG_DIR, value: /logs }   # observability: per-session PTY drain
+            # Static long-lived OAuth token (`claude setup-token`) — does NOT rotate, so N concurrent
+            # runtimes never race on refresh and a copied credential never self-invalidates. Supersedes
+            # the rotating-creds / PVC-refresh design of agent-runtime ADR 0006 (see agora ADR 0008).
+            - name: CLAUDE_CODE_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef: { name: claude-oauth-token, key: token }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
