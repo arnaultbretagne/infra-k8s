@@ -190,3 +190,19 @@ The daily restore test would be a CronJob that:
 - `instances: 1` on single-node — no HA replica. Resilience relies on WAL archiving + restore from S3. If scaling to multi-node, `instances: 2` with anti-affinity can be used
 - 3-day retention is calibrated for non-critical infrastructure databases. For irreplaceable business data (if they ever arrive), retention should be re-evaluated (30d+) and restore testing strengthened
 - Backup monitoring (Backup CRD status, failure alerts) must be connected to the monitoring stack when available
+
+## Amendment 2026-07-02 — copyFrom needs a ResourceSet; cron is 6-field; restore-test reality
+
+- **The shared-S3-creds design was wrong as written.** flux-operator's `copyFrom` is only honoured on
+  **ResourceSet-owned** secrets — a plain kustomize stub carrying the annotation stays empty, which
+  silently broke backups (2026-07-01→02). Correct pattern: keep the key once in
+  `flux-system/cnpg-s3-creds` and distribute it with a flux-operator **`ResourceSet`**
+  (`apps/shared/cnpg-s3-creds.yaml`). Duplicating the key per namespace is the fallback, not the design.
+- **`ScheduledBackup.spec.schedule` is a 6-field cron (with seconds).** `"0 3 * * *"` is read as
+  *hourly at :03*, not daily. Use `"0 0 3 * * *"` for 03:00 daily.
+- **The restore-test never ran to completion until fixed** — it hung on the missing creds, then on
+  CNPG runtime config that doesn't exist in a standalone pod. See `apps/pocket-id/restore-test.yaml` /
+  hosting playbook §9.4 for the working recipe (chmod 700; ssl/archive_mode/logging_collector off;
+  prepend a trust rule to pg_hba). Now green.
+- **Bound the PG** (`spec.resources`) — an unbounded PG contributes to node OOM, and `local-path`
+  doesn't enforce PVC size (a stuck WAL grew to 15GB).

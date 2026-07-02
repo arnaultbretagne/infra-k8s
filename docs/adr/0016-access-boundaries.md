@@ -90,3 +90,14 @@ GHCR decouples app repos from infra-k8s completely. App repos push images to GHC
 - Flux Image Automation (ADR 0015) reuses Flux's deploy key for pushing to the `flux-image-updates` branch
 - If moving to an organization with multiple infra repos, the deploy key approach should be re-evaluated in favor of a GitHub App for Flux
 - The human operator is the only actor that can directly modify `infra-k8s` (via PRs or direct push on `main`)
+
+## Amendment 2026-07-02 — three agents, and the PR-gate is a convention
+
+- There are now **three distinct agents**, not one: (1) the **infra operator agent** (root on the box,
+  `sudo k0s kubectl`, pushes to `infra-k8s` via the deploy key) — never modelled here; (2) the **claude
+  runtime** in the `agent` pod (untrusted-by-design, bounded per AR/0003 — CNP + no SA token); (3) the
+  **product/code agent** this ADR scopes out of `infra-k8s`. Each needs its own trust boundary; the
+  single-actor model is stale.
+- **"Flux never writes to `main`" is a convention, not a constraint.** The deploy key is read/**write**
+  and commits go **directly to `main`** via it. GitHub **branch protection** is what makes the PR-gate
+  real (S7). Until then, a cluster compromise that reaches the key can push to prod.

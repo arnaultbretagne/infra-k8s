@@ -203,3 +203,17 @@ On the 16GB VPS, that is ~7-12% of RAM for observability — accepted as a delib
 - Custom dashboards are provisioned via ConfigMaps in the GitOps repo (versioned, declarative)
 - If RAM becomes an issue, VictoriaMetrics remains a drop-in migration option without changing dashboards or ServiceMonitors
 - If the need for trends beyond 30 days manifests, Thanos sidecar can be enabled in the kube-prometheus-stack values (sub-chart) with no architecture change
+
+## Amendment 2026-07-02 — alerting is wired (two layers)
+
+The stack is deployed (multi-chart kube-prometheus-stack + Loki + Alloy). Alerting, previously an open
+gap, is now wired in two layers:
+- **In-cluster (Alertmanager)** — receiver config in a SOPS secret (`observability/alertmanager-config`,
+  via `alertmanager.alertmanagerSpec.configSecret`). Real alerts → **email via Resend**
+  (`alerts@bretagne.dev`). Custom rules (CNPG backup/WAL, host disk, cert expiry) in `observability/rules.yaml`.
+- **External dead-man's switch** — the always-firing `Watchdog` alert is routed to **healthchecks.io**;
+  if the box/cluster/Alertmanager dies, the ping stops and healthchecks alerts out-of-band — the one
+  thing Grafana/Alertmanager can't cover (their own death).
+
+Grafana is behind Pocket-ID OIDC. The `observability` namespace is PSS `privileged` and only partially
+network-policed — a hardening follow-up.

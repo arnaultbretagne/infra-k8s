@@ -72,3 +72,10 @@ On a single-node, the L2 limitation (single node) is not a limitation since ther
 - In L2 mode, a single node responds to ARP requests for the IP — not a limitation on single-node, but to reconsider for multi-node (switch to BGP or Cilium LB)
 - MetalLB is deployed by Flux like all other components (ADR 0001, ADR 0002)
 - If migrating to Cilium (ADR 0006), MetalLB can be removed in favor of the integrated LB
+
+## Amendment 2026-07-02 — the edge is Traefik Service `externalIPs`, not hostPort
+
+The 2026-06-28 amendment said the edge would be Traefik `hostPort :80/:443`. In practice the flip was
+done with a **NodePort Service carrying `externalIPs: [85.17.246.41]`** (kube-proxy DNATs the host IP →
+the Traefik pod). Same rationale (no Cilium L2/ARP, no lockout), different mechanism. MetalLB and
+Cilium-LB both stay out.

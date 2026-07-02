@@ -11,7 +11,7 @@ Cilium (ADR 0006) makes NetworkPolicies *enforceable*, but a CNI that *can* enfo
 - The cluster hosts an identity provider (Pocket-ID, ADR 0009) — compromise it and every downstream service is exposed. It and its database must be reachable only by what legitimately needs them.
 - Preview-in-prod (ADR 0017) runs unreviewed PR code on the **same single node** as production and the IdP. Network segmentation is the control that bounds its blast radius.
 
-Pod Security Standards (`docs/app-hardening.md`) constrain what a pod may do *inside itself*; they say nothing about *who talks to whom* or *what a pod may exfiltrate to*. Network policy + resource limits are the complementary, missing layer.
+Pod Security Standards (`docs/hosting-an-app.md`) constrain what a pod may do *inside itself*; they say nothing about *who talks to whom* or *what a pod may exfiltrate to*. Network policy + resource limits are the complementary, missing layer.
 
 The posture must be safe to roll out **incrementally** — a wrong cluster-wide default-deny can break Cilium/CoreDNS/Flux and lock the operator out — and **operable by an agent**: declarative, standard, observable.
 
@@ -73,3 +73,17 @@ Tight egress allow-lists cannot be written blind. Hubble (enabled now — this *
 - Adding a new external dependency means adding an explicit FQDN egress rule — a deliberate, reviewed change
 - Removing MetalLB (ADR 0007 superseded) is one fewer namespace to police
 - Implementation is sequenced in the migration plan, right after the cluster is brought up empty — guardrails land before app workloads
+
+## Amendment 2026-07-02 — what's now enforced (S4/S5)
+
+- **flux-system is guarded**: PSS `enforce: restricted` + a default-deny **ingress** CiliumNetworkPolicy
+  (`infrastructure/configs/flux-hardening/`) allowing only intra-flux + Prometheus:8080 + host probes.
+  Its **egress** stays open — the egress allow-list is the remaining Hubble-audit step.
+- **PriorityClasses** (`bretagne-critical`/`bretagne-low`) exist; the IdP is on critical (the node runs
+  memory limits at ~126% of allocatable — eviction order matters).
+- **LimitRange** defaults on app namespaces. **ResourceQuota** is still to do (its real value is the
+  `preview` namespace).
+- The "reusable bundle" was implemented as **per-namespace resources**, not one Kustomize component
+  (quota sizes differ per namespace).
+- The per-container security checklist formerly in `docs/hosting-an-app.md` now lives in the merged
+  **`docs/hosting-an-app.md`**.

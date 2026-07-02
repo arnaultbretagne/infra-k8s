@@ -122,3 +122,13 @@ Records how we *run and recover* Pocket-ID (the selection above stands). Written
 - **Decision: start FRESH** — no SQLite→Postgres migration. Re-enroll passkey(s), redefine groups/clients natively in the UI. Rationale: tiny scale, goal is a clean native setup (no old cruft), and the first admin re-enrolls a passkey at genesis anyway.
 - From the old `.env`, `client_vps`'s client_id + secret are recoverable → re-wiring the VPS forward-auth is **transparent**. The **two external connectors** (Claude, ChatGPT) get a new id/secret → **must be re-authorized** on those platforms (Pocket-ID stores only secret hashes; plaintext isn't recoverable).
 - Going forward likely single-user (Maxime's access is the human's call) → possibly just `admin`, maybe no groups at all.
+
+## Amendment 2026-07-02 — single-instance ⇒ `strategy: Recreate`; break-glass
+
+- **Pocket-ID refuses to run two instances** ("running multiple replicas is currently not supported").
+  The Deployment MUST use `strategy: { type: Recreate }`; the default RollingUpdate briefly runs two
+  pods and **deadlocks every rollout** (learned the hard way — a ~2-min IdP outage). Single replica ⇒
+  a rollout always has a short blip; accepted.
+- **Break-glass**: the admin is a single passkey bound to `id.bretagne.dev`. Losing that device locks
+  the IdP out (a DB restore doesn't re-mint a usable passkey). Enrol a **second passkey** on a cold
+  device, and/or keep documented direct-DB admin access. TODO.
