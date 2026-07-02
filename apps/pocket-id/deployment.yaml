@@ -4,6 +4,11 @@ metadata:
   name: pocket-id
 spec:
   replicas: 1
+  # pocket-id refuses to start if another instance is already running, so the default
+  # RollingUpdate (old + new pod briefly coexist) deadlocks any rollout. Terminate the
+  # old pod first. Single replica anyway → a rollout always has a short blip.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: pocket-id
