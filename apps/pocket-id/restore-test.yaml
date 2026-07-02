@@ -62,11 +62,16 @@ spec:
                   # refuses to start unless the data dir is 0700/0750.
                   chmod 700 "$PGDATA"
 
-                  # Recover: replay WALs then promote immediately
+                  # Recover: replay WALs then promote immediately. Also neutralise the
+                  # CNPG-managed runtime config that doesn't exist in this standalone pod:
+                  # TLS certs live at /controller/certificates (absent here) and archiving
+                  # would shell out to /controller/manager. Last value in auto.conf wins.
                   cat >> "$PGDATA/postgresql.auto.conf" <<PGCONF
                   restore_command = 'barman-cloud-wal-restore --endpoint-url $S3_ENDPOINT $S3_DEST $SERVER %f %p'
                   recovery_target = immediate
                   recovery_target_action = promote
+                  ssl = off
+                  archive_mode = off
                   PGCONF
                   touch "$PGDATA/recovery.signal"
 
