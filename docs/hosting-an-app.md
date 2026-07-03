@@ -345,13 +345,55 @@ psql -h localhost -p 5433 -U <appuser> -d <appdb> -c "SELECT 1"
 
 ---
 
-## 10. Auth — the OIDC gate (ADR 0021)
+## 10. Auth — the OIDC authorization model (ADR 0021 + 0022)
 
-Apps that need login sit behind **oauth2-proxy** (Gateway-API-native): `HTTPRoute → oauth2-proxy
-(Service) → app`. It runs the OIDC flow against Pocket-ID (`id.bretagne.dev`). **Restrict who** with
-`OAUTH2_PROXY_ALLOWED_GROUPS: <pocket-id-group>` — do not leave `EMAIL_DOMAINS=*`. `client_id` +
-`client_secret` + `cookie_secret` go in SOPS. Pocket-ID doesn't set `email_verified`, so the proxy
-needs `INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true` (documented workaround).
+### 10.1 The model (read this before wiring auth)
+
+- **One Pocket-ID client per protected app.** Own `client_id`/secret, own redirect URI, own group
+  restriction. Blast radius stays per-app.
+- **Pocket-ID groups are the single source of truth for *authorization*.** Membership lives in one
+  place (the IdP). The client's **group restriction is the primary filter** — it fails *closed* at
+  token issuance: a non-member never gets a token, so the app never sees the request. Group model
+  today: `admin` (operators); `stremio-users` reserved for media consumers (see ADR 0022).
+- **Authentication ≠ authorization.** A valid token only proves the user logged into Pocket-ID.
+  *Restricting to a group* is what gates access. Never rely on "has a token" alone.
+
+### 10.2 Client config is declarative — the reconciler (ADR 0022)
+
+Clients are **not** created by hand in the admin UI (that drifts — it's how Grafana ended up open).
+The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, callbackURLs,
+`allowedGroups`, pkce/public), reconciled into Pocket-ID by a daily CronJob hitting the API.
+
+- **Bijective**: a client/group **not** in the spec is **pruned**. Adding an app = add its block.
+- It manages **policy only, never secrets**. A brand-new client's secret is minted by Pocket-ID at
+  creation — copy it **once** into that app's SOPS by hand (the reconciler never writes secrets).
+- `allowedGroups` non-empty ⇒ the client is group-restricted; empty ⇒ public. **You never set the
+  restriction flag yourself** — the reconciler derives it (see gotcha). Run on demand after editing:
+  `k0s kubectl -n pocket-id create job --from=cronjob/oidc-reconciler oidc-reconciler-manual`.
+- The runner is the CNPG postgres image already in the ns (`python3`, non-root) — no dedicated image.
+
+### 10.3 Enforcement point — pick by app type (the group is always the knob)
+
+| App type | Where the token is checked | What you build |
+|---|---|---|
+| **No native OIDC** (code-server, agent) | **oauth2-proxy** in front | `HTTPRoute → oauth2-proxy (Service) → app`; `OAUTH2_PROXY_ALLOWED_GROUPS: <group>` (belt-and-suspenders on top of the IdP restriction). Copy `apps/code-server/oauth2-proxy.yaml`. |
+| **Native OIDC** (Grafana) | The **app** speaks OIDC | Restrict the Pocket-ID client to the group (access) **and** configure the app's own group→role map (privilege). Both. |
+| **OAuth resource server** (obsidian-mcp / MCP) | The **app** validates JWTs itself | Must verify **`issuer` + `audience`** and check a **group/scope claim** — not just the signature. (See the live gap in `/srv/obsidian-mcp-auth-todo.md`: audience + group check missing.) |
+| **Host-level** (terminal) | **systemd oauth2-proxy on the host** | Selector-less `Service` + manual `EndpointSlice` → host `:4180`; the proxy carries `OAUTH2_PROXY_ALLOWED_GROUPS=admin`. Firewall the port to the pod CIDR. |
+
+**oauth2-proxy specifics** (ADR 0021): runs the OIDC flow against `id.bretagne.dev`; `client_id` +
+`client_secret` + `cookie_secret` in SOPS; **never** leave `EMAIL_DOMAINS=*`. Pocket-ID doesn't set
+`email_verified` → set `INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true`. To use `ALLOWED_GROUPS` the
+`groups` claim must flow → put `groups` in `OAUTH2_PROXY_SCOPE` (verified working on terminal).
+
+### 10.4 Adding a protected app — the sequence
+
+1. Add the client block to `spec.json` (`allowedGroups: [admin]` for operator apps).
+2. Run the reconciler (command above); it creates the client group-restricted.
+3. Read the minted `client_secret` from Pocket-ID, put it in the app's SOPS secret.
+4. Wire the enforcement point per the table (oauth2-proxy for most; native/resource-server if the app
+   does OIDC itself).
+5. Verify a **non**-member gets `403`/redirected — not just that *you* get in.
 
 ---
 
@@ -381,6 +423,14 @@ needs `INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true` (documented workaround).
 - **Memory limits are ~126% overcommitted** — big new limits raise real OOM risk; size requests to
   reality, set a sane limit, set priority.
 - **Changing a CNPG `Cluster`'s resources restarts PG** — a single instance = a brief app blip; sequence it.
+- **Listing a Pocket-ID client's allowed groups does NOT restrict it** — the `isGroupRestricted` flag
+  must also be true, else the group list is ignored and *any* user gets in (this is how Grafana stayed
+  open). The reconciler derives the flag from `allowedGroups`; if you ever touch a client by hand, set
+  both.
+- **A JWT resource server that checks only signature + issuer is under-gated** — without an `audience`
+  check, a token minted for *another* client on the same issuer is accepted (cross-client confusion);
+  without a group/scope check it's auth-without-authz. Verify issuer **and** audience **and** a group
+  claim (the obsidian-mcp gap, `/srv/obsidian-mcp-auth-todo.md`).
 - **A Kustomization with `namespace: <x>` rewrites *every* resource's namespace** — don't put a
   `flux-system`-scoped resource (like the distribution ResourceSet) inside an app overlay.
 - **SSH/host**: on a fresh build, cloud-init's `50-cloud-init.conf` can silently override hardening
@@ -404,6 +454,7 @@ needs `INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL=true` (documented workaround).
 - [ ] `HTTPRoute` + Gateway listener; DNS record; TLS via cert-manager (automatic); **HSTS filter**
 - [ ] `CiliumNetworkPolicy` default-deny + allow-list (DNS always; no flux-system/apiserver egress)
 - [ ] If DB: CNPG `Cluster` (bounded) + `ScheduledBackup` (6-field cron!) + **restore-test**
-- [ ] Behind **oauth2-proxy** with `allowed-groups` if it needs auth
+- [ ] If protected: Pocket-ID **client in `spec.json`** (reconciled, group-restricted) + secret in SOPS;
+      enforcement point chosen per §10.3; a **non-member is actually denied** (not just you let in)
 - [ ] Verified out-of-band, then `200` on its hostname; kustomizations green
 - [ ] Image pinned (no `:latest`); Renovate / Image-Automation wired for updates
