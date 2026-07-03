@@ -15,22 +15,45 @@ spec:
         app: aiostreams
     spec:
       securityContext:
-        # The image is built to run as root; it works fine non-root as long as the
-        # only writable paths are the PVC (/app/data, made group-writable by fsGroup)
-        # and an emptyDir /tmp. Verified 2026-07-03 by booting a hardened test pod:
-        # clean startup, DB initialised, port bound, no EACCES.
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
+        # fsGroup makes emptyDir volumes (/tmp) writable by gid 1000. It does NOT apply
+        # to the local-path PVC: those PVs are hostPath-backed and kubelet skips fsGroup
+        # on hostPath, so the PVC ownership is fixed by the fix-perms initContainer below.
+        # (runAsNonRoot/runAsUser live on the app container, not here, so the root init
+        # container is allowed under this ns's PSS 'baseline'.)
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        # local-path creates a fresh PVC dir owned root:shared(1001); the non-root app
+        # (uid 1000) can't write it. chown it on every start (idempotent) so a rebuild on
+        # an empty volume just works — no manual host chown. Reuses the CNPG image already
+        # present in this ns (has chown, runs as root); no dedicated image.
+        - name: fix-perms
+          image: ghcr.io/cloudnative-pg/postgresql:17
+          command: ["chown", "-R", "1000:1000", "/app/data"]
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
       containers:
         - name: aiostreams
           image: viren070/aiostreams:v2.26.0
           ports:
             - containerPort: 3000
           securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
