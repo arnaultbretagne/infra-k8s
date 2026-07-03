@@ -1,0 +1,20 @@
+# Manual EndpointSlice binding the terminal-host Service to the node's own IP, where the
+# host systemd `terminal-oauth2-proxy` listens on :4180 (firewall: pod CIDR only). The
+# host firewall drops :4180 from the public internet; only in-cluster (Traefik) reaches it.
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: terminal-host-1
+  namespace: terminal
+  labels:
+    kubernetes.io/service-name: terminal-host
+addressType: IPv4
+ports:
+  - name: http
+    port: 4180
+    protocol: TCP
+endpoints:
+  - addresses:
+      - 85.17.246.41
+    conditions:
+      ready: true

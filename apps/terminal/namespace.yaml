@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: terminal
+  labels:
+    # No workloads run here — this namespace only carries the edge glue (Service,
+    # EndpointSlice, HTTPRoute) that routes terminal.bretagne.dev to the HOST oauth2-proxy.
+    # `restricted` is the safe default; it costs nothing since no pod is scheduled.
+    pod-security.kubernetes.io/enforce: restricted

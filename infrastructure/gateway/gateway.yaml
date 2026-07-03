@@ -92,3 +92,17 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Web shell (host-level, ADR 0023). Backend is a host systemd oauth2-proxy reached
+    # via a selector-less Service + manual EndpointSlice (apps/terminal), not a pod.
+    - name: https-terminal
+      port: 8443
+      protocol: HTTPS
+      hostname: terminal.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All

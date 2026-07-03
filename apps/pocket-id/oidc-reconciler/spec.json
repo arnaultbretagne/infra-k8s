@@ -21,6 +21,12 @@
       "callbackURLs": ["https://grafana.bretagne.dev/login/generic_oauth"],
       "allowedGroups": ["admin"],
       "pkceEnabled": true
+    },
+    {
+      "name": "terminal",
+      "callbackURLs": ["https://terminal.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     }
   ]
 }

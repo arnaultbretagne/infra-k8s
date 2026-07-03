@@ -1,0 +1,17 @@
+[Unit]
+Description=ttyd web terminal (host shell as dev) — behind terminal-oauth2-proxy
+Documentation=https://github.com/tsl0922/ttyd
+After=network.target
+
+[Service]
+# Runs as root so it can `su - dev` into a full host login shell (dev has sudo NOPASSWD),
+# giving the SAME low-level host access as an operator session — deliberately NOT a container.
+# Bound to loopback ONLY: unreachable from the pod network; the sole ingress path is
+# terminal-oauth2-proxy (Pocket-ID admin gate) -> 127.0.0.1:7681.
+ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 7681 --writable --cwd /home/dev /bin/su - dev
+Restart=always
+RestartSec=2
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

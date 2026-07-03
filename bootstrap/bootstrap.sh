@@ -96,6 +96,10 @@ table inet firewall {
     # Kubelet — pods only
     ip saddr 10.244.0.0/16 tcp dport 10250 accept
 
+    # terminal.bretagne.dev web shell (ADR 0023): Traefik (pod net) -> host
+    # oauth2-proxy:4180. Pod CIDR only; ttyd itself is loopback-only.
+    ip saddr 10.244.0.0/16 tcp dport 4180 accept
+
     # ICMP
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept

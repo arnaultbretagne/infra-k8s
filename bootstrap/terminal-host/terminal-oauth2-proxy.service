@@ -1,0 +1,19 @@
+[Unit]
+Description=oauth2-proxy for terminal.bretagne.dev (Pocket-ID admin gate -> ttyd)
+After=network.target ttyd-terminal.service
+Wants=ttyd-terminal.service
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/terminal-oauth2-proxy.env
+ExecStart=/usr/local/bin/oauth2-proxy
+Restart=always
+RestartSec=2
+# Hardening: it only needs outbound to id.bretagne.dev + loopback ttyd; no fs writes.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

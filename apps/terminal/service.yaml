@@ -1,0 +1,15 @@
+# Selector-less Service: its endpoints are provided by the manual EndpointSlice below,
+# pointing at the host's oauth2-proxy (systemd) rather than any pod. This is the
+# Gateway-API-idiomatic way to route the shared Gateway to a host-level backend.
+apiVersion: v1
+kind: Service
+metadata:
+  name: terminal-host
+  namespace: terminal
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 4180
+      targetPort: 4180
+      protocol: TCP
