@@ -89,6 +89,16 @@ explicit**, so it drifted:
    and bootstrapping the secret of a brand-new client stays a documented manual step (Pocket-ID mints it
    at creation; it must be copied into that app's SOPS by hand).
 
+   **Runner (implementation note).** The reconciler is a stdlib-only Python script (`reconcile.py`,
+   `urllib`+`json`, no third-party deps) run by a daily CronJob. It runs on the **CNPG postgres image
+   (`ghcr.io/cloudnative-pg/postgresql:17`) already used in this namespace** by the DB and the
+   restore-test job — no dedicated runner image is built or pulled. That image ships `python3` (barman
+   depends on it), so no runtime install (`apk`/`apt`) is needed — which matters because the `pocket-id`
+   namespace enforces PSS `restricted` (non-root), where runtime package installs are impossible. The
+   Job runs non-root (uid 26) with `readOnlyRootFilesystem`, mirroring restore-test. Trade-off accepted:
+   a single `.py` file in an otherwise-YAML repo, versus adding a new image or a new language runtime to
+   the platform — Python is already present via barman, so this adds no new runtime.
+
 ## Rationale
 
 - **Single source of truth beats scattered checks.** One group membership in the IdP, versus

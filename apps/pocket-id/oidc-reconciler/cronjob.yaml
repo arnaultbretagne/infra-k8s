@@ -20,15 +20,19 @@ spec:
         spec:
           restartPolicy: Never
           securityContext:
+            # Mirrors restore-test.yaml: same image (CNPG postgres, already used in
+            # this ns), same non-root uid/gid. No dedicated runner image needed — the
+            # CNPG image ships python3 (barman dep) and runs fine under PSS 'restricted'.
             runAsNonRoot: true
-            runAsUser: 1000
-            runAsGroup: 1000
+            runAsUser: 26
+            runAsGroup: 102
+            fsGroup: 102
             seccompProfile:
               type: RuntimeDefault
           containers:
             - name: reconciler
-              image: python:3.12-alpine
-              command: ["python", "/app/reconcile.py"]
+              image: ghcr.io/cloudnative-pg/postgresql:17
+              command: ["python3", "/app/reconcile.py"]
               env:
                 - name: POCKET_ID_URL
                   value: http://pocket-id.pocket-id.svc.cluster.local:1411/api
@@ -37,6 +41,10 @@ spec:
                   value: enforce
                 - name: PYTHONDONTWRITEBYTECODE
                   value: "1"
+                # postgres user's home (/var/lib/postgresql) isn't writable under
+                # readOnlyRootFilesystem; point HOME at the tmpfs.
+                - name: HOME
+                  value: /tmp
                 - name: POCKET_ID_API_KEY
                   valueFrom:
                     secretKeyRef:
@@ -53,6 +61,7 @@ spec:
               volumeMounts:
                 - { name: script, mountPath: /app }
                 - { name: spec, mountPath: /spec }
+                - { name: tmp, mountPath: /tmp }
           volumes:
             - name: script
               configMap:
@@ -60,3 +69,6 @@ spec:
             - name: spec
               configMap:
                 name: oidc-clients-spec
+            - name: tmp
+              emptyDir:
+                sizeLimit: 16Mi
