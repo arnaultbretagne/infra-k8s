@@ -417,7 +417,14 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
 - **`copyFrom` only works on ResourceSet-owned secrets** — a plain stub stays empty (broke backups a day).
 - **CNPG `ScheduledBackup` cron is 6-field** — 5 fields silently means *hourly*.
 - **local-path does NOT enforce PVC size** — a `1Gi` PVC can grow to fill the disk (a stuck WAL hit 15GB).
-  Set CNPG WAL/retention + Prometheus `retentionSize`; watch disk.
+  Set CNPG WAL/retention + Prometheus `retentionSize`; watch disk. (Also: local-path PVs are hostPath,
+  so kubelet exposes **no `kubelet_volume_stats_*`** for them — you can't alert per-PVC, only node-`/`.)
+- **local-path + `fsGroup` = no-op** — those PVs are hostPath-backed and kubelet skips fsGroup on hostPath.
+  A non-root app with a local-path PVC therefore can't write its freshly-provisioned dir (created
+  `root:shared`) and EACCESes. Fix: a small **root `initContainer` that `chown -R <uid>:<gid>` the mount**
+  every start (idempotent, rebuild-safe) — put `runAsNonRoot/runAsUser` on the app container (not the pod)
+  so the root init is allowed, and reuse the in-cluster CNPG image (has `chown`). See `apps/stremio`.
+  fsGroup still works for `emptyDir`, so keep it there.
 - **Prometheus/Alertmanager images are distroless** — use `promtool`, not `wget`.
 - **PSS `restricted` needs `seccompProfile: RuntimeDefault`** explicitly — the #1 rejection.
 - **Memory limits are ~126% overcommitted** — big new limits raise real OOM risk; size requests to
