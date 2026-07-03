@@ -107,6 +107,9 @@ for name, want in want_clients.items():
             "isPublic": want.get("isPublic", False),
             "pkceEnabled": want.get("pkceEnabled", False),
             "requiresReauthentication": want.get("requiresReauthentication", False),
+            # Derived, never declared: listing groups == restricting to them. This is the
+            # actual gate — without it Pocket-ID ignores allowedUserGroups and lets ANY user in.
+            "isGroupRestricted": bool(want.get("allowedGroups")),
         }
         if ENFORCE:
             st, res = api("POST", "/oidc/clients", body)
@@ -128,6 +131,8 @@ for name, want in want_clients.items():
             drift.append("isPublic")
         if detail.get("pkceEnabled", False) != want.get("pkceEnabled", False):
             drift.append("pkceEnabled")
+        if detail.get("isGroupRestricted", False) != bool(want.get("allowedGroups")):
+            drift.append("isGroupRestricted")
         if drift:
             log(f"[client] UPDATE  {name}  (drift: {', '.join(drift)})")
             if ENFORCE:
@@ -138,6 +143,7 @@ for name, want in want_clients.items():
                     "isPublic": want.get("isPublic", False),
                     "pkceEnabled": want.get("pkceEnabled", False),
                     "requiresReauthentication": detail.get("requiresReauthentication", False),
+                    "isGroupRestricted": bool(want.get("allowedGroups")),
                 }
                 st, res = api("PUT", f"/oidc/clients/{cid}", body)
                 if st == 200: changes += 1
