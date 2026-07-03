@@ -13,10 +13,16 @@ spec:
     matchLabels:
       app: aiostreams
   ingress:
-    # Traefik serves stremio.bretagne.dev -> app :3000
+    # Traefik serves stremio.bretagne.dev -> app :3000 (public paths: manifest/streams/API)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # oauth2-proxy (same ns) -> app :3000 (the gated /stremio/configure path, ADR 0021)
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
     # kubelet health probes -> app :3000
@@ -39,3 +45,53 @@ spec:
         - ports:
             - { port: "443", protocol: TCP }
             - { port: "80", protocol: TCP }
+---
+# OIDC gate for the /stremio/configure path (ADR 0021). Mirrors code-server's
+# oauth2-proxy CNP: ingress only from Traefik; egress to DNS, the aiostreams
+# upstream, and id.bretagne.dev (OIDC discovery/token — reached via the public
+# IP -> node -> Traefik, so allow world/host:443 + the Traefik pod :8443).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: stremio
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    # Traefik serves the gated paths -> proxy :4180
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> upstream aiostreams (authenticated /stremio/configure)
+    - toEndpoints:
+        - matchLabels:
+            app: aiostreams
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token) via public IP -> node -> Traefik
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

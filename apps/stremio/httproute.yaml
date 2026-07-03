@@ -9,10 +9,52 @@ spec:
       sectionName: https-stremio
   hostnames:
     - stremio.bretagne.dev
+  # PATH-BASED SSO gate (stremio decision): only the config UI and the proxy's own
+  # /oidc callback go through oauth2-proxy; everything else (manifest, streams, API)
+  # goes straight to aiostreams and stays PUBLIC — Stremio clients can't do OIDC, so
+  # gating them would break every installed addon. Gateway API routes to the rule with
+  # the LONGEST matching path, so order is irrelevant: /stremio/configure and /oidc
+  # out-match the / catch-all.
+  # HSTS filter (S8) on every rule: 1-day max-age rollout; → 31536000 once proven. No preload.
   rules:
-    - filters:
-        # HSTS (S8). Conservative 1-day max-age for the initial rollout — reversible if a
-        # cert breaks; raise to 31536000 (1y) after a validation window. No preload.
+    # --- gated: the configure UI (aiostreams serves it at BOTH /configure and
+    #     /stremio/configure — both must be gated or the ungated one stays open) ---
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /stremio/configure
+        - path:
+            type: PathPrefix
+            value: /configure
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"
+      backendRefs:
+        - name: oauth2-proxy
+          port: 4180
+    # --- gated: oauth2-proxy's own endpoints (sign-in, callback, sign-out) ---
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /oidc
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"
+      backendRefs:
+        - name: oauth2-proxy
+          port: 4180
+    # --- public: manifest / streams / API / everything else ---
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
         - type: ResponseHeaderModifier
           responseHeaderModifier:
             set:

@@ -4,9 +4,11 @@ namespace: stremio
 resources:
   - namespace.yaml
   - secrets.yaml
+  - oauth2-proxy.secret.yaml
   - pvc.yaml
   - deployment.yaml
   - service.yaml
+  - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
   - limitrange.yaml
