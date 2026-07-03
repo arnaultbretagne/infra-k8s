@@ -15,6 +15,14 @@ spec:
         app: aiostreams
     spec:
       securityContext:
+        # The image is built to run as root; it works fine non-root as long as the
+        # only writable paths are the PVC (/app/data, made group-writable by fsGroup)
+        # and an emptyDir /tmp. Verified 2026-07-03 by booting a hardened test pod:
+        # clean startup, DB initialised, port bound, no EACCES.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -24,9 +32,14 @@ spec:
             - containerPort: 3000
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
           env:
+            # HOME must be writable under readOnlyRootFilesystem (image default /root
+            # is now read-only); point it at the tmpfs.
+            - name: HOME
+              value: /tmp
             # The one-time initial sync (Fribb 42k entries + Manami + seadex)
             # loads everything into the V8 heap. Node auto-sizes old-space from
             # the cgroup limit, so give it an explicit ceiling with headroom.
@@ -73,7 +86,12 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: aiostreams-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
