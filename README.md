@@ -28,6 +28,10 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Storage class | local-path-provisioner | [0018](docs/adr/0018-local-path-provisioner.md) |
 | Repo strategy | Monorepo | [0019](docs/adr/0019-monorepo-gitops.md) |
 | Network guardrails | Default-deny + per-namespace allow-lists (Cilium) | [0020](docs/adr/0020-network-policy-guardrails.md) |
+| OIDC authz model | Pocket-ID groups, per-app OAuth clients, and declarative client reconciliation | [0022](docs/adr/0022-oidc-authz-model.md) |
+| Host terminal | Host-side `ttyd` exposed through oauth2-proxy as an exceptional admin surface | [0023](docs/adr/0023-web-shell-terminal.md) |
+| Application profiles | Shared `public-app`, `private-app`, `infra`, `host-admin`, and `untrusted-compute` workload taxonomy | [0024](docs/adr/0024-application-profiles.md) |
+| Policy enforcement | Validation-only guardrails with PSA and ValidatingAdmissionPolicy before any external policy engine | [0025](docs/adr/0025-policy-enforcement.md) |
 
 ¹ Supersedes MetalLB ([0007](docs/adr/0007-metallb-loadbalancer.md)) — Cilium handles LoadBalancer IP assignment natively.
 
