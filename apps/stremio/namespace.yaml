@@ -3,7 +3,4 @@ kind: Namespace
 metadata:
   name: stremio
   labels:
-    # baseline (not restricted): viren070/aiostreams is a distroless image that
-    # ships as root (User=0) and writes its sqlite as root. Running it non-root is
-    # a hardening follow-up; baseline still blocks priv-esc / host access.
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted

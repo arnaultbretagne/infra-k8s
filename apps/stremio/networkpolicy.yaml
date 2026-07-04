@@ -1,8 +1,8 @@
 # Default-deny + allow-list for the stremio namespace (ADR 0020 pattern).
-# aiostreams is file-based (no in-cluster DB) — it only needs DNS + broad
-# external HTTPS/HTTP egress to reach debrid services, indexers, and to sync
-# its anime-database / seadex sources. Egress to `world` is intentionally broad
-# here (an addon aggregator talks to arbitrary upstreams); tighten if ever scoped.
+# aiostreams keeps canonical state in CNPG/Postgres. /app/data is a rebuildable
+# cache for anime-database / seadex / temporary files. It needs DNS, Postgres,
+# and broad external HTTPS/HTTP egress to reach debrid services and indexers.
+# Egress to `world` is intentionally broad here; tighten if ever scoped.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -39,12 +39,81 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
+    # -> canonical AIOStreams database
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: aiostreams-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
     # -> external upstreams (debrid / indexers / database sync)
     - toEntities: [world]
       toPorts:
         - ports:
             - { port: "443", protocol: TCP }
             - { port: "80", protocol: TCP }
+---
+# AIOStreams Postgres: app ingress, CNPG operator management, metrics, S3 backup.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: aiostreams-pg
+  namespace: stremio
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: aiostreams-pg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: aiostreams
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+            k8s:app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+            - { port: "5432", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: aiostreams-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: aiostreams-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
 ---
 # OIDC gate for the /stremio/configure path (ADR 0021). Mirrors code-server's
 # oauth2-proxy CNP: ingress only from Traefik; egress to DNS, the aiostreams

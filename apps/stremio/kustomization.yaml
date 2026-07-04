@@ -5,7 +5,8 @@ resources:
   - namespace.yaml
   - secrets.yaml
   - oauth2-proxy.secret.yaml
-  - pvc.yaml
+  - cluster.yaml
+  - restore-test.yaml
   - deployment.yaml
   - service.yaml
   - oauth2-proxy.yaml

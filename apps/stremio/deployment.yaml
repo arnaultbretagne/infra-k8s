@@ -5,7 +5,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate          # RWO PVC: don't run two pods against the same volume
+    type: Recreate
   selector:
     matchLabels:
       app: aiostreams
@@ -15,36 +15,11 @@ spec:
         app: aiostreams
     spec:
       securityContext:
-        # fsGroup makes emptyDir volumes (/tmp) writable by gid 1000. It does NOT apply
-        # to the local-path PVC: those PVs are hostPath-backed and kubelet skips fsGroup
-        # on hostPath, so the PVC ownership is fixed by the fix-perms initContainer below.
-        # (runAsNonRoot/runAsUser live on the app container, not here, so the root init
-        # container is allowed under this ns's PSS 'baseline'.)
+        # fsGroup makes the cache emptyDir (/app/data) and tmp emptyDir writable by
+        # uid/gid 1000 while the canonical state lives in CNPG/Postgres.
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        # local-path creates a fresh PVC dir owned root:shared(1001); the non-root app
-        # (uid 1000) can't write it. chown it on every start (idempotent) so a rebuild on
-        # an empty volume just works — no manual host chown. Reuses the CNPG image already
-        # present in this ns (has chown, runs as root); no dedicated image.
-        - name: fix-perms
-          image: ghcr.io/cloudnative-pg/postgresql:17
-          command: ["chown", "-R", "1000:1000", "/app/data"]
-          securityContext:
-            runAsNonRoot: false
-            runAsUser: 0
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: [ALL]
-              add: [CHOWN, DAC_OVERRIDE, FOWNER]
-          resources:
-            requests: { cpu: 10m, memory: 16Mi }
-            limits: { memory: 64Mi }
-          volumeMounts:
-            - name: data
-              mountPath: /app/data
       containers:
         - name: aiostreams
           image: viren070/aiostreams:v2.26.0
@@ -70,6 +45,11 @@ spec:
               value: "--max-old-space-size=768"
             - name: BASE_URL
               value: https://stremio.bretagne.dev
+            - name: DATABASE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: aiostreams-pg-app
+                  key: uri
             - name: SEL_SYNC_ACCESS
               value: all
             - name: REGEX_FILTER_ACCESS
@@ -113,8 +93,8 @@ spec:
               mountPath: /tmp
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: aiostreams-data
+          emptyDir:
+            sizeLimit: 2Gi
         - name: tmp
           emptyDir:
             sizeLimit: 128Mi
