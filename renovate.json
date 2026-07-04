@@ -9,6 +9,10 @@
     "description": "Renovate's kubernetes manager has no default file scope — point it at our manifests so image tags (e.g. viren070/aiostreams) get bump PRs.",
     "fileMatch": ["(^|/)apps/.+\\.ya?ml$", "(^|/)infrastructure/.+\\.ya?ml$", "(^|/)observability/.+\\.ya?ml$"]
   },
+  "flux": {
+    "description": "Our HelmReleases + HelmRepositories live under infrastructure/ and observability/, not the flux manager's default flux/ dir — point it here so pinned chart versions (cilium, traefik, cert-manager, loki, kube-prometheus-stack…) get bump PRs. Config-only: nothing deploys until a PR is merged and Flux reconciles it.",
+    "fileMatch": ["(^|/)apps/.+\\.ya?ml$", "(^|/)infrastructure/.+\\.ya?ml$", "(^|/)observability/.+\\.ya?ml$"]
+  },
   "customManagers": [
     {
       "customType": "regex",
@@ -26,6 +30,11 @@
       "matchDepNames": ["k0sproject/k0s"],
       "addLabels": ["k0s", "manual-apply"],
       "groupName": "k0s (deliberate apply — ADR 0015)"
+    },
+    {
+      "description": "cloudnative-pg/postgresql is NOT an independent dependency — it's a TOOL image (oidc-reconciler, restore-drill, chown init) that must mirror the CNPG database major (currently 17). The restore-drill boots a Postgres on data restored from the pg17 DB; pg18 binaries can't start a pg17 data dir, so a blind bump would break the backup drill. Renovate can't see the DB version (it's in a CNPG Cluster CRD it doesn't parse), so it must not drive this bump. The :17 tag already floats to the latest 17.x; bump every reference by hand, together, during a deliberate DB major migration.",
+      "matchDepNames": ["ghcr.io/cloudnative-pg/postgresql"],
+      "enabled": false
     }
   ]
 }
