@@ -4,7 +4,7 @@
   "timezone": "Europe/Paris",
   "dependencyDashboard": true,
   "labels": ["dependencies"],
-  "comment": "Behaviour lives here in Git (single source of truth). The Mend app is only the runner — nothing app-specific lives at Mend (all images/charts/k0s are public, no registry creds).",
+  "description": "Behaviour lives here in Git (single source of truth). The Mend app is only the runner — nothing app-specific lives at Mend (all images/charts/k0s are public, no registry creds).",
   "kubernetes": {
     "description": "Renovate's kubernetes manager has no default file scope — point it at our manifests so image tags (e.g. viren070/aiostreams) get bump PRs.",
     "fileMatch": ["(^|/)apps/.+\\.ya?ml$", "(^|/)infrastructure/.+\\.ya?ml$", "(^|/)observability/.+\\.ya?ml$"]
