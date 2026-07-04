@@ -17,13 +17,18 @@ spec:
       labels:
         app: website
     spec:
+      # the hub never calls the Kubernetes API — no token (audit F-02, agent-runtime ADR 0003)
+      automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true    # image is USER node (uid 1000) — declare it for PSS restricted (F-01)
+        runAsUser: 1000
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: website
-          image: ghcr.io/arnaultbretagne/agora-website:latest
+          # pinned to the live digest (audit F-04) — immutable ref, Git == what runs
+          image: ghcr.io/arnaultbretagne/agora-website:latest@sha256:57c205d3e3cb260fc7cd0a3596d822a0209361edef7eeb02cd885dd9f1a49e15
           ports:
             - containerPort: 8600
           env:

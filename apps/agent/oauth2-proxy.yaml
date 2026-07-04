@@ -15,7 +15,10 @@ spec:
       labels:
         app: oauth2-proxy
     spec:
+      # the OIDC gate never calls the Kubernetes API — no token (audit F-02)
+      automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true    # the quay image already runs as uid 2000; declare it for PSS restricted (F-01)
         seccompProfile:
           type: RuntimeDefault
       containers:

@@ -23,6 +23,9 @@ spec:
         fsGroup: 1000
       containers:
         - name: mcp-server
+          # Token audience/authz enforcement (audit F-05) ships in >= 0.3.0. Bump this
+          # tag to the built image (CI publishes obsidian-mcp:<semver> on a v* tag) to
+          # activate it; the MCP_ALLOWED_AUDIENCE env below is inert on 0.2.0.
           image: ghcr.io/arnaultbretagne/obsidian-mcp:0.2.0
           ports:
             - containerPort: 4000
@@ -42,6 +45,17 @@ spec:
               value: https://vault.bretagne.dev
             - name: POCKET_ID_ISSUER
               value: https://id.bretagne.dev
+            # Bind the token to THIS resource, not just the issuer (audit F-05): a JWT
+            # Pocket-ID minted for another client/resource must not be accepted by a
+            # server that reads/writes the vault. This is the RFC 8707 `resource` value
+            # the server advertises in its protected-resource metadata (ADR 0002).
+            - name: MCP_ALLOWED_AUDIENCE
+              value: https://vault.bretagne.dev
+            # Optional extra gates — enable once verified against a real Pocket-ID token
+            # (left unset to avoid locking out a claim the IdP may not emit):
+            #   MCP_ALLOWED_CLIENT_IDS: "<mcp-client-id>"  # the manually-registered client (ADR 0002)
+            #   MCP_REQUIRED_GROUPS:    "admin"            # match the other apps' allowedGroups
+            #   MCP_REQUIRED_SCOPES:    "openid"
             - name: LOG_LEVEL
               value: info
           resources:

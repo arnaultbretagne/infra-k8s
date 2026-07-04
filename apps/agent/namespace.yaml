@@ -2,3 +2,9 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: agent
+  labels:
+    # agent is a sensitive surface (LLM runtime, user access, code execution, PVCs):
+    # it must default to restricted like code-server/obsidian/pocket-id/terminal
+    # (infra-k8s audit F-01). The workloads declare runAsNonRoot so admission passes;
+    # CNPG (agora-pg) + the restore-test CronJob are already restricted-compliant.
+    pod-security.kubernetes.io/enforce: restricted
