@@ -60,3 +60,78 @@ spec:
     # the hub drives the supervisor control plane :8080 (only)
     - toEndpoints: [{ matchLabels: { app: agent-runtime } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    # the hub's conversation store (agora ADR 0009)
+    - toEndpoints: [{ matchLabels: { cnpg.io/cluster: agora-pg } }]
+      toPorts: [{ ports: [{ port: "5432", protocol: TCP }] }]
+---
+# --- agora-pg: the hub's conversation store (agora ADR 0009) — cloned from pocket-id-pg ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-pg
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: agora-pg
+  ingress:
+    # app -> postgres
+    - fromEndpoints:
+        - matchLabels:
+            app: website
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # CNPG operator -> instance (status :8000 + SQL :5432 for management)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+            k8s:app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+            - { port: "5432", protocol: TCP }
+    # intra-cluster (replication / future HA) — same CNPG cluster
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    # kubelet probes -> status :8000
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    # Prometheus (observability) -> CNPG metrics :9187 (PodMonitor)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    # instance manager -> kube-apiserver
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # barman backups -> S3 / Cloudflare R2 (external HTTPS). Tighten to toFQDNs later.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    # intra-cluster (replication / future HA)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }

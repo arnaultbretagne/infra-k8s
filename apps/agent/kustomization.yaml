@@ -6,6 +6,8 @@ resources:
   - secrets.yaml          # oauth2-proxy (SOPS). claude-creds is created out-of-band (see README-note below)
   - claude-oauth.secrets.yaml   # static setup-token OAuth token (SOPS) — runtime auth, agent-runtime ADR 0007
   - pvc.yaml
+  - cnpg.yaml
+  - restore-test.yaml
   - agent-runtime.yaml
   - website.yaml
   - oauth2-proxy.yaml

@@ -30,6 +30,9 @@ spec:
             - { name: PORT, value: "8600" }
             - { name: HOST, value: "0.0.0.0" }
             - { name: DATA_DIR, value: /data }
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: agora-pg-app, key: uri }
             - { name: SUPERVISOR_URL, value: http://agent.agent.svc.cluster.local:8080 }
             # what spawned channels (in the runtime pod) dial back to reach the hub
             - { name: CHANNEL_HUB_URL, value: ws://website.agent.svc.cluster.local:8600/ws/channel }

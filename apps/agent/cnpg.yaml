@@ -1,0 +1,57 @@
+# The hub's conversation store (agora ADR 0009): the durable tier of the two-tier
+# conversation state. Dedicated cluster — NOT shared with pocket-id (the IdP's blast
+# radius stays its own). No bretagne-critical: agora is not on the cluster's own
+# critical path, and the box is RAM-tight — modest envelope on purpose.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: agora-pg
+spec:
+  instances: 1
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+  # operator-managed PodMonitor (:9187) — feeds the generic CNPG backup/WAL alerts
+  monitoring:
+    enablePodMonitor: true
+
+  storage:
+    size: 1Gi
+    storageClass: local-path
+
+  bootstrap:
+    initdb:
+      database: agora
+      owner: agora
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/agora
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-s3-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: snappy
+    retentionPolicy: "3d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: agora-pg-daily
+spec:
+  # 6-field robfig cron (leading SECONDS) — this is 03:15:00 daily, staggered
+  # after pocket-id's 03:00 (same R2 target, avoid concurrent base backups).
+  schedule: "0 15 3 * * *"
+  cluster:
+    name: agora-pg
+  backupOwnerReference: self

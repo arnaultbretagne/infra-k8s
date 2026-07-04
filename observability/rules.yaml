@@ -44,7 +44,7 @@ spec:
           # drill specifically to critical: a failed drill means the backup is NOT
           # restorable, which is a DR emergency, not a routine job blip. Same metric as
           # KubeJobFailed (kube_job_failed) so behaviour is consistent.
-          expr: kube_job_failed{job="kube-state-metrics", job_name=~"pocket-id-pg-restore-test.*"} > 0
+          expr: kube_job_failed{job="kube-state-metrics", job_name=~".*-pg-restore-test.*"} > 0
           for: 5m
           labels:
             severity: critical

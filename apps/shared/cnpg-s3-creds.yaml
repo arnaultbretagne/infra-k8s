@@ -25,3 +25,11 @@ spec:
         annotations:
           fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
       type: Opaque
+    - apiVersion: v1
+      kind: Secret
+      metadata:
+        name: cnpg-s3-creds
+        namespace: agent
+        annotations:
+          fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
+      type: Opaque
