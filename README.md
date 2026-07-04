@@ -32,6 +32,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Host terminal | Host-side `ttyd` exposed through oauth2-proxy as an exceptional admin surface | [0023](docs/adr/0023-web-shell-terminal.md) |
 | Application profiles | Shared `public-app`, `private-app`, `infra`, `host-admin`, and `untrusted-compute` workload taxonomy | [0024](docs/adr/0024-application-profiles.md) |
 | Policy enforcement | Validation-only guardrails with PSA and ValidatingAdmissionPolicy before any external policy engine | [0025](docs/adr/0025-policy-enforcement.md) |
+| GitOps root of trust | `infra-k8s/main` as the platform admin boundary; agents and automation must go through PRs | [0026](docs/adr/0026-gitops-root-of-trust.md) |
 
 ¹ Supersedes MetalLB ([0007](docs/adr/0007-metallb-loadbalancer.md)) — Cilium handles LoadBalancer IP assignment natively.
 
