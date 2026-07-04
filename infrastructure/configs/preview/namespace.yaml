@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: preview
+  labels:
+    platform.bretagne.dev/profile: untrusted-compute   # ADR 0024 / ADR 0017 v3 §6
+    pod-security.kubernetes.io/enforce: restricted
