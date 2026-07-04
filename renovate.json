@@ -22,6 +22,15 @@
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "k0sproject/k0s",
       "versioningTemplate": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\+k0s\\.(?<build>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "gVisor (runsc) host binary pinned in bootstrap.sh — PR on new releases; apply stays deliberate and supervised (ADR 0027 §6, same host-substrate flow as K0S_VERSION). google/gvisor has no published GitHub Releases, only tags (release-20260622.0 style), so this uses github-tags, not github-releases.",
+      "fileMatch": ["^bootstrap/bootstrap\\.sh$"],
+      "matchStrings": ["RUNSC_VERSION=\"(?<currentValue>release-[0-9]{8}\\.[0-9]+)\""],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "google/gvisor",
+      "versioningTemplate": "regex:^release-(?<major>\\d{8})\\.(?<minor>\\d+)$"
     }
   ],
   "packageRules": [
@@ -30,6 +39,12 @@
       "matchDepNames": ["k0sproject/k0s"],
       "addLabels": ["k0s", "manual-apply"],
       "groupName": "k0s (deliberate apply — ADR 0015)"
+    },
+    {
+      "description": "runsc (gVisor) updates are NOT applied by Flux — same host-substrate flow as k0s (ADR 0027 §6): the PR is a trigger, the containerd drop-in reload is a supervised action on the live node. Flag it so it never gets auto-merged.",
+      "matchDepNames": ["google/gvisor"],
+      "addLabels": ["gvisor", "manual-apply"],
+      "groupName": "gVisor (deliberate apply — ADR 0027)"
     },
     {
       "description": "cloudnative-pg/postgresql is NOT an independent dependency — it's a TOOL image (oidc-reconciler, restore-drill, chown init) that must mirror the CNPG database major (currently 17). The restore-drill boots a Postgres on data restored from the pg17 DB; pg18 binaries can't start a pg17 data dir, so a blind bump would break the backup drill. Renovate can't see the DB version (it's in a CNPG Cluster CRD it doesn't parse), so it must not drive this bump. The :17 tag already floats to the latest 17.x; bump every reference by hand, together, during a deliberate DB major migration.",
