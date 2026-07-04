@@ -19,7 +19,7 @@ REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BOOTSTRAP_DIR="$REPO_DIR/bootstrap"
 
 # ─── Configuration ────────────────────────────────────────────────────
-K0S_VERSION="v1.35.2+k0s.0"
+K0S_VERSION="v1.36.2+k0s.0"
 FLUX_VERSION="2.8.3"
 SOPS_VERSION="3.9.4"
 
