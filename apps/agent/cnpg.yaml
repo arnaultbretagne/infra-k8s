@@ -52,6 +52,10 @@ spec:
   # 6-field robfig cron (leading SECONDS) — this is 03:15:00 daily, staggered
   # after pocket-id's 03:00 (same R2 target, avoid concurrent base backups).
   schedule: "0 15 3 * * *"
+  # Back up immediately on creation so a fresh cluster never sits backup-less until
+  # the first scheduled slot (avoids a cold-start CNPGBackupTooOld). Acts only at
+  # creation time — no effect on this already-backed-up cluster.
+  immediate: true
   cluster:
     name: agora-pg
   backupOwnerReference: self

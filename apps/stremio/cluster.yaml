@@ -48,6 +48,11 @@ metadata:
 spec:
   # 6-field robfig cron (leading SECONDS), staggered after other app DB backups.
   schedule: "0 30 3 * * *"
+  # Take a base backup as soon as this object is created, don't wait for the first
+  # scheduled slot. Without it a fresh cluster has no backup until the next 03:30,
+  # so cnpg_collector_last_available_backup_timestamp stays 0 and CNPGBackupTooOld
+  # fires critical on every new DB. immediate only acts at creation time.
+  immediate: true
   cluster:
     name: aiostreams-pg
   backupOwnerReference: self

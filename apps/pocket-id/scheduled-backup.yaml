@@ -6,6 +6,10 @@ spec:
   # CNPG uses robfig/cron with a leading SECONDS field (6 fields). A 5-field expr like
   # "0 3 * * *" parses as sec=0 min=3 hour=* → runs hourly, not daily. This is 03:00:00 daily.
   schedule: "0 0 3 * * *"
+  # Back up immediately on creation so a fresh cluster never sits backup-less until
+  # the first scheduled slot (avoids a cold-start CNPGBackupTooOld). Acts only at
+  # creation time — no effect on this already-backed-up cluster.
+  immediate: true
   cluster:
     name: pocket-id-pg
   backupOwnerReference: self
