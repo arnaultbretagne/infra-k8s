@@ -80,6 +80,7 @@ gVisor requires no hardware virtualization: its `systrap` platform intercepts th
 
 - gVisor is **not** a hypervisor. An attacker who compromises the Sentry and then exploits the host through its reduced seccomp'd syscall surface escapes. This class of escape is rare (years of production exposure at Google-scale) but not theoretical-zero.
 - **Compatibility edges exist**: `io_uring` (disabled by default), eBPF inside the sandbox, parts of `/proc`/`/sys`, ptrace-based tooling, nested container runtimes. If an agent workload breaks mysteriously *only* under the sandbox, suspect the sandbox first, use the per-pod opt-out consciously, and record it.
+- **`kubectl port-forward` fails against sandboxed pods** (confirmed 2026-07-04, preview E2E test): the app is reachable and correct via direct pod-IP (`curl $PODIP:$PORT` from the node works fine), but `kubectl port-forward` gets `connection refused` — the nsenter-into-netns-then-dial-localhost mechanism kubelet uses doesn't reach the Sentry's userspace netstack the same way it reaches a runc pod's kernel netns. Use direct pod-IP access (or a Service) for debugging sandboxed pods, not port-forward.
 - **CPU side channels remain**: all sandboxes share the node's cores; no core isolation on a 6-vCPU VPS. Out of scope at this threat level.
 - Sandboxing **stacks on** — never replaces — the existing layers: default-deny CNP, quotas, PSS restricted, `automountServiceAccountToken: false` (ADR 0020/0024/0025).
 
