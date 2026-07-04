@@ -11,3 +11,4 @@ resources:
   - priorityclasses
   - sandboxed-runtime
   - policies
+  - preview
