@@ -9,3 +9,5 @@ resources:
   - cert-manager-issuers
   - flux-hardening
   - priorityclasses
+  - sandboxed-runtime
+  - policies

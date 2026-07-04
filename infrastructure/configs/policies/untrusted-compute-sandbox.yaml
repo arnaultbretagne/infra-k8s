@@ -1,0 +1,35 @@
+# ADR 0027 §4 — untrusted-compute pods must be sandboxed. CNPG-managed pods exempt
+# (trusted upstream software; future preview db-clones). The binding selects ONLY namespaces
+# carrying the untrusted-compute profile label: today that is `preview` alone.
+# The `agent` namespace gets the label in follow-up F3, AFTER its pods are migrated —
+# do NOT label it before then: this binding Denies.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: untrusted-compute-requires-sandbox
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: >-
+        (has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels)
+        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'sandboxed')
+      message: >-
+        Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (ADR 0027).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: untrusted-compute-requires-sandbox
+spec:
+  policyName: untrusted-compute-requires-sandbox
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        platform.bretagne.dev/profile: untrusted-compute

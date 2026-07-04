@@ -92,3 +92,18 @@ gVisor requires no hardware virtualization: its `systrap` platform intercepts th
 - `docs/hosting-an-app.md` profile table gains the runtime column (`untrusted-compute` ⇒ `sandboxed` mandatory).
 - Benchmark results (A/B numbers) are recorded in this ADR when produced.
 - Revisit triggers: substrate gains KVM (machine change) → Kata handler swap ADR amendment; k0s ships containerd ≥ 2.0 → adopt pod user namespaces cluster-wide.
+
+### Benchmark results (2026-07-04, runsc release-20260622.0, `node:20-alpine`, best-of-2)
+
+| workload | runc (`real`) | runsc (`real`) | overhead |
+|---|---|---|---|
+| `npm i express axios lodash` | 7s | 17s | ~140% |
+| `git clone --depth 1 expressjs/express` | 1s | 1s | noise |
+
+The npm-install number is well above the ~10–40% expected range stated above — `directFS` does not
+fully absorb a burst of many small file writes at this scale. This is a **microbenchmark**, not an
+end-to-end session number, so it does not by itself meet the >25% escalation criterion (§7), which is
+scoped to *session-level* degradation. It does mean: don't read "10–40%" as a hard ceiling for
+syscall-heavy microbenchmarks — expect package-install-class bursts to look worse in isolation than
+they'll feel inside an inference-dominated agent session. Re-measure with a real agent flow before the
+`agent` namespace migration gate (follow-up F3) rather than trusting this number alone.
