@@ -22,6 +22,7 @@ BOOTSTRAP_DIR="$REPO_DIR/bootstrap"
 K0S_VERSION="v1.35.2+k0s.0"
 FLUX_VERSION="2.8.3"
 SOPS_VERSION="3.9.4"
+RUNSC_VERSION="release-20260622.0"
 
 AES_KEY_FILE="${AES_KEY_FILE:-/root/.config/k0s/encryption-key}"
 
@@ -262,6 +263,32 @@ else
   chmod +x /usr/local/bin/sops
   ok "sops installed"
 fi
+
+# runsc (gVisor) — untrusted-compute runtime substrate (ADR 0027).
+if command -v runsc &>/dev/null && runsc --version 2>/dev/null | grep -q "$RUNSC_VERSION"; then
+  ok "runsc ${RUNSC_VERSION} already installed"
+else
+  gvisor_tmp=$(mktemp -d)
+  gvisor_url="https://storage.googleapis.com/gvisor/releases/release/${RUNSC_VERSION}/x86_64"
+  curl -sSLo "$gvisor_tmp/runsc" "${gvisor_url}/runsc"
+  curl -sSLo "$gvisor_tmp/runsc.sha512" "${gvisor_url}/runsc.sha512"
+  curl -sSLo "$gvisor_tmp/containerd-shim-runsc-v1" "${gvisor_url}/containerd-shim-runsc-v1"
+  curl -sSLo "$gvisor_tmp/containerd-shim-runsc-v1.sha512" "${gvisor_url}/containerd-shim-runsc-v1.sha512"
+  (cd "$gvisor_tmp" && sha512sum -c runsc.sha512 && sha512sum -c containerd-shim-runsc-v1.sha512)
+  chmod a+rx "$gvisor_tmp/runsc" "$gvisor_tmp/containerd-shim-runsc-v1"
+  mv "$gvisor_tmp/runsc" "$gvisor_tmp/containerd-shim-runsc-v1" /usr/local/bin/
+  rm -rf "$gvisor_tmp"
+  ok "runsc ${RUNSC_VERSION} installed"
+fi
+
+mkdir -p /etc/k0s/containerd.d
+cat > /etc/k0s/containerd.d/gvisor.toml <<'EOF'
+version = 2
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+  runtime_type = "io.containerd.runsc.v1"
+  runtime_path = "/usr/local/bin/containerd-shim-runsc-v1"
+EOF
+ok "containerd runsc drop-in written (k0s reloads containerd automatically)"
 
 # ─── Phase 3: Secrets ────────────────────────────────────────────────
 log "Phase 3 — Secrets"
