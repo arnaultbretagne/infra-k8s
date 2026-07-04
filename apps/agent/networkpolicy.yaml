@@ -135,3 +135,51 @@ spec:
         - ports:
             - { port: "5432", protocol: TCP }
             - { port: "8000", protocol: TCP }
+---
+# --- the OIDC gate: the only public door. Ingress from Traefik only; egress to the
+#     issuer (OIDC discovery/token) + the hub upstream + DNS. Was relying on defaults
+#     (audit F-03) — now explicit, mirroring apps/code-server/networkpolicy.yaml. ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    # Traefik serves agent.bretagne.dev -> proxy :4180
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    # -> DNS (CoreDNS)
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # -> the hub upstream (OAUTH2_PROXY_UPSTREAMS = website:8600)
+    - toEndpoints:
+        - matchLabels:
+            app: website
+      toPorts:
+        - ports: [{ port: "8600", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token). The public IP resolves to the node,
+    # then kube-proxy DNATs to the Traefik pod — allow both paths (as code-server does).
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

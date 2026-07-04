@@ -17,14 +17,22 @@ spec:
       labels:
         app: agent-runtime
     spec:
+      # this pod never talks to the Kubernetes API — don't hand it a token (audit F-02,
+      # agent-runtime ADR 0003: isolation by absence of an API token)
+      automountServiceAccountToken: false
       securityContext:
+        runAsNonRoot: true    # image is USER node (uid 1000); declare it so PSS restricted admits it (F-01)
+        runAsUser: 1000
         fsGroup: 1000         # so uid-1000 (node) can write the local-path PVC + emptyDir
         seccompProfile:
           type: RuntimeDefault
       initContainers:
         # 1. stage the channel plugin (from the agora product image) into a shared dir
         - name: fetch-channel
-          image: ghcr.io/arnaultbretagne/agora-website:latest
+          # pinned to the live digest — immutable, so Git == what runs (audit F-04).
+          # NOTE: this is a DIFFERENT agora-website build than website.yaml runs (both were
+          # ":latest" and drifted apart live); reconcile to one digest on the next release.
+          image: ghcr.io/arnaultbretagne/agora-website:latest@sha256:94b80be1c993732c58a734e6d9be3a4ef1b3ed0989f4702d5fc55b392a38a493
           # -r, not -a: the emptyDir is non-root-owned, so preserving attrs (-a) EPERMs
           command: ["sh", "-c", "cp -r /opt/agora/. /channel-src/"]
           volumeMounts:
@@ -35,7 +43,7 @@ spec:
         # 2. seed the PVC once: install the channel plugin (if absent). Creds are NOT seeded here
         #    anymore — auth is a static setup-token via env CLAUDE_CODE_OAUTH_TOKEN (ADR 0007).
         - name: seed
-          image: ghcr.io/arnaultbretagne/agent-runtime:latest
+          image: ghcr.io/arnaultbretagne/agent-runtime:latest@sha256:453ec5005d5ccfeeabfb4d3883bc038b8b34281ca697c478a306822518e9d9c7
           command:
             - sh
             - -c
@@ -58,7 +66,8 @@ spec:
             capabilities: { drop: [ALL] }
       containers:
         - name: supervisor
-          image: ghcr.io/arnaultbretagne/agent-runtime:latest
+          # pinned to the live digest (audit F-04) — same build as the seed initContainer
+          image: ghcr.io/arnaultbretagne/agent-runtime:latest@sha256:453ec5005d5ccfeeabfb4d3883bc038b8b34281ca697c478a306822518e9d9c7
           ports:
             - containerPort: 8080
           env:
