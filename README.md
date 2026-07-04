@@ -33,6 +33,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Application profiles | Shared `public-app`, `private-app`, `infra`, `host-admin`, and `untrusted-compute` workload taxonomy | [0024](docs/adr/0024-application-profiles.md) |
 | Policy enforcement | Validation-only guardrails with PSA and ValidatingAdmissionPolicy before any external policy engine | [0025](docs/adr/0025-policy-enforcement.md) |
 | GitOps root of trust | `infra-k8s/main` as the platform admin boundary; agents and automation must go through PRs | [0026](docs/adr/0026-gitops-root-of-trust.md) |
+| Sandboxed runtime | gVisor `sandboxed` RuntimeClass for untrusted compute (no KVM on the VPS); microVM is the escalation path | [0027](docs/adr/0027-sandboxed-runtime-untrusted-compute.md) |
 
 ¹ Supersedes MetalLB ([0007](docs/adr/0007-metallb-loadbalancer.md)) — Cilium handles LoadBalancer IP assignment natively.
 
