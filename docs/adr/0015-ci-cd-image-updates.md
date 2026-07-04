@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — **amended 2026-06-29** (see Amendment: 3-tier app taxonomy)
+Accepted — **amended 2026-06-29** (3-tier app taxonomy) and **2026-07-04** (k0s host-substrate update flow)
 
 ## Amendment 2026-06-29 — From binary to 3-tier app taxonomy; code-server + terminal are config-only
 
@@ -33,6 +33,36 @@ Same lens applies to `terminal`.
 **Consequence:** GHCR/CI/Flux-Image-Automation now matters **only for the obsidian apps**.
 When a custom image *is* built, it is published under the operator's **personal account
 (`ghcr.io/arnaultbretagne/...`), not `ab-craft`.**
+
+## Amendment 2026-07-04 — k0s host-substrate updates: a fourth flow, deliberate-apply
+
+The three flows below all share one property: **the PR merge is the deployment trigger**
+(Flux reconciles the merged manifest into the cluster). The **k0s binary itself** is the one
+dependency that *cannot* work this way, and it deserves its own flow.
+
+**Why it's different.** k0s is the host binary that runs the cluster — and therefore runs Flux.
+It lives *below* the layer Flux manages: Flux reconciles resources *inside* the cluster, it cannot
+swap the host's k0s binary. So a version bump can be **pinned + PR'd like everything else**, but it
+**cannot be *applied* by a Flux reconcile**. This is inherent (a bootstrap boundary — the thing that
+runs the updater can't silently update itself), not a gap to close.
+
+**The flow:**
+- **Pin** — the version is a single source of truth in Git: `K0S_VERSION` in `bootstrap/bootstrap.sh`.
+- **PR** — a Renovate **custom manager** (regex on `K0S_VERSION`, datasource `github-releases`
+  `k0sproject/k0s`) opens a PR on each new k0s release — same review gate as images/charts.
+- **Apply — deliberate & supervised, NOT a reconcile.** After merge, the update is applied as a
+  chosen action: an Autopilot `Plan` (pinned to the merged version) applied at a chosen moment, with
+  `state.db` backed up first. k0s verifies the binary signature and restarts.
+- **No autonomous `UpdateConfig`.** k0s Autopilot *can* self-poll a channel and auto-plan updates,
+  but we deliberately **do not** wire that on this **single node**: an unattended control-plane
+  restart with **no HA failover** is the lockout class we avoid everywhere (same reasoning that
+  dropped cilium kube-proxy-replacement, ADR 0006). Host *OS* patches stay autonomous
+  (unattended-upgrades) because a package update is far lower blast-radius than the orchestrator binary.
+
+**Net:** k0s is managed "like everything else" on what matters — pinned, PR'd, single-source, reviewed —
+with one honest, deliberate exception: the *apply trigger* is a supervised action, not an unattended
+reconcile. (This also corrects ADR 0001's implication that k0s auto-update/Autopilot is wired — it is
+present but intentionally unconfigured for the control plane.)
 
 ## Status (original)
 
