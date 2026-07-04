@@ -1,0 +1,82 @@
+# ADR 0017 v3 — in-cluster preview tier, v1 scope: infra-k8s PRs, demo app only.
+# Trust model (§1): this object is main-reviewed → applied cluster-admin by the flux-operator;
+# the PR's content is applied ONLY by the inner Kustomization, impersonating preview-applier.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-infra-prs
+  namespace: flux-system
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  # No secretRef: repo is public, unauthenticated GitHub API access is fine here.
+  # Default reconcile interval is 10m (6 req/h) — well under the 60 req/h unauthenticated
+  # cap; git clones for per-PR GitRepository objects use plain HTTPS, not the API, so they
+  # don't count against this quota either. Revisit if more unauthenticated API consumers
+  # ever share this VPS's public IP.
+  filter:
+    labels: ["preview"]
+    limit: 3            # upstream default is 100 — cap hard (ADR 0017 v3 §7)
+---
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: preview
+  namespace: flux-system
+spec:
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      name: preview-infra-prs
+  resources:
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      metadata:
+        name: preview-pr<< inputs.id >>
+        namespace: preview
+      spec:
+        interval: 5m
+        url: https://github.com/arnaultbretagne/infra-k8s
+        ref:
+          commit: "<< inputs.sha >>"     # exact SHA — the polled label authorizes THIS commit
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      metadata:
+        name: preview-pr<< inputs.id >>
+        namespace: preview
+      spec:
+        serviceAccountName: preview-applier   # THE load-bearing line (ADR 0017 v3 §1)
+        interval: 10m
+        retryInterval: 2m
+        timeout: 3m
+        wait: true
+        prune: true
+        sourceRef:
+          kind: GitRepository
+          name: preview-pr<< inputs.id >>
+        path: ./apps/preview-demo             # v1: fixed demo path; per-app onboarding = F2
+        targetNamespace: preview
+        nameSuffix: -pr<< inputs.id >>
+        patches:
+          - target:
+              group: apps
+              kind: Deployment
+            patch: |
+              - op: add
+                path: /spec/template/spec/runtimeClassName
+                value: sandboxed
+              - op: add
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
+              - op: add
+                path: /spec/template/spec/priorityClassName
+                value: bretagne-low
+          - target:
+              group: gateway.networking.k8s.io
+              kind: HTTPRoute
+            patch: |
+              - op: replace
+                path: /spec/parentRefs
+                value:
+                  - name: bretagne-gateway
+                    namespace: traefik
+                    sectionName: https-preview   # listener does not exist yet (F1) → routes inert

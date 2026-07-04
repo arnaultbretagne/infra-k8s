@@ -1,0 +1,7 @@
+# Preview-machinery demo app (ADR 0017 v3). NOT listed in apps/kustomization.yaml on purpose:
+# this path is only ever built by per-PR preview Kustomizations (targetNamespace: preview).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
