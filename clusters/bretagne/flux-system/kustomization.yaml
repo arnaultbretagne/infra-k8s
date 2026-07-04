@@ -29,5 +29,6 @@ patches:
       metadata:
         name: flux-system
         labels:
+          platform.bretagne.dev/profile: infra   # ADR 0024 — GitOps control plane
           pod-security.kubernetes.io/enforce: restricted
           pod-security.kubernetes.io/enforce-version: latest

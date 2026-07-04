@@ -3,4 +3,5 @@ kind: Namespace
 metadata:
   name: traefik
   labels:
+    platform.bretagne.dev/profile: infra   # ADR 0024 — ingress/gateway control-plane component
     pod-security.kubernetes.io/enforce: baseline

@@ -2,3 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: agent
+  # ADR 0024 target profile: untrusted-compute. NOT labelled yet: the ADR 0027
+  # untrusted-compute-sandbox VAP binding (Deny) requires runtimeClassName: sandboxed,
+  # which agent pods do not use. Apply the profile label in F3, AFTER migrating the
+  # agent workloads to the sandboxed runtime (see infrastructure/configs/sandboxed-runtime).

@@ -3,6 +3,7 @@ kind: Namespace
 metadata:
   name: local-path-storage
   labels:
+    platform.bretagne.dev/profile: infra   # ADR 0024 — storage provisioner, privileged is a scoped infra exception
     # privileged: local-path-provisioner's helper pods mount hostPath to create PVs,
     # which baseline/restricted forbid → PVCs stay Pending, all stateful apps blocked.
     # Only this storage-provisioner namespace is privileged; app namespaces stay restricted.
