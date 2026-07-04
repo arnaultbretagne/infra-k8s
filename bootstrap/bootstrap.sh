@@ -179,10 +179,43 @@ net.ipv4.tcp_syncookies = 1
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
+
+# Memory: pairs with the swapfile below. Low swappiness = swap only under real
+# pressure (a relief valve), never proactively — anon pages stay in RAM at rest.
+vm.swappiness = 10
 EOF
 
 sysctl --system &>/dev/null
 ok "Sysctl hardened"
+
+# Swap — relief valve against memory-pressure I/O hangs.
+# The node runs swapless by default. Under a memory spike (e.g. a Traefik
+# restart cascading into Cilium) the kernel has no valve: it evicts file-backed
+# pages — executable text, mmap'd files — and immediately re-faults them from
+# disk (major page faults). At thousands/s this saturates the virtual disk's
+# read path until tasks wedge in D state and the VM looks like an I/O hang.
+# A small swapfile absorbs the spike. Safe for kubelet: k0s sets
+# failSwapOn=false with NoSwap behavior, so pods never swap — host-level only.
+SWAPFILE=/swapfile
+SWAP_SIZE=4G
+if swapon --show=NAME --noheadings 2>/dev/null | grep -qx "$SWAPFILE"; then
+  ok "Swap already active ($SWAPFILE)"
+else
+  if [ ! -f "$SWAPFILE" ]; then
+    fallocate -l "$SWAP_SIZE" "$SWAPFILE" \
+      || dd if=/dev/zero of="$SWAPFILE" bs=1M count=4096 status=none
+    chmod 600 "$SWAPFILE"
+    mkswap "$SWAPFILE" >/dev/null
+  fi
+  swapon "$SWAPFILE"
+  ok "Swap enabled ($SWAP_SIZE at $SWAPFILE, swappiness=10)"
+fi
+
+# Persist across reboots (swappiness is applied via the sysctl drop-in above).
+if ! grep -qE "^[[:space:]]*$SWAPFILE[[:space:]]" /etc/fstab; then
+  echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+  ok "Swap persisted in /etc/fstab"
+fi
 
 # ─── Phase 2: Install tools ──────────────────────────────────────────
 log "Phase 2 — Tools"
@@ -468,6 +501,7 @@ printf '    API:       https://%s:6443 (blocked from internet)\n' "$PUBLIC_IP"
 printf '    Firewall:  22/80/443 public — 6443/10250 internal\n'
 printf '    SSH:       password disabled, root key-only\n'
 printf '    fail2ban:  active\n'
+printf '    Swap:      4 GiB relief valve (swappiness=10)\n'
 printf '    Updates:   unattended-upgrades active\n'
 printf '    Flux:      watching main → %s\n' "$CLUSTER_PATH"
 printf '    SOPS:      age key loaded in flux-system/sops-age\n'
