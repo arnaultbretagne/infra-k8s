@@ -71,3 +71,44 @@ spec:
           annotations:
             summary: 'Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in less than 14 days'
             description: 'cert-manager should renew at 30 days before expiry — if this fires, renewal is broken (ACME/HTTP-01 path).'
+---
+# Edge RED (ADR 0014's promised custom rules, part 1): low-cardinality series for
+# 30d trends + the missing symptom alerts (error ratio / latency at the edge).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bretagne-edge
+  namespace: observability
+spec:
+  groups:
+    - name: traefik-recording
+      rules:
+        - record: traefik:requests:rate5m
+          expr: sum by (service) (rate(traefik_service_requests_total[5m]))
+        - record: traefik:errors5xx:ratio_rate5m
+          expr: |
+            sum by (service) (rate(traefik_service_requests_total{code=~"5.."}[5m]))
+              /
+            sum by (service) (rate(traefik_service_requests_total[5m]))
+        - record: traefik:request_duration:p95_5m
+          expr: histogram_quantile(0.95, sum by (service, le) (rate(traefik_service_request_duration_seconds_bucket[5m])))
+    - name: traefik-symptoms
+      rules:
+        - alert: EdgeService5xxRatioHigh
+          # Symptom alert (users are seeing errors). The rate() floor avoids firing
+          # on a single failed request against near-zero traffic.
+          expr: traefik:errors5xx:ratio_rate5m > 0.05 and traefik:requests:rate5m > 0.1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Edge 5xx ratio >5% on {{ $labels.service }}'
+            description: 'More than 5% of requests through Traefik fail for this service — users are impacted right now.'
+        - alert: EdgeServiceLatencyP95High
+          expr: traefik:request_duration:p95_5m > 1 and traefik:requests:rate5m > 0.1
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Edge p95 latency >1s on {{ $labels.service }}'
+            description: 'p95 served by Traefik exceeds 1s sustained — degraded experience, look at the app then the node (USE).'
