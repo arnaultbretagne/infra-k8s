@@ -274,7 +274,7 @@ data:
                       "type": "prometheus",
                       "uid": "prometheus"
                     },
-                    "expr": "max(traefik:request_duration:p95_5m) or vector(0)",
+                    "expr": "max(traefik:request_duration:p95_5m and traefik:requests:rate5m > 0) or vector(0)",
                     "instant": true
                   }
                 ],
