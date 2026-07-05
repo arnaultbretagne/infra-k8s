@@ -80,3 +80,8 @@ spec:
     logs:
       general:
         level: INFO
+      access:
+        # JSON to stdout -> Alloy tails it -> Loki. Log everything (4.7 lines/s
+        # baseline leaves huge headroom); filter to 4xx/5xx only if volume grows.
+        enabled: true
+        format: json
