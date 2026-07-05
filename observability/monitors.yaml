@@ -36,3 +36,21 @@ spec:
   podMetricsEndpoints:
     - port: http-prom
       interval: 60s
+---
+# Traefik edge metrics (containerPort "metrics" :9100) — the cluster-wide RED source.
+# PodMonitor (not ServiceMonitor): the chart's Service doesn't expose the metrics
+# port and adding it would be needlessly invasive.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: traefik
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [traefik]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s

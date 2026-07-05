@@ -69,6 +69,13 @@ spec:
       limits:
         memory: 256Mi
 
+    # Edge RED (research 2026-07-04 §4.1): custom latency buckets — the default
+    # [0.1,0.3,1.2,5.0] makes p95/p99 useless. addServices/EntryPoints labels are
+    # chart defaults (true); addRoutersLabels stays off (cardinality for nothing).
+    metrics:
+      prometheus:
+        buckets: "0.025,0.05,0.1,0.25,0.5,1.0,2.5,5.0,10.0"
+
     # Logs
     logs:
       general:
