@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - untrusted-compute-sandbox.yaml
   - app-baseline.yaml
+  - profile-specific.yaml

@@ -1,0 +1,130 @@
+# ADR 0025 — profile-specific policies (phase 3 of the rollout).
+#
+# Three invariants from the ADR's "first policy set":
+#   1. host-admin workloads stay exceptional      → host-admin-no-pods (Deny)
+#   2. untrusted compute gets no ambient creds    → untrusted-compute-no-ambient-credentials (Warn/Audit)
+#   3. infra exceptions stay out of app namespaces → profile-psa-alignment (Warn/Audit)
+---
+# The only host-admin namespace (terminal) carries edge glue (Service,
+# EndpointSlice, HTTPRoute) to the HOST oauth2-proxy and runs NO pods by design.
+# Deny directly (not Warn first): zero pods exist today so nothing legitimate can
+# break, and a pod appearing in a host-admin namespace is exactly the event this
+# must stop, not merely log. Adding a real host-admin workload later means
+# amending this policy with an explicit named allowlist — that review moment is
+# the point (ADR 0024: host-admin "must remain exceptional and small").
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: host-admin-no-pods
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "false"
+      message: >-
+        host-admin namespaces carry edge routing only; no pod is allowed. To add
+        a real host-admin workload, amend the host-admin-no-pods policy with an
+        explicit allowlist (ADR 0024 / ADR 0025).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: host-admin-no-pods
+spec:
+  policyName: host-admin-no-pods
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        platform.bretagne.dev/profile: host-admin
+---
+# Untrusted compute must not receive ambient cluster credentials: every pod must
+# explicitly opt out of service account token automount. The preview ResourceSet
+# already patches automountServiceAccountToken: false onto Deployments; this
+# closes the gap for any other pod-creating shape a preview could smuggle in
+# (Job, StatefulSet, bare Pod). CNPG-managed pods are exempt for the same reason
+# as in untrusted-compute-sandbox: trusted upstream software that needs the API.
+# Warn/Audit first (ADR 0025 step 4): the ResourceSet patch only covers
+# Deployments, so promote to Deny after confirming no other pod shape appears.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: untrusted-compute-no-ambient-credentials
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: >-
+        (has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels)
+        || (has(object.spec.automountServiceAccountToken)
+            && object.spec.automountServiceAccountToken == false)
+      message: >-
+        Pods in untrusted-compute namespaces must set
+        automountServiceAccountToken: false (ADR 0024 / ADR 0025).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: untrusted-compute-no-ambient-credentials
+spec:
+  policyName: untrusted-compute-no-ambient-credentials
+  validationActions: [Warn, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        platform.bretagne.dev/profile: untrusted-compute
+---
+# Profile ↔ PSA alignment: namespaces classified as application or host-admin
+# profiles must keep PSA enforce=restricted. This is the "infra exceptions must
+# not leak into application namespaces" invariant in admission form — relaxing
+# PSA on an app namespace (the main path by which privileged/hostPath shapes
+# would sneak past) now trips policy instead of passing silently. infra
+# namespaces are exempt: their baseline/privileged levels are the documented,
+# namespace-scoped exceptions. Warn/Audit first; all current namespaces comply,
+# promote to Deny after one clean reconcile cycle.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: profile-psa-alignment
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["namespaces"]
+  validations:
+    - expression: >-
+        !(object.metadata.labels['platform.bretagne.dev/profile'] in
+          ['public-app', 'private-app', 'untrusted-compute', 'host-admin'])
+        || (has(object.metadata.labels) &&
+            'pod-security.kubernetes.io/enforce' in object.metadata.labels &&
+            object.metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted')
+      message: >-
+        Namespaces with an application or host-admin profile must set
+        pod-security.kubernetes.io/enforce: restricted; only infra namespaces
+        may carry relaxed PSA levels (ADR 0024 / ADR 0025).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: profile-psa-alignment
+spec:
+  policyName: profile-psa-alignment
+  validationActions: [Warn, Audit]
+  matchResources:
+    objectSelector:
+      matchExpressions:
+        - key: platform.bretagne.dev/profile
+          operator: Exists
