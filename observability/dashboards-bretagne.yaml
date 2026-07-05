@@ -61,7 +61,7 @@ data:
                 "title": "Alertes actives",
                 "gridPos": {
                   "h": 4,
-                  "w": 6,
+                  "w": 8,
                   "x": 0,
                   "y": 3
                 },
@@ -121,8 +121,8 @@ data:
                 "title": "Apps degradees",
                 "gridPos": {
                   "h": 4,
-                  "w": 6,
-                  "x": 6,
+                  "w": 8,
+                  "x": 8,
                   "y": 3
                 },
                 "datasource": {
@@ -185,12 +185,79 @@ data:
               {
                 "id": null,
                 "type": "stat",
+                "title": "Sondes externes KO",
+                "gridPos": {
+                  "h": 4,
+                  "w": 8,
+                  "x": 16,
+                  "y": 3
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "count(probe_success == 0) or vector(0)",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short",
+                    "decimals": 0,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "textMode": "auto",
+                  "colorMode": "background",
+                  "graphMode": "none",
+                  "justifyMode": "auto"
+                },
+                "links": [
+                  {
+                    "title": "Voir le detail",
+                    "url": "/d/n5bu_kv4k/traefik-official-kubernetes-dashboard",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "stat",
                 "title": "Ratio 5xx edge (global)",
                 "gridPos": {
                   "h": 4,
-                  "w": 6,
-                  "x": 12,
-                  "y": 3
+                  "w": 12,
+                  "x": 0,
+                  "y": 7
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -259,9 +326,9 @@ data:
                 "title": "p95 edge (max)",
                 "gridPos": {
                   "h": 4,
-                  "w": 6,
-                  "x": 18,
-                  "y": 3
+                  "w": 12,
+                  "x": 12,
+                  "y": 7
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -333,7 +400,7 @@ data:
                   "h": 1,
                   "w": 24,
                   "x": 0,
-                  "y": 7
+                  "y": 11
                 },
                 "panels": []
               },
@@ -345,7 +412,7 @@ data:
                   "h": 6,
                   "w": 6,
                   "x": 0,
-                  "y": 8
+                  "y": 12
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -415,7 +482,7 @@ data:
                   "h": 6,
                   "w": 6,
                   "x": 6,
-                  "y": 8
+                  "y": 12
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -485,7 +552,7 @@ data:
                   "h": 6,
                   "w": 6,
                   "x": 12,
-                  "y": 8
+                  "y": 12
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -555,7 +622,7 @@ data:
                   "h": 6,
                   "w": 6,
                   "x": 18,
-                  "y": 8
+                  "y": 12
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -626,7 +693,7 @@ data:
                   "h": 1,
                   "w": 24,
                   "x": 0,
-                  "y": 14
+                  "y": 18
                 },
                 "panels": []
               },
@@ -638,7 +705,7 @@ data:
                   "h": 7,
                   "w": 8,
                   "x": 0,
-                  "y": 15
+                  "y": 19
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -684,7 +751,7 @@ data:
                   "h": 7,
                   "w": 8,
                   "x": 8,
-                  "y": 15
+                  "y": 19
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -730,7 +797,7 @@ data:
                   "h": 7,
                   "w": 8,
                   "x": 16,
-                  "y": 15
+                  "y": 19
                 },
                 "datasource": {
                   "type": "prometheus",
@@ -777,7 +844,7 @@ data:
                   "h": 1,
                   "w": 24,
                   "x": 0,
-                  "y": 22
+                  "y": 26
                 },
                 "panels": []
               },
@@ -789,7 +856,7 @@ data:
                   "h": 8,
                   "w": 12,
                   "x": 0,
-                  "y": 23
+                  "y": 27
                 },
                 "datasource": {
                   "type": "loki",
@@ -827,7 +894,7 @@ data:
                   "h": 8,
                   "w": 12,
                   "x": 12,
-                  "y": 23
+                  "y": 27
                 },
                 "datasource": {
                   "type": "loki",

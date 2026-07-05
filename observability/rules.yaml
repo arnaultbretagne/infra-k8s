@@ -149,3 +149,13 @@ spec:
           annotations:
             summary: 'Prometheus head series at {{ $value }} (>120k)'
             description: 'Something started emitting high-cardinality metrics. Check scrape_series_added by job and the recent changes.'
+    - name: synthetic
+      rules:
+        - alert: PublicEndpointDown
+          expr: probe_success == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: '{{ $labels.instance }} unreachable from synthetic probe'
+            description: 'The full external chain (DNS/TLS/Traefik/app) fails as a client would see it.'
