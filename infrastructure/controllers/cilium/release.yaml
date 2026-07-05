@@ -50,10 +50,35 @@ spec:
       enabled: true
       relay:
         enabled: false
+      # Phase 1 metrics (research §4.2): careful contexts, NO httpV2 (needs the L7
+      # proxy in-path — edge RED comes from Traefik instead). Dashboards ship as
+      # ConfigMaps from the chart, picked up by the Grafana sidecar (folder annotation).
+      metrics:
+        enabled:
+          - dns:query;ignoreAAAA
+          - drop:sourceContext=identity;destinationContext=identity
+          - tcp
+          - flow
+        serviceMonitor:
+          enabled: true
+        dashboards:
+          enabled: true
+          namespace: observability
+          annotations:
+            grafana_folder: Cilium
+
+    # Agent metrics (:9962, hostNetwork — nftables rule required, see host config)
+    prometheus:
+      enabled: true
+      serviceMonitor:
+        enabled: true
 
     # Resources
     operator:
       replicas: 1          # single-node: avoid 2nd replica stuck Pending on hostPort conflict
+      prometheus:
+        serviceMonitor:
+          enabled: true       # operator.prometheus.enabled is already chart-default true
       resources:
         requests:
           cpu: 50m
