@@ -162,6 +162,14 @@ spec:
           type: loki
           access: proxy
           url: http://loki.observability.svc.cluster.local:3100
+      # Route sidecar-loaded ConfigMap dashboards into folders by annotation
+      # (Cilium/Hubble charts, Flux JSONs in P3). Un-annotated ConfigMaps (the 24
+      # kps mixins) keep landing at the provider root -> folder "General".
+      sidecar:
+        dashboards:
+          folderAnnotation: grafana_folder
+          provider:
+            foldersFromFilesStructure: true
       # Human-friendly community dashboards (folder "Bretagne"), downloaded by
       # the init container from grafana.com at pod start, pinned by revision.
       # The kube-prometheus-stack mixin dashboards (folder General) stay as the
