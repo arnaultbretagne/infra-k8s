@@ -1,0 +1,889 @@
+# Landing page ("est-ce que tout va bien, la, maintenant ?" — research S6).
+# Hand-written ConfigMap (see dashboards-flux.yaml for why not configMapGenerator).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-bretagne-home
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: Bretagne
+data:
+  bretagne-home.json: |
+          {
+            "id": null,
+            "uid": "bretagne-home",
+            "title": "Bretagne Home",
+            "tags": [
+              "bretagne"
+            ],
+            "timezone": "Europe/Paris",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "1m",
+            "time": {
+              "from": "now-15m",
+              "to": "now"
+            },
+            "panels": [
+              {
+                "id": null,
+                "type": "text",
+                "title": "",
+                "gridPos": {
+                  "h": 2,
+                  "w": 24,
+                  "x": 0,
+                  "y": 0
+                },
+                "options": {
+                  "mode": "markdown",
+                  "content": "**Ce dashboard repond a : est-ce que tout va bien, la, maintenant ?** \u2014 alertes actives, apps degradees, sante de l'edge, capacite du node, trafic et logs des 15 dernieres minutes."
+                }
+              },
+              {
+                "id": null,
+                "type": "row",
+                "title": "Ca va ?",
+                "collapsed": false,
+                "gridPos": {
+                  "h": 1,
+                  "w": 24,
+                  "x": 0,
+                  "y": 2
+                },
+                "panels": []
+              },
+              {
+                "id": null,
+                "type": "stat",
+                "title": "Alertes actives",
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 0,
+                  "y": 3
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "count(ALERTS{alertstate=\"firing\",alertname!=\"Watchdog\"}) or vector(0)",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    },
+                    "decimals": 0
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "textMode": "auto",
+                  "colorMode": "background",
+                  "graphMode": "none",
+                  "justifyMode": "auto"
+                }
+              },
+              {
+                "id": null,
+                "type": "stat",
+                "title": "Apps degradees",
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 6,
+                  "y": 3
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "count(kube_deployment_status_replicas_available < kube_deployment_spec_replicas) or vector(0)",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    },
+                    "decimals": 0
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "textMode": "auto",
+                  "colorMode": "background",
+                  "graphMode": "none",
+                  "justifyMode": "auto"
+                },
+                "links": [
+                  {
+                    "title": "Namespaces",
+                    "url": "/d/k8s_views_ns/kubernetes-views-namespaces",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "stat",
+                "title": "Ratio 5xx edge (global)",
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 12,
+                  "y": 3
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "(sum(traefik:errors5xx:ratio_rate5m * traefik:requests:rate5m) / sum(traefik:requests:rate5m)) or vector(0)",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.01
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.05
+                        }
+                      ]
+                    },
+                    "decimals": 2
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "textMode": "auto",
+                  "colorMode": "background",
+                  "graphMode": "none",
+                  "justifyMode": "auto"
+                },
+                "links": [
+                  {
+                    "title": "Traefik",
+                    "url": "/d/n5bu_kv4k/traefik-official-kubernetes-dashboard",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "stat",
+                "title": "p95 edge (max)",
+                "gridPos": {
+                  "h": 4,
+                  "w": 6,
+                  "x": 18,
+                  "y": 3
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "max(traefik:request_duration:p95_5m) or vector(0)",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s",
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.5
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    },
+                    "decimals": 3
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "textMode": "auto",
+                  "colorMode": "background",
+                  "graphMode": "none",
+                  "justifyMode": "auto"
+                },
+                "links": [
+                  {
+                    "title": "Traefik",
+                    "url": "/d/n5bu_kv4k/traefik-official-kubernetes-dashboard",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "row",
+                "title": "Capacite node",
+                "collapsed": false,
+                "gridPos": {
+                  "h": 1,
+                  "w": 24,
+                  "x": 0,
+                  "y": 7
+                },
+                "panels": []
+              },
+              {
+                "id": null,
+                "type": "gauge",
+                "title": "CPU",
+                "gridPos": {
+                  "h": 6,
+                  "w": 6,
+                  "x": 0,
+                  "y": 8
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "cluster:cpu:utilisation:ratio_rate5m",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "min": 0,
+                    "max": 1,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.7
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.9
+                        }
+                      ]
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "showThresholdLabels": false,
+                  "showThresholdMarkers": true
+                },
+                "links": [
+                  {
+                    "title": "Node Exporter Full",
+                    "url": "/d/rYdddlPWk/node-exporter-full",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "gauge",
+                "title": "RAM",
+                "gridPos": {
+                  "h": 6,
+                  "w": 6,
+                  "x": 6,
+                  "y": 8
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "cluster:memory:working_set:bytes / node_memory_MemTotal_bytes",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "min": 0,
+                    "max": 1,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.7
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.9
+                        }
+                      ]
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "showThresholdLabels": false,
+                  "showThresholdMarkers": true
+                },
+                "links": [
+                  {
+                    "title": "Node Exporter Full",
+                    "url": "/d/rYdddlPWk/node-exporter-full",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "gauge",
+                "title": "Disque /",
+                "gridPos": {
+                  "h": 6,
+                  "w": 6,
+                  "x": 12,
+                  "y": 8
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "host:root_disk:used:ratio",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "min": 0,
+                    "max": 1,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.7
+                        },
+                        {
+                          "color": "red",
+                          "value": 0.8
+                        }
+                      ]
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "showThresholdLabels": false,
+                  "showThresholdMarkers": true
+                },
+                "links": [
+                  {
+                    "title": "Node Exporter Full",
+                    "url": "/d/rYdddlPWk/node-exporter-full",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "gauge",
+                "title": "Saturation (load/core)",
+                "gridPos": {
+                  "h": 6,
+                  "w": 6,
+                  "x": 18,
+                  "y": 8
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "node_load1 / count without(cpu,mode) (node_cpu_seconds_total{mode=\"idle\"})",
+                    "instant": true
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "min": 0,
+                    "max": 2,
+                    "thresholds": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "yellow",
+                          "value": 0.7
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                  },
+                  "orientation": "auto",
+                  "showThresholdLabels": false,
+                  "showThresholdMarkers": true
+                },
+                "links": [
+                  {
+                    "title": "Node Exporter Full",
+                    "url": "/d/rYdddlPWk/node-exporter-full",
+                    "targetBlank": false
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "row",
+                "title": "Trafic (edge, par service)",
+                "collapsed": false,
+                "gridPos": {
+                  "h": 1,
+                  "w": 24,
+                  "x": 0,
+                  "y": 14
+                },
+                "panels": []
+              },
+              {
+                "id": null,
+                "type": "timeseries",
+                "title": "Requetes / s",
+                "gridPos": {
+                  "h": 7,
+                  "w": 8,
+                  "x": 0,
+                  "y": 15
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "traefik:requests:rate5m",
+                    "legendFormat": "{{service}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "reqps",
+                    "custom": {
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "showPoints": "never"
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                  },
+                  "tooltip": {
+                    "mode": "multi"
+                  }
+                }
+              },
+              {
+                "id": null,
+                "type": "timeseries",
+                "title": "Ratio 5xx",
+                "gridPos": {
+                  "h": 7,
+                  "w": 8,
+                  "x": 8,
+                  "y": 15
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "traefik:errors5xx:ratio_rate5m",
+                    "legendFormat": "{{service}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "percentunit",
+                    "custom": {
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "showPoints": "never"
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                  },
+                  "tooltip": {
+                    "mode": "multi"
+                  }
+                }
+              },
+              {
+                "id": null,
+                "type": "timeseries",
+                "title": "p95 latence",
+                "gridPos": {
+                  "h": 7,
+                  "w": 8,
+                  "x": 16,
+                  "y": 15
+                },
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "prometheus"
+                    },
+                    "expr": "traefik:request_duration:p95_5m",
+                    "legendFormat": "{{service}}"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "s",
+                    "custom": {
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "showPoints": "never"
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                  },
+                  "tooltip": {
+                    "mode": "multi"
+                  }
+                }
+              },
+              {
+                "id": null,
+                "type": "row",
+                "title": "Dernier quart d'heure",
+                "collapsed": false,
+                "gridPos": {
+                  "h": 1,
+                  "w": 24,
+                  "x": 0,
+                  "y": 22
+                },
+                "panels": []
+              },
+              {
+                "id": null,
+                "type": "logs",
+                "title": "Events Warning (k8s)",
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 23
+                },
+                "datasource": {
+                  "type": "loki",
+                  "uid": "loki"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "loki"
+                    },
+                    "expr": "{job=\"loki.source.kubernetes_events\"} | json | type=`Warning`"
+                  }
+                ],
+                "options": {
+                  "showTime": true,
+                  "sortOrder": "Descending",
+                  "enableLogDetails": true,
+                  "dedupStrategy": "none"
+                },
+                "links": [
+                  {
+                    "title": "Explore",
+                    "url": "/explore?schemaVersion=1&panes=%7B%22p1%22%3A%20%7B%22datasource%22%3A%20%22loki%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22datasource%22%3A%20%7B%22type%22%3A%20%22loki%22%2C%20%22uid%22%3A%20%22loki%22%7D%2C%20%22expr%22%3A%20%22%7Bjob%3D%5C%22loki.source.kubernetes_events%5C%22%7D%20%7C%20json%20%7C%20type%3D%60Warning%60%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22now-15m%22%2C%20%22to%22%3A%20%22now%22%7D%7D%7D&orgId=1",
+                    "targetBlank": true
+                  }
+                ]
+              },
+              {
+                "id": null,
+                "type": "logs",
+                "title": "Erreurs loggees (toutes apps)",
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 23
+                },
+                "datasource": {
+                  "type": "loki",
+                  "uid": "loki"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "loki"
+                    },
+                    "expr": "{namespace=~\".+\"} |~ `(?i)(error|panic|fatal)`"
+                  }
+                ],
+                "options": {
+                  "showTime": true,
+                  "sortOrder": "Descending",
+                  "enableLogDetails": true,
+                  "dedupStrategy": "none"
+                },
+                "links": [
+                  {
+                    "title": "Explore",
+                    "url": "/explore?schemaVersion=1&panes=%7B%22p1%22%3A%20%7B%22datasource%22%3A%20%22loki%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22datasource%22%3A%20%7B%22type%22%3A%20%22loki%22%2C%20%22uid%22%3A%20%22loki%22%7D%2C%20%22expr%22%3A%20%22%7Bnamespace%3D~%5C%22.%2B%5C%22%7D%20%7C~%20%60%28%3Fi%29%28error%7Cpanic%7Cfatal%29%60%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22now-15m%22%2C%20%22to%22%3A%20%22now%22%7D%7D%7D&orgId=1",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ],
+            "annotations": {
+              "list": [
+                {
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "enable": true,
+                  "iconColor": "red",
+                  "name": "Alertes firing",
+                  "target": {
+                    "expr": "ALERTS{alertstate=\"firing\"}"
+                  }
+                },
+                {
+                  "datasource": {
+                    "type": "loki",
+                    "uid": "loki"
+                  },
+                  "enable": true,
+                  "iconColor": "orange",
+                  "name": "Flux events (Warning)",
+                  "target": {
+                    "expr": "{job=\"loki.source.kubernetes_events\"} | json | type=`Warning`"
+                  }
+                }
+              ]
+            }
+          }

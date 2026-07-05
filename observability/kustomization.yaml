@@ -13,3 +13,4 @@ resources:
   - rules.yaml
   - networkpolicy.yaml
   - dashboards-flux.yaml
+  - dashboards-bretagne.yaml

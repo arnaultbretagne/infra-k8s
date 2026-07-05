@@ -136,8 +136,9 @@ spec:
           reporting_enabled: false
           check_for_updates: false
         dashboards:
-          # Beszel-like landing page: cluster-wide CPU/RAM/pods at a glance
-          default_home_dashboard_path: /var/lib/grafana/dashboards/bretagne/k8s-views-global.json
+          # "Est-ce que tout va bien, la, maintenant ?" (P3.3) — sidecar-delivered
+          # (ConfigMap mechanism), hence /tmp/dashboards/... not /var/lib/grafana/...
+          default_home_dashboard_path: /tmp/dashboards/Bretagne/bretagne-home.json
         auth.generic_oauth:
           enabled: true
           name: Pocket-ID
@@ -192,17 +193,13 @@ spec:
             gnetId: 1860
             revision: 45
             datasource: Prometheus
-          k8s-views-global:        # home dashboard: cluster at a glance (dotdc)
+          k8s-views-global:        # cluster at a glance (dotdc); home dashboard is now Bretagne Home
             gnetId: 15757
             revision: 43
             datasource: Prometheus
           k8s-views-namespaces:
             gnetId: 15758
             revision: 46
-            datasource: Prometheus
-          k8s-views-nodes:
-            gnetId: 15759
-            revision: 40
             datasource: Prometheus
           k8s-views-pods:
             gnetId: 15760
