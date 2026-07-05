@@ -80,3 +80,13 @@ This ADR intentionally keeps the profile list short:
 Profiles become the selector used by admission policy in ADR 0025. Once those policies are installed, creating or reconciling a namespace without a valid `platform.bretagne.dev/profile` label should fail or at least warn during rollout.
 
 The profile label does not replace human design review. It gives the repository, CI, and Kubernetes admission a common vocabulary for deciding which checks apply.
+
+## Amendments
+
+### 2026-07-05 — `agent-runs`, and F3 redefined (ADR 0028)
+
+A second labelled `untrusted-compute` namespace exists: `agent-runs` (agent runtime loges,
+sandboxed by construction — ADR 0028). F3 for the `agent` namespace is **redefined**: compute
+evacuates to `agent-runs` (loges now; the shared substrate pod in a gated follow-up), after
+which `agent` holds platform components only and is relabelled **`private-app`** (with the
+runtime-manager ServiceAccount as its documented exception).
