@@ -112,3 +112,21 @@ spec:
           annotations:
             summary: 'Edge p95 latency >1s on {{ $labels.service }}'
             description: 'p95 served by Traefik exceeds 1s sustained — degraded experience, look at the app then the node (USE).'
+    - name: network-symptoms
+      rules:
+        - alert: NetworkPolicyDrops
+          # ADR 0020 continuous audit: sustained policy drops = either a guardrail
+          # biting a legit flow (regression) or something probing where it shouldn't.
+          # No `by (source, destination)` here (unlike the original proposal): both
+          # use sourceContext/destinationContext=identity (P2.2), which renders as the
+          # full k8s label set of the pod — verified live (2026-07-05 functional test)
+          # to include job-run/version labels that churn, i.e. unbounded cardinality
+          # over time. A single cluster-wide signal is the safe/stable choice; use
+          # `hubble observe --verdict DROPPED` for the actual source/destination.
+          expr: sum(rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'NetworkPolicy drops sustained for 10+ min'
+            description: 'Cilium is dropping packets on policy for 10+ min. Check `hubble observe --verdict DROPPED` and compare against ADR 0020 guardrails.'
