@@ -130,3 +130,22 @@ spec:
           annotations:
             summary: 'NetworkPolicy drops sustained for 10+ min'
             description: 'Cilium is dropping packets on policy for 10+ min. Check `hubble observe --verdict DROPPED` and compare against ADR 0020 guardrails.'
+    - name: cluster-trends
+      rules:
+        - record: cluster:cpu:utilisation:ratio_rate5m
+          expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m]))
+        - record: cluster:memory:working_set:bytes
+          expr: node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+        - record: host:root_disk:used:ratio
+          expr: 1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}
+    - name: meta-monitoring
+      rules:
+        - alert: PrometheusHeadSeriesHigh
+          # Anti-cardinality-explosion guardrail (budget gauge: ~45k expected post-P1).
+          expr: prometheus_tsdb_head_series > 120000
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Prometheus head series at {{ $value }} (>120k)'
+            description: 'Something started emitting high-cardinality metrics. Check scrape_series_added by job and the recent changes.'

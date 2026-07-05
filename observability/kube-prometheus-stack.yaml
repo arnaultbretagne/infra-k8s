@@ -216,6 +216,10 @@ spec:
             gnetId: 17347
             revision: 9
             datasource: Prometheus
+          prometheus-meta:         # meta-monitoring: is Prometheus itself healthy/keeping up
+            gnetId: 19105
+            revision: 9
+            datasource: Prometheus
       resources:
         requests:
           cpu: 50m
