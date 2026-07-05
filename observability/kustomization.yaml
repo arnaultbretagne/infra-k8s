@@ -12,3 +12,4 @@ resources:
   - monitors.yaml
   - rules.yaml
   - networkpolicy.yaml
+  - dashboards-flux.yaml
