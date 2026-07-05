@@ -111,3 +111,72 @@ It also narrows the policy engine decision:
 Care is required during rollout. A too-aggressive `Deny` binding can block Flux reconciliation. New policies should start with audit/warn actions when they may affect existing workloads, then move to deny after the repository is clean.
 
 Admission policy does not replace review of privileged infrastructure. It makes accidental violations harder and makes intentional exceptions visible.
+
+## Amendments
+
+### 2026-07-05 — first implementation
+
+The PSA + VAP layer was implemented in `infrastructure/configs/policies/`
+(`app-baseline.yaml`, `profile-specific.yaml`, alongside the pre-existing
+`untrusted-compute-sandbox.yaml`) and promoted to `Deny`. The following notes
+refine the Decision, Rationale, and Implementation Shape above.
+
+1. **Implementation Shape status.** Steps 1–3 are done: profile labels on all
+   namespaces (except `agent`/`code-server`, deferred — see ADR 0024 amendment 1),
+   PSA levels aligned, and VAP policies added in the dedicated policy area. Steps
+   4–5: the four new bindings were promoted **straight to `Deny`**, justified by
+   static verification of the Git manifests rather than an observed on-cluster
+   Warn/Audit cycle (no cluster access at authoring time). This is acceptable when
+   a policy's subjects are fully Git-controlled; where subjects include
+   runtime-generated pods, prefer an exemption (see note 3) or an observed audit
+   cycle. Confirm the API-server audit annotations are clean after the first
+   reconcile as a backstop, and revert the promotion commit to fall back to
+   Warn/Audit if not.
+
+2. **PSA is not re-encoded in VAP.** Where PSA `restricted` already enforces an
+   invariant (privileged containers, host namespaces, `hostPath`,
+   `allowPrivilegeEscalation`, capability drops), it is left to PSA and not
+   duplicated in VAP. The VAP set covers only what PSA cannot express: valid
+   profile value, resource requests/limits, immutable image references,
+   host-admin scope, and profile↔PSA alignment. The "checks appropriate for PSA
+   and VAP" list above should be read as the invariants the *layer* guarantees,
+   not as a mandate to add a VAP for each — do not "complete" it with redundant
+   policies.
+
+3. **The CNPG exemption is a cross-policy pattern.** CNPG-managed pods (carrying
+   the `cnpg.io/cluster` label) are treated as trusted platform software and are
+   exempt from all three pod-level app policies: `untrusted-compute-sandbox`,
+   `untrusted-compute-no-ambient-credentials`, and `app-workload-hygiene`. The
+   operator manages its own pod shape, image, and resources; the exemption keeps
+   operator-generated pods out of the `Deny` blast radius. Any new pod-level
+   policy must decide explicitly whether CNPG is in scope.
+
+4. **The resource-hygiene check is lenient by design.** `app-workload-hygiene`
+   validates that the `requests`/`limits` maps are *present*, not their values,
+   because the built-in `LimitRanger` mutating plugin injects the namespace's
+   `LimitRange` defaults before VAP evaluates. A namespace with a `LimitRange`
+   (e.g. `stremio`) therefore satisfies the check even for containers that omit
+   resources. This couples the check to the companion `LimitRange` object, whose
+   presence Git review / CI must ensure — already named in the "checks PSA and VAP
+   do not fully solve" list.
+
+5. **`host-admin` is enforced as no-pods.** `host-admin-no-pods` denies all pods in
+   host-admin namespaces, since the only such namespace (`terminal`) carries edge
+   routing and runs no pods. This is the concrete form of "host-admin workloads
+   are explicitly named or namespace-scoped": a real host-admin workload is added
+   by amending the policy with a named allowlist, and that amendment is the review
+   gate.
+
+6. **`platform.bretagne.dev/guardrails: ready` is not implemented**, and MUST NOT
+   be added as a bare label — that is exactly the "meaningless checkbox" the
+   Implementation Shape warns against. Either wire a CI check that verifies the
+   companion objects (ResourceQuota, LimitRange, Cilium default-deny, ingress
+   policy) and manages the label, or drop the convention. Open decision.
+
+7. **`failurePolicy: Fail` on namespace-scoped policies.** `namespace-profile-valid`
+   and `profile-psa-alignment` fail closed (security), scoped by `objectSelector`
+   on the profile label so only labelled namespaces are ever evaluated — system
+   namespaces are structurally exempt, so a policy-evaluation bug cannot block
+   `kube-system` et al. and stall the cluster. Before adding richer CEL to a
+   namespace policy, re-check that the selector still guarantees no evaluation
+   error on labelled namespaces before keeping `Fail`.

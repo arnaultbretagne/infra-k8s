@@ -80,3 +80,41 @@ This ADR intentionally keeps the profile list short:
 Profiles become the selector used by admission policy in ADR 0025. Once those policies are installed, creating or reconciling a namespace without a valid `platform.bretagne.dev/profile` label should fail or at least warn during rollout.
 
 The profile label does not replace human design review. It gives the repository, CI, and Kubernetes admission a common vocabulary for deciding which checks apply.
+
+## Amendments
+
+### 2026-07-05 — first implementation
+
+The profile taxonomy was applied to every managed namespace, and the ADR 0025
+policy set was implemented against it. The following points were clarified or
+adjusted during that rollout. They refine the Decision above; they do not reverse
+it.
+
+1. **The `untrusted-compute` label is load-bearing, not descriptive.** Applying it
+   activates the ADR 0027 `untrusted-compute-sandbox` binding, which is in `Deny`
+   and requires `runtimeClassName: sandboxed` on every non-CNPG pod in the
+   namespace. A namespace MUST NOT receive the label until all of its pods run the
+   sandboxed runtime, or admission will reject them and break the workload.
+   `agent` and `code-server` are therefore classified `untrusted-compute` (as in
+   the table above) but remain **unlabelled** until their sandboxed-runtime
+   migration (agent F3); each namespace manifest carries a comment recording this.
+   `preview` is the only labelled `untrusted-compute` namespace today, because its
+   ResourceSet patches the runtime class onto every Deployment.
+
+2. **`public-app` and `private-app` share an identical admission posture** — PSA
+   `restricted` plus the same VAP bindings. The distinction is a review contract
+   (auth model, data-handling review), not an enforcement boundary. Classify by
+   the most-exposed surface and the least authority the workload should assume; an
+   app with both a public and a gated surface takes the more conservative
+   `public-app`. `stremio` is classified `public-app` on that basis.
+
+3. **Label *presence* is enforced in CI, not admission.** Admission (the
+   `namespace-profile-valid` VAP) enforces only that the label's *value* is one of
+   the accepted five, scoped by `objectSelector` to namespaces that already carry
+   the key. Admission cannot enforce that every managed namespace *has* the label
+   without also matching system namespaces (`kube-system`, `default`, ...), which
+   have no managed-vs-system marker to distinguish them. The *Consequences*
+   expectation that reconciling a namespace without a valid label "should fail or
+   at least warn" is therefore delegated to Git review / CI. Introducing a
+   `platform.bretagne.dev/managed` marker to close this gap at admission is an open
+   decision.
