@@ -954,3 +954,168 @@ data:
               ]
             }
           }
+---
+# P4.3 mini-dashboard: errors-by-app trend + top offenders (instant query, avoids
+# the Loki per-step aggregation perf trap) + Warning events (same verified label
+# schema as the landing page annotations, P3.3).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-bretagne-logs-events
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: Bretagne
+data:
+  logs-events.json: |
+          {
+            "id": null,
+            "uid": "bretagne-logs-events",
+            "title": "Logs & Events",
+            "tags": [
+              "bretagne"
+            ],
+            "timezone": "Europe/Paris",
+            "schemaVersion": 39,
+            "version": 1,
+            "refresh": "1m",
+            "time": {
+              "from": "now-15m",
+              "to": "now"
+            },
+            "panels": [
+              {
+                "id": null,
+                "type": "text",
+                "title": "",
+                "gridPos": {
+                  "h": 2,
+                  "w": 24,
+                  "x": 0,
+                  "y": 0
+                },
+                "options": {
+                  "mode": "markdown",
+                  "content": "**Logs & Events** \u2014 requetes etroites par design (Loki capee a 512Mi) : 15 dernieres minutes par defaut, pas de grep multi-jours."
+                }
+              },
+              {
+                "id": null,
+                "type": "timeseries",
+                "title": "Erreurs loggees par app (namespace)",
+                "gridPos": {
+                  "h": 8,
+                  "w": 24,
+                  "x": 0,
+                  "y": 2
+                },
+                "datasource": {
+                  "type": "loki",
+                  "uid": "loki"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "loki"
+                    },
+                    "expr": "sum by (namespace) (rate({namespace=~\".+\"} |~ `(?i)(error|panic|fatal)` [$__auto]))"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short",
+                    "custom": {
+                      "drawStyle": "line",
+                      "fillOpacity": 10,
+                      "showPoints": "never"
+                    }
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "legend": {
+                    "displayMode": "list",
+                    "placement": "bottom"
+                  },
+                  "tooltip": {
+                    "mode": "multi"
+                  }
+                }
+              },
+              {
+                "id": null,
+                "type": "bargauge",
+                "title": "Top apps en erreur (fenetre visible)",
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 10
+                },
+                "datasource": {
+                  "type": "loki",
+                  "uid": "loki"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "loki"
+                    },
+                    "instant": true,
+                    "expr": "topk(10, sum by (namespace) (count_over_time({namespace=~\".+\"} |~ `(?i)(error|panic|fatal)` [$__range])))"
+                  }
+                ],
+                "fieldConfig": {
+                  "defaults": {
+                    "unit": "short"
+                  },
+                  "overrides": []
+                },
+                "options": {
+                  "displayMode": "gradient",
+                  "orientation": "horizontal",
+                  "reduceOptions": {
+                    "calcs": [
+                      "lastNotNull"
+                    ]
+                  }
+                }
+              },
+              {
+                "id": null,
+                "type": "logs",
+                "title": "Events Warning (k8s)",
+                "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 10
+                },
+                "datasource": {
+                  "type": "loki",
+                  "uid": "loki"
+                },
+                "targets": [
+                  {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "loki",
+                      "uid": "loki"
+                    },
+                    "expr": "{job=\"loki.source.kubernetes_events\"} | json | type=`Warning`"
+                  }
+                ],
+                "options": {
+                  "showTime": true,
+                  "sortOrder": "Descending",
+                  "enableLogDetails": true,
+                  "dedupStrategy": "none"
+                }
+              }
+            ]
+          }
