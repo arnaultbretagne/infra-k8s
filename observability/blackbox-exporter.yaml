@@ -35,3 +35,13 @@ spec:
           http:
             preferred_ip_protocol: ip4
             follow_redirects: true    # OIDC-gated vhosts 302 to id.bretagne.dev -> 200 login page
+        http_2xx_or_404:
+          # vault.bretagne.dev has no route for bare GET / (Express "Cannot GET /",
+          # verified live 2026-07-05) -> that 404 IS the healthy steady-state for
+          # this one app. Dedicated module so the other 6 vhosts keep the strict check.
+          prober: http
+          timeout: 10s
+          http:
+            preferred_ip_protocol: ip4
+            follow_redirects: true
+            valid_status_codes: [200, 404]

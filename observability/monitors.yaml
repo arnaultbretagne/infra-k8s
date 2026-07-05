@@ -78,4 +78,22 @@ spec:
         - https://stremio.bretagne.dev
         - https://agent.bretagne.dev
         - https://terminal.bretagne.dev
+---
+# vault.bretagne.dev has no handler for bare GET / (404 "Cannot GET /" is its
+# healthy steady-state, verified live 2026-07-05) -> separate Probe so it doesn't
+# weaken the strict 2xx check for the other 6 vhosts.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: public-vhosts-vault
+  namespace: observability
+spec:
+  jobName: blackbox-public
+  interval: 60s
+  module: http_2xx_or_404
+  prober:
+    url: blackbox-exporter.observability.svc:9115
+  targets:
+    staticConfig:
+      static:
         - https://vault.bretagne.dev
