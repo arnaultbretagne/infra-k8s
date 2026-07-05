@@ -47,7 +47,10 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-    # NOTE: SMTP egress (to the mail provider) to be added when email is configured.
+    # -> Resend SMTP (email: verification / login codes). Tighten to toFQDNs later.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "587", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
