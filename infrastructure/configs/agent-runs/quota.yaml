@@ -1,0 +1,15 @@
+# Blast-radius bound for the whole isolated substrate (the 2026-07-04 double-freeze lesson) —
+# agent-runtime ADR 0010 §5 / infra-k8s ADR 0028 §2. RuntimeClass `sandboxed` overhead (64Mi/pod)
+# is included in quota accounting automatically by the scheduler.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agent-runs-quota
+  namespace: agent-runs
+spec:
+  hard:
+    pods: "5"
+    requests.cpu: "1"
+    requests.memory: 2Gi
+    limits.cpu: "5"
+    limits.memory: 8Gi

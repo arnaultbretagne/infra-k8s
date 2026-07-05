@@ -1,0 +1,39 @@
+# CiliumNetworkPolicy for the loges (agent-runtime ADR 0010 §6 / infra-k8s ADR 0028 §2). Verified
+# against a scratch namespace (verrous V1-V3, runtime-isolation-plan.RUNLOG.md): the egress rule
+# below is confirmed correct via `cilium monitor` drop logs; it only goes fully live once paired
+# with the website ingress amendment in apps/agent/networkpolicy.yaml (same PR).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: loges
+  namespace: agent-runs
+spec:
+  endpointSelector:
+    matchLabels:
+      app: loge
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            app: runtime-manager
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEntities: [host] # readiness probes (kubelet)
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            app: website
+      toPorts:
+        - ports: [{ port: "8600", protocol: TCP }] # channel dial-back, cross-namespace
+    - toEntities: [world] # Anthropic; FQDN tightening is a recorded follow-up (standing Cilium justification)
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }, { port: "80", protocol: TCP }]

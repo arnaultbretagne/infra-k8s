@@ -1,0 +1,81 @@
+# The manager (agent-runtime ADR 0010 / infra-k8s ADR 0028 §3): trusted control plane, the hub's
+# single endpoint for both substrates. Holds the ONLY ServiceAccount token in this namespace
+# (documented ADR 0024 exception), scoped by infrastructure/configs/agent-runs/rbac.yaml to pod
+# CRUD in agent-runs and nothing else.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runtime-manager
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: runtime-anchors
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runtime-manager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # RWO anchors PVC
+  selector:
+    matchLabels:
+      app: runtime-manager
+  template:
+    metadata:
+      labels:
+        app: runtime-manager
+    spec:
+      serviceAccountName: runtime-manager
+      automountServiceAccountToken: true # the SOLE exception in this namespace (ADR 0024 §3)
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:960b4055069c245eaed73c95a5c55a12cecd0b2553bccd6665549da154fbda7d
+          command: ["node", "dist/manager.js"]
+          ports:
+            - containerPort: 8080
+          env:
+            - { name: PORT, value: "8080" }
+            - { name: SHARED_SUPERVISOR_URL, value: http://agent:8080 }
+            - { name: AGENT_RUNS_NS, value: agent-runs }
+            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/agent-runtime@sha256:960b4055069c245eaed73c95a5c55a12cecd0b2553bccd6665549da154fbda7d" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: anchors, mountPath: /anchors }
+      volumes:
+        - name: anchors
+          persistentVolumeClaim:
+            claimName: runtime-anchors
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: runtime-manager
+spec:
+  selector:
+    app: runtime-manager
+  ports:
+    - { port: 8080, targetPort: 8080 }

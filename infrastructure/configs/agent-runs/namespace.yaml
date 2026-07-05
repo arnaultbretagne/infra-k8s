@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-runs
+  # ADR 0028 — untrusted-compute dès la naissance : la VAP 0027 exige runtimeClassName: sandboxed
+  # sur tout pod non-CNPG ici. Les loges (agent-runtime ADR 0010) sont créées conformes par le manager.
+  labels:
+    platform.bretagne.dev/profile: untrusted-compute
+    pod-security.kubernetes.io/enforce: restricted

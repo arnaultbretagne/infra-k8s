@@ -12,3 +12,4 @@ resources:
   - sandboxed-runtime
   - policies
   - preview
+  - agent-runs

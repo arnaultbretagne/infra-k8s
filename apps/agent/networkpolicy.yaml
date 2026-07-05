@@ -49,6 +49,9 @@ spec:
     # the channels (from the runtime pod) -> hub WS
     - fromEndpoints: [{ matchLabels: { app: agent-runtime } }]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+    # the channels (from a loge, isolated substrate) -> hub WS, cross-namespace (ADR 0010/0028)
+    - fromEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
     # kubelet health probes
     - fromEntities: [host]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
@@ -57,12 +60,43 @@ spec:
     - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
       toPorts:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-    # the hub drives the supervisor control plane :8080 (only)
+    # the hub drives the supervisor control plane :8080 (only) — direct egress kept during the
+    # migration (removed only in the gated P5 follow-up, infra-k8s ADR 0028 §5)
     - toEndpoints: [{ matchLabels: { app: agent-runtime } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    # the hub's new single endpoint: the manager (ADR 0010) — both substrates route through it
+    - toEndpoints: [{ matchLabels: { app: runtime-manager } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
     # the hub's conversation store (agora ADR 0009)
     - toEndpoints: [{ matchLabels: { cnpg.io/cluster: agora-pg } }]
       toPorts: [{ ports: [{ port: "5432", protocol: TCP }] }]
+---
+# --- the manager: trusted control plane, the hub's single endpoint for both substrates
+#     (agent-runtime ADR 0010 / infra-k8s ADR 0028) ---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: runtime-manager
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: runtime-manager
+  ingress:
+    - fromEndpoints: [{ matchLabels: { app: website } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    - fromEntities: [host] # kubelet health probes
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+  egress:
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [kube-apiserver] # pod CRUD in agent-runs (rbac.yaml scopes what it can actually do)
+      toPorts: [{ ports: [{ port: "6443", protocol: TCP }] }]
+    - toEndpoints: [{ matchLabels: { app: agent-runtime } }] # shared-substrate proxy target
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
 ---
 # --- agora-pg: the hub's conversation store (agora ADR 0009) — cloned from pocket-id-pg ---
 apiVersion: cilium.io/v2
