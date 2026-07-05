@@ -7,8 +7,13 @@
 # These VAPs cover the high-signal invariants PSA cannot express: a valid profile
 # label, resource requests/limits, and immutable image references.
 #
-# Rollout: both bindings start in [Warn, Audit] (ADR 0025 step 4). Promote to
-# [Deny] only once existing app manifests are clean (step 5).
+# Rollout: both bindings are now [Deny] (ADR 0025 step 5), promoted after static
+# verification that every app-authored pod in the selected namespaces already
+# complies (explicit requests/limits + immutable image, cross-checked against the
+# per-namespace LimitRange defaults that LimitRanger injects before VAP runs).
+# CNPG-managed pods are exempt from app-workload-hygiene — trusted platform
+# software that manages its own pod shape, consistent with the sandbox and
+# ambient-credential policies.
 ---
 # Every namespace that carries a profile label must use one of the accepted values
 # (ADR 0024). objectSelector scopes this to namespaces already carrying the label,
@@ -41,7 +46,7 @@ metadata:
   name: namespace-profile-valid
 spec:
   policyName: namespace-profile-valid
-  validationActions: [Warn, Audit]
+  validationActions: [Deny]
   matchResources:
     objectSelector:
       matchExpressions:
@@ -64,19 +69,22 @@ spec:
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
   variables:
+    - name: isCnpg
+      expression: >-
+        has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels
     - name: containers
       expression: >-
         object.spec.containers +
         (has(object.spec.initContainers) ? object.spec.initContainers : [])
   validations:
     - expression: >-
-        variables.containers.all(c,
+        variables.isCnpg || variables.containers.all(c,
           has(c.resources) && has(c.resources.requests) && has(c.resources.limits))
       message: >-
         App pods must set resources.requests and resources.limits on every
         container (ADR 0025).
     - expression: >-
-        variables.containers.all(c,
+        variables.isCnpg || variables.containers.all(c,
           !c.image.endsWith(':latest') &&
           (c.image.contains('@') || c.image.matches('^.+:[^/]+$')))
       message: >-
@@ -89,7 +97,7 @@ metadata:
   name: app-workload-hygiene
 spec:
   policyName: app-workload-hygiene
-  validationActions: [Warn, Audit]
+  validationActions: [Deny]
   matchResources:
     namespaceSelector:
       matchExpressions:

@@ -1,9 +1,10 @@
 # ADR 0025 — profile-specific policies (phase 3 of the rollout).
 #
-# Three invariants from the ADR's "first policy set":
+# Three invariants from the ADR's "first policy set", all now [Deny] (ADR 0025
+# step 5), promoted after static verification of the current cluster state:
 #   1. host-admin workloads stay exceptional      → host-admin-no-pods (Deny)
-#   2. untrusted compute gets no ambient creds    → untrusted-compute-no-ambient-credentials (Warn/Audit)
-#   3. infra exceptions stay out of app namespaces → profile-psa-alignment (Warn/Audit)
+#   2. untrusted compute gets no ambient creds    → untrusted-compute-no-ambient-credentials (Deny)
+#   3. infra exceptions stay out of app namespaces → profile-psa-alignment (Deny)
 ---
 # The only host-admin namespace (terminal) carries edge glue (Service,
 # EndpointSlice, HTTPRoute) to the HOST oauth2-proxy and runs NO pods by design.
@@ -49,8 +50,12 @@ spec:
 # closes the gap for any other pod-creating shape a preview could smuggle in
 # (Job, StatefulSet, bare Pod). CNPG-managed pods are exempt for the same reason
 # as in untrusted-compute-sandbox: trusted upstream software that needs the API.
-# Warn/Audit first (ADR 0025 step 4): the ResourceSet patch only covers
-# Deployments, so promote to Deny after confirming no other pod shape appears.
+# Deny (ADR 0025 step 5): today `preview` only ever deploys the fixed preview-demo
+# Deployment (resourceset path is pinned to ./apps/preview-demo; per-app onboarding
+# is F2). That Deployment already runs under the untrusted-compute-sandbox Deny via
+# the same ResourceSet patch block that also sets automountServiceAccountToken:
+# false, so this Deny rides a proven mechanism. When F2 lands, any non-Deployment
+# shape that does not opt out of token automount will be correctly denied.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -78,7 +83,7 @@ metadata:
   name: untrusted-compute-no-ambient-credentials
 spec:
   policyName: untrusted-compute-no-ambient-credentials
-  validationActions: [Warn, Audit]
+  validationActions: [Deny]
   matchResources:
     namespaceSelector:
       matchLabels:
@@ -90,8 +95,8 @@ spec:
 # PSA on an app namespace (the main path by which privileged/hostPath shapes
 # would sneak past) now trips policy instead of passing silently. infra
 # namespaces are exempt: their baseline/privileged levels are the documented,
-# namespace-scoped exceptions. Warn/Audit first; all current namespaces comply,
-# promote to Deny after one clean reconcile cycle.
+# namespace-scoped exceptions. Deny (ADR 0025 step 5): all app/host-admin
+# namespaces already carry enforce=restricted (verified in Phase 1).
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -122,7 +127,7 @@ metadata:
   name: profile-psa-alignment
 spec:
   policyName: profile-psa-alignment
-  validationActions: [Warn, Audit]
+  validationActions: [Deny]
   matchResources:
     objectSelector:
       matchExpressions:
