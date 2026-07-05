@@ -1,0 +1,37 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: blackbox-exporter
+  namespace: observability
+spec:
+  interval: 1h
+  chart:
+    spec:
+      chart: prometheus-blackbox-exporter
+      version: "11.15.1"        # latest at 2026-07-05
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    fullnameOverride: blackbox-exporter
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 64Mi
+    config:
+      modules:
+        http_2xx:
+          prober: http
+          timeout: 10s
+          http:
+            preferred_ip_protocol: ip4
+            follow_redirects: true    # OIDC-gated vhosts 302 to id.bretagne.dev -> 200 login page

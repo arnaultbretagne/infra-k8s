@@ -54,3 +54,28 @@ spec:
   podMetricsEndpoints:
     - port: metrics
       interval: 30s
+---
+# Synthetic probes: the full client path (DNS -> public IP -> nftables -> Traefik
+# -> app), which nothing tests today. healthchecks.io stays the dead-man's switch
+# for the alerting stack itself; this tests each app.
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: public-vhosts
+  namespace: observability
+spec:
+  jobName: blackbox-public
+  interval: 60s
+  module: http_2xx
+  prober:
+    url: blackbox-exporter.observability.svc:9115
+  targets:
+    staticConfig:
+      static:
+        - https://id.bretagne.dev
+        - https://grafana.bretagne.dev
+        - https://code.bretagne.dev
+        - https://stremio.bretagne.dev
+        - https://agent.bretagne.dev
+        - https://terminal.bretagne.dev
+        - https://vault.bretagne.dev

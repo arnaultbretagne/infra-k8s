@@ -14,3 +14,4 @@ resources:
   - networkpolicy.yaml
   - dashboards-flux.yaml
   - dashboards-bretagne.yaml
+  - blackbox-exporter.yaml
