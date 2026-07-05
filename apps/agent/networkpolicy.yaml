@@ -13,7 +13,13 @@ spec:
     matchLabels:
       app: agent-runtime
   ingress:
-    # the hub (control plane) -> supervisor API :8080 — the only product caller
+    # the manager (agent-runtime ADR 0010) proxies shared spawns here now — the actual caller
+    # since website's SUPERVISOR_URL flip (PR-2). Gap found live 2026-07-05: this rule was missed
+    # when adding the manager's own CNP, causing every shared spawn to 503 quota_exceeded
+    # (fetch() throwing on the Cilium drop, mis-surfaced by the manager's broad catch-all).
+    - fromEndpoints: [{ matchLabels: { app: runtime-manager } }]
+      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    # the hub (control plane) -> supervisor API :8080 — kept for the pre-manager fallback / direct debugging
     - fromEndpoints: [{ matchLabels: { app: website } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
     # kubelet health probes
