@@ -2,3 +2,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - untrusted-compute-sandbox.yaml
+  - app-baseline.yaml
+  - profile-specific.yaml

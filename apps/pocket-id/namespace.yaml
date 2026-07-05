@@ -3,4 +3,5 @@ kind: Namespace
 metadata:
   name: pocket-id
   labels:
+    platform.bretagne.dev/profile: infra   # ADR 0024 — identity is part of the platform trust chain
     pod-security.kubernetes.io/enforce: restricted

@@ -3,4 +3,5 @@ kind: Namespace
 metadata:
   name: stremio
   labels:
+    platform.bretagne.dev/profile: public-app   # ADR 0024 — public-facing app, no broad platform authority
     pod-security.kubernetes.io/enforce: restricted

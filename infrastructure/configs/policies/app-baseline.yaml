@@ -1,0 +1,106 @@
+# ADR 0025 — validation-only baseline policies (PSA + VAP).
+#
+# Scope note: PSA `restricted` (enforced on public-app / private-app /
+# untrusted-compute namespaces) already denies privileged containers, hostPath,
+# hostNetwork/PID/IPC, allowPrivilegeEscalation and un-dropped capabilities.
+# We do NOT re-encode those here — that would add maintenance with no new signal.
+# These VAPs cover the high-signal invariants PSA cannot express: a valid profile
+# label, resource requests/limits, and immutable image references.
+#
+# Rollout: both bindings are now [Deny] (ADR 0025 step 5), promoted after static
+# verification that every app-authored pod in the selected namespaces already
+# complies (explicit requests/limits + immutable image, cross-checked against the
+# per-namespace LimitRange defaults that LimitRanger injects before VAP runs).
+# CNPG-managed pods are exempt from app-workload-hygiene — trusted platform
+# software that manages its own pod shape, consistent with the sandbox and
+# ambient-credential policies.
+---
+# Every namespace that carries a profile label must use one of the accepted values
+# (ADR 0024). objectSelector scopes this to namespaces already carrying the label,
+# so system namespaces (kube-system, default, ...) are untouched. Enforcing the
+# PRESENCE of the label on managed namespaces is left to Git review / CI, since VAP
+# cannot distinguish a managed namespace from a system one without a marker label.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: namespace-profile-valid
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["namespaces"]
+  validations:
+    - expression: >-
+        object.metadata.labels['platform.bretagne.dev/profile'] in
+        ['public-app', 'private-app', 'infra', 'host-admin', 'untrusted-compute']
+      message: >-
+        platform.bretagne.dev/profile must be one of public-app, private-app,
+        infra, host-admin, untrusted-compute (ADR 0024).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: namespace-profile-valid
+spec:
+  policyName: namespace-profile-valid
+  validationActions: [Deny]
+  matchResources:
+    objectSelector:
+      matchExpressions:
+        - key: platform.bretagne.dev/profile
+          operator: Exists
+---
+# Application pods (public-app / private-app / untrusted-compute) must declare
+# resource requests+limits and reference images by immutable tag or digest.
+# infra is excluded: controllers legitimately vary here (ADR 0025 rationale).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: app-workload-hygiene
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: isCnpg
+      expression: >-
+        has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels
+    - name: containers
+      expression: >-
+        object.spec.containers +
+        (has(object.spec.initContainers) ? object.spec.initContainers : [])
+  validations:
+    - expression: >-
+        variables.isCnpg || variables.containers.all(c,
+          has(c.resources) && has(c.resources.requests) && has(c.resources.limits))
+      message: >-
+        App pods must set resources.requests and resources.limits on every
+        container (ADR 0025).
+    - expression: >-
+        variables.isCnpg || variables.containers.all(c,
+          !c.image.endsWith(':latest') &&
+          (c.image.contains('@') || c.image.matches('^.+:[^/]+$')))
+      message: >-
+        App pods must reference images by immutable tag or digest, not :latest
+        or an untagged image (ADR 0025).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: app-workload-hygiene
+spec:
+  policyName: app-workload-hygiene
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: platform.bretagne.dev/profile
+          operator: In
+          values: [public-app, private-app, untrusted-compute]

@@ -2,5 +2,10 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: code-server
+  # ADR 0024 target profile: untrusted-compute (shell/code execution available;
+  # reclassify to private-app if that is removed). NOT labelled yet: the ADR 0027
+  # untrusted-compute-sandbox VAP binding (Deny) requires runtimeClassName: sandboxed,
+  # which code-server pods do not use. Apply the label after migrating code-server to
+  # the sandboxed runtime, alongside the agent F3 migration.
   labels:
     pod-security.kubernetes.io/enforce: restricted

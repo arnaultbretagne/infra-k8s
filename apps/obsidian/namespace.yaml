@@ -3,4 +3,5 @@ kind: Namespace
 metadata:
   name: obsidian
   labels:
+    platform.bretagne.dev/profile: private-app   # ADR 0024 — private application data, not an admin surface
     pod-security.kubernetes.io/enforce: restricted
