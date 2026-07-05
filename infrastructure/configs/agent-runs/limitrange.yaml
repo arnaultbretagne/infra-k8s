@@ -1,0 +1,17 @@
+# Safety defaults matching the loge template (agent-runtime ADR 0010 §6) — infra-k8s ADR 0028 §2.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agent-runs-limits
+  namespace: agent-runs
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 320Mi
+      default:
+        cpu: "1"
+        memory: 1536Mi
+      max:
+        memory: 2Gi

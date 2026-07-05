@@ -1,8 +1,9 @@
 # ADR 0027 §4 — untrusted-compute pods must be sandboxed. CNPG-managed pods exempt
 # (trusted upstream software; future preview db-clones). The binding selects ONLY namespaces
-# carrying the untrusted-compute profile label: today that is `preview` alone.
-# The `agent` namespace gets the label in follow-up F3, AFTER its pods are migrated —
-# do NOT label it before then: this binding Denies.
+# carrying the untrusted-compute profile label: today that is `preview` + `agent-runs`
+# (infra-k8s ADR 0028 — loges are labelled from birth, no "label later" debt).
+# The `agent` namespace gets the label in the gated F3 follow-up, AFTER its own shared-substrate
+# pod evacuates to `agent-runs` too — do NOT label it before then: this binding Denies.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:

@@ -9,6 +9,7 @@ resources:
   - cnpg.yaml
   - restore-test.yaml
   - agent-runtime.yaml
+  - manager.yaml          # runtime-manager (agent-runtime ADR 0010 / infra-k8s ADR 0028) — inert until website's SUPERVISOR_URL flips (PR-2)
   - website.yaml
   - oauth2-proxy.yaml
   - httproute.yaml
