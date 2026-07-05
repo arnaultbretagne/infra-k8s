@@ -34,6 +34,24 @@
       "callbackURLs": ["https://stremio.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin", "stremio"],
       "pkceEnabled": false
+    },
+    {
+      "name": "claude_auth",
+      "callbackURLs": [
+        "https://claude.ai/api/mcp/auth_callback",
+        "http://localhost:9876/oauth/callback"
+      ],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": true
+    },
+    {
+      "name": "openai_auth",
+      "callbackURLs": [
+        "https://chatgpt.com/connector/oauth/b1u3srH76huV",
+        "http://localhost:9876/oauth/callback"
+      ],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": true
     }
   ]
 }
