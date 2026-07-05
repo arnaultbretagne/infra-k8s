@@ -204,6 +204,10 @@ spec:
             gnetId: 20417
             revision: 4
             datasource: Prometheus
+          traefik-official:        # edge RED baseline; custom-adapted version comes in P3
+            gnetId: 17347
+            revision: 9
+            datasource: Prometheus
       resources:
         requests:
           cpu: 50m
