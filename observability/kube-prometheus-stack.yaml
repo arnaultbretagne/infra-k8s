@@ -55,6 +55,17 @@ spec:
         kubeSchedulerRecording: false
         kubeProxy: false
 
+    # Single-node k0s/kine: nobody will ever do apiserver SLOs here. The chart's
+    # default metricRelabelings only trims some bucket label values; this REPLACES
+    # it (setting the key overrides the chart default) and drops the whole bucket
+    # families (~27k series, 38% of the TSDB), keeping _count/_sum for trends.
+    kubeApiServer:
+      serviceMonitor:
+        metricRelabelings:
+          - action: drop
+            sourceLabels: [__name__]
+            regex: (apiserver_request_duration_seconds|apiserver_request_body_size_bytes|apiserver_request_slo_duration_seconds|apiserver_request_sli_duration_seconds|apiserver_response_sizes|apiserver_watch_events_sizes|apiserver_watch_events_duration_seconds|etcd_request_duration_seconds)_bucket
+
     prometheusOperator:
       resources:
         requests:
