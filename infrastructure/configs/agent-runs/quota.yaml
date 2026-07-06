@@ -1,6 +1,11 @@
 # Blast-radius bound for the whole isolated substrate (the 2026-07-04 double-freeze lesson) —
-# agent-runtime ADR 0010 §5 / infra-k8s ADR 0028 §2. RuntimeClass `sandboxed` overhead (64Mi/pod)
-# is included in quota accounting automatically by the scheduler.
+# agent-runtime ADR 0010 §5 / infra-k8s ADR 0028 §2. RuntimeClass `sandboxed` overhead (cpu: 20m,
+# memory: 64Mi per pod) is added automatically by the scheduler on top of the LimitRange container
+# defaults (cpu: 1, memory: 1536Mi) — real cost per loge is 1020m/1600Mi, not 1000m/1536Mi. Found
+# empirically in the runtime-isolation-plan quota drill (P4.9): limits.cpu was "5" (5000m), which
+# only ever fit 4 loges (5×1020m=5100m > 5000m). 5500m fits 5 loges (5100m) with headroom for a
+# small future drift in either overhead value. requests stay untouched — the real commitment to
+# the rest of the node (postgres/website/oauth2-proxy/observability) doesn't change.
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -11,5 +16,5 @@ spec:
     pods: "5"
     requests.cpu: "1"
     requests.memory: 2Gi
-    limits.cpu: "5"
+    limits.cpu: "5500m"
     limits.memory: 8Gi
