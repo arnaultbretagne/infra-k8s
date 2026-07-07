@@ -2,8 +2,13 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: agent
-  # Deliberately unlabelled (no platform.bretagne.dev/profile): this pod still mixes trusted
-  # control plane with untrusted compute. F3 (ADR 0024) is redefined by infra-k8s ADR 0028:
-  # evacuate compute to `agent-runs` (loges now; the shared-substrate pod in a gated follow-up),
-  # then relabel this namespace `private-app`. Do NOT label it before then — the ADR 0027 VAP
-  # would Deny its mixed-trust pods.
+  labels:
+    # Compute has fully evacuated: the shared substrate pod is retired (all runs are isolated
+    # loges in agent-runs now — agora ADR 0011 revised, substrate is per-spawn policy). `agent`
+    # holds platform components only (website, oauth2-proxy, runtime-manager, agora-pg); the
+    # runtime-manager ServiceAccount is the documented exception (agent-runs pod CRUD). This
+    # closes ADR 0024's F3 as redefined by infra-k8s ADR 0028 §5.
+    # `private-app` carries no admission enforcement today (the ADR 0027 sandbox VAP binds only
+    # to `untrusted-compute`); it is the declared trust profile. PSA is intentionally NOT set
+    # here — the control-plane pods (notably CNPG-managed agora-pg) are not all `restricted`.
+    platform.bretagne.dev/profile: private-app

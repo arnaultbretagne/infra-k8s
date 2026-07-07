@@ -65,17 +65,24 @@ CNP updates in `apps/agent/networkpolicy.yaml`:
 Loges run the agent-runtime image **digest-pinned** via the manager's `LOGE_IMAGE` env — interim
 discipline until the immutable-tags chantier (dev-loop S1) replaces `:latest` everywhere.
 
-### 5. End-state (separate, gated phase — amends ADR 0024's F3)
+### 5. End-state (amends ADR 0024's F3) — DONE 2026-07-06, by elimination
 
 F3 is **redefined**: not "sandbox the `agent` namespace" but "**evacuate compute to `agent-runs`,
-then relabel `agent`**". The gated follow-up moves the shared-substrate pod (supervisor + PVC) into
-`agent-runs` as a sandboxed pod; `agent` then holds only platform components (website, oauth2-proxy,
-manager, agora-pg) and relabels **`private-app`**. ADR 0024's classification table gains:
+then relabel `agent`**".
+
+**Executed 2026-07-06, and by ELIMINATION rather than relocation.** The original plan was to *move*
+the shared-substrate pod into `agent-runs` as a sandboxed pod. But agora ADR 0011 was revised the
+same day — substrate is now per-spawn platform policy, not a conversation attribute — so the platform
+simply defaults every run to an isolated loge (`AGORA_SUBSTRATE_DEFAULT=isolated`) and the shared
+`agent-runtime` Deployment + Service were **decommissioned outright** (no relocation needed). `agent`
+now holds only platform components (website, oauth2-proxy, runtime-manager, agora-pg) and is labelled
+**`private-app`**. The `agent-claude` PVC (the retired pod's native-transcript volume) is orphaned
+and removed as the final cleanup step. ADR 0024's classification table gains:
 
 | Namespace / workload | Profile | Notes |
 | --- | --- | --- |
-| `agent-runs` | `untrusted-compute` (labelled) | Runtime loges + (end-state) the shared substrate pod. Sandboxed by construction. |
-| `agent` (end-state) | `private-app` | Platform components only, once compute has evacuated. Manager SA = documented exception. |
+| `agent-runs` | `untrusted-compute` (labelled) | Runtime loges (every run). Sandboxed by construction. |
+| `agent` | `private-app` (labelled 2026-07-06) | Platform components only — compute has evacuated. Manager SA = documented exception. |
 
 ## Consequences
 
