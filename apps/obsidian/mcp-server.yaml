@@ -23,7 +23,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: mcp-server
-          image: ghcr.io/arnaultbretagne/obsidian-mcp:0.2.0
+          image: ghcr.io/arnaultbretagne/obsidian-mcp:0.3.0
           ports:
             - containerPort: 4000
           securityContext:
