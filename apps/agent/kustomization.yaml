@@ -5,7 +5,7 @@ resources:
   - namespace.yaml
   - secrets.yaml          # oauth2-proxy (SOPS). claude-creds is created out-of-band (see README-note below)
   - claude-oauth.secrets.yaml   # static setup-token OAuth token (SOPS) — runtime auth, agent-runtime ADR 0007
-  - pvc.yaml              # agent-claude: the retired shared substrate's PVC, orphaned now, removed in a final step
+  - pvc.yaml              # agora-data (the website PVC). agent-claude (the retired shared substrate) was removed 2026-07-06.
   - cnpg.yaml
   - restore-test.yaml
   - manager.yaml          # runtime-manager (agent-runtime ADR 0010 / infra-k8s ADR 0028): the hub's single endpoint. All runs are isolated loges now — the shared agent-runtime pod is retired.
