@@ -50,7 +50,7 @@ spec:
             - { name: PORT, value: "8080" }
             - { name: SHARED_SUPERVISOR_URL, value: http://agent:8080 }
             - { name: AGENT_RUNS_NS, value: agent-runs }
-            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:261ccf22ace83ca4d7071c44cea5a75967267fc6e6b520d1bc9ac955e053b0a9" }
+            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:2c5631251d69c2895f717d46af8f7aac502d7d4c58b38d458b05b61b9b601585" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
