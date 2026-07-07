@@ -36,6 +36,11 @@ spec:
             # points at the manager now (agent-runtime ADR 0010) — a strict superset of the
             # supervisor API, so this client code needed no change. Rollback = revert this line.
             - { name: SUPERVISOR_URL, value: http://runtime-manager.agent.svc.cluster.local:8080 }
+            # Execution-substrate platform policy (agora ADR 0011, revised 2026-07-06): resolved
+            # per spawn in the hub, never a per-conversation attribute. `isolated` = every run
+            # gets its own gVisor loge in agent-runs; the shared substrate is being retired.
+            # Rollback = set back to shared (or remove this line — the code default is shared).
+            - { name: AGORA_SUBSTRATE_DEFAULT, value: isolated }
             # what spawned channels (in the runtime pod) dial back to reach the hub
             - { name: CHANNEL_HUB_URL, value: ws://website.agent.svc.cluster.local:8600/ws/channel }
             # channel logs land in the runtime pod's /logs emptyDir (observability)
