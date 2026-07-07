@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:ff2f93163c962622a8032391f884e672622608ffc301413b02844cc8e03a1046
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:26a8d9fbd804a4f2c906748d460a309192731a41e3351905d6a4bc09f13f0241
           command: ["node", "dist/manager.js"]
           ports:
             - containerPort: 8080
@@ -50,7 +50,7 @@ spec:
             - { name: PORT, value: "8080" }
             - { name: SHARED_SUPERVISOR_URL, value: http://agent:8080 }
             - { name: AGENT_RUNS_NS, value: agent-runs }
-            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/agent-runtime@sha256:ff2f93163c962622a8032391f884e672622608ffc301413b02844cc8e03a1046" }
+            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/agent-runtime@sha256:26a8d9fbd804a4f2c906748d460a309192731a41e3351905d6a4bc09f13f0241" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
