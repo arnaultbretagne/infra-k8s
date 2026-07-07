@@ -2,42 +2,6 @@
 # Cilium is default-deny for any endpoint a policy selects, so each pod below is
 # locked to exactly the flows it needs.
 
-# --- the runtime pod: free to reach the internet (Anthropic), bounded intra-cluster ---
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: agent-runtime
-  namespace: agent
-spec:
-  endpointSelector:
-    matchLabels:
-      app: agent-runtime
-  ingress:
-    # the manager (agent-runtime ADR 0010) proxies shared spawns here now — the actual caller
-    # since website's SUPERVISOR_URL flip (PR-2). Gap found live 2026-07-05: this rule was missed
-    # when adding the manager's own CNP, causing every shared spawn to 503 quota_exceeded
-    # (fetch() throwing on the Cilium drop, mis-surfaced by the manager's broad catch-all).
-    - fromEndpoints: [{ matchLabels: { app: runtime-manager } }]
-      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
-    # the hub (control plane) -> supervisor API :8080 — kept for the pre-manager fallback / direct debugging
-    - fromEndpoints: [{ matchLabels: { app: website } }]
-      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
-    # kubelet health probes
-    - fromEntities: [host]
-      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
-  egress:
-    # DNS (CoreDNS)
-    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
-      toPorts:
-        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-    # the channel (spawned inside this pod) dials the hub :8600 — the one intra-cluster egress
-    - toEndpoints: [{ matchLabels: { app: website } }]
-      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
-    # internet egress (Anthropic API, ...) — NOT other intra-cluster, NOT kube-apiserver
-    - toEntities: [world]
-      toPorts:
-        - ports: [{ port: "443", protocol: TCP }, { port: "80", protocol: TCP }]
----
 # --- the hub: trusted infra, but still tight — no internet, only DNS + supervisor ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -52,10 +16,7 @@ spec:
     # the OIDC gate -> hub (human traffic)
     - fromEndpoints: [{ matchLabels: { app: oauth2-proxy } }]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
-    # the channels (from the runtime pod) -> hub WS
-    - fromEndpoints: [{ matchLabels: { app: agent-runtime } }]
-      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
-    # the channels (from a loge, isolated substrate) -> hub WS, cross-namespace (ADR 0010/0028)
+    # the channels (from a loge, the only substrate now) -> hub WS, cross-namespace (ADR 0010/0028)
     - fromEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
     # kubelet health probes
@@ -66,11 +27,8 @@ spec:
     - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
       toPorts:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-    # the hub drives the supervisor control plane :8080 (only) — direct egress kept during the
-    # migration (removed only in the gated P5 follow-up, infra-k8s ADR 0028 §5)
-    - toEndpoints: [{ matchLabels: { app: agent-runtime } }]
-      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
-    # the hub's new single endpoint: the manager (ADR 0010) — both substrates route through it
+    # the hub's single endpoint: the manager (ADR 0010) — every run routes through it. The old
+    # direct hub->agent-runtime:8080 egress is gone with the shared substrate pod.
     - toEndpoints: [{ matchLabels: { app: runtime-manager } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
     # the hub's conversation store (agora ADR 0009)
@@ -99,8 +57,6 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEntities: [kube-apiserver] # pod CRUD in agent-runs (rbac.yaml scopes what it can actually do)
       toPorts: [{ ports: [{ port: "6443", protocol: TCP }] }]
-    - toEndpoints: [{ matchLabels: { app: agent-runtime } }] # shared-substrate proxy target
-      toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
     - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
 ---
