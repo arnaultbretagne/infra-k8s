@@ -127,3 +127,27 @@ Concrete gaps to close after this model is accepted (each is follow-up work, not
 
 Until this is done, authz is *functional* (agent/code-server correctly gated, single admin user, no
 self-registration) but **not uniformly enforced and not reviewable in Git**.
+
+## Amendment (2026-07-08) — vault gap closed (native OIDC resource server + the audience wrinkle)
+
+§Consequences flagged the **obsidian/vault** gap ("auth mechanism unverified"). Resolved: the vault is a
+**native OIDC resource server** — the same enforcement category as Grafana in §5, *not* oauth2-proxy. The
+MCP server validates the JWT in-process (JWKS / issuer / audience / alg pinning; audit F-05). The primary
+filter of §3 holds: its two Pocket-ID clients `claude_auth` + `openai_auth` are group-restricted to
+`admin` (`apps/pocket-id/oidc-reconciler/spec.json`), so a non-admin never receives a token. The audit
+table's `obsidian (vault) | ??? | none` row now reads: *native JWT resource-server; clients
+`claude_auth`/`openai_auth`; group-restricted `admin`*.
+
+**One wrinkle to record** — it affects any native resource server behind Pocket-ID. The model implicitly
+assumes a token is *audience-scoped to the resource*. Pocket-ID only does that for the
+**`client_credentials`** grant (it binds the RFC 8707 `resource`→`aud`); for **`authorization_code`** —
+what the Claude.ai / ChatGPT connectors use — it **ignores** `resource` and sets `aud = client_id`. So a
+native resource server's audience allow-list must **enumerate the connectors' `client_id`s**, not just its
+own URL. That is what `apps/obsidian/mcp-server.yaml` `MCP_ALLOWED_AUDIENCE` now does, and why the
+connectors briefly 401'd after F-05 (detail + source: obsidian-stack ADR 0002, Update 2026-07-08).
+
+**Vault-side `MCP_REQUIRED_GROUPS` is deliberately off.** The admin restriction already holds at the
+Pocket-ID clients (above), so a second group check on the resource server is redundant defense-in-depth
+and risks a lockout — the presence of a `groups` claim in an `authorization_code` access token is
+unverified. This matches §5's own caution ("verify a real token before mirroring the group check").
+Closes the vault item in §Consequences.
