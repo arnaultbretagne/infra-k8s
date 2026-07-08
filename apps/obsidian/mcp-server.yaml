@@ -42,6 +42,15 @@ spec:
               value: https://vault.bretagne.dev
             - name: POCKET_ID_ISSUER
               value: https://id.bretagne.dev
+            # F-05 makes `aud` mandatory (defaults to MCP_SERVER_URL). Pocket-ID binds the RFC 8707
+            # resource->aud ONLY for the client_credentials grant; the Claude.ai / ChatGPT connectors
+            # use authorization_code, where Pocket-ID ignores `resource` and sets aud = <client_id> —
+            # so their client_ids must be accepted explicitly, else the connectors 401 (why they broke;
+            # obsidian-stack ADR 0002, Update 2026-07-08). NB: these are Pocket-ID-generated client_ids —
+            # if a connector is recreated in apps/pocket-id/oidc-reconciler/spec.json its UUID changes,
+            # update here. (claude_auth, openai_auth.)
+            - name: MCP_ALLOWED_AUDIENCE
+              value: "https://vault.bretagne.dev,a8bcf978-4c56-4cbd-bedc-e369777a6713,7db41a0c-cc74-433a-a11b-0b3cc1fe289c"
             - name: LOG_LEVEL
               value: info
           resources:
