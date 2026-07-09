@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:6259f0de5e5f305f9569c066f83b05a300420cfcee3b162140078230c6784d24
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:20423fde62d4547dbaf3ca4ad897b36630c838111ca843e6888b0bde02bf47de
           command: ["node", "dist/manager.js"]
           ports:
             - containerPort: 8080
@@ -50,7 +50,7 @@ spec:
             - { name: PORT, value: "8080" }
             - { name: SHARED_SUPERVISOR_URL, value: http://agent:8080 }
             - { name: AGENT_RUNS_NS, value: agent-runs }
-            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:f8901d6d339180bacead6d504d9cbda6e25fb129378e1270c09265035b941a83" }
+            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:efab1a4f22656cd2e5b3b36cf9dc5f1ff40399b57be7b3dc4640789155800861" }
             # Loge token dispossession (agent-runtime feat/loge-inference-auth-proxy): the manager runs a
             # singleton inference-proxy pod that holds the real token; loges get a placeholder + base-URL.
             - { name: PROXY_PORT, value: "8788" }
