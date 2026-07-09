@@ -34,6 +34,11 @@ spec:
             app: website
       toPorts:
         - ports: [{ port: "8600", protocol: TCP }] # channel dial-back, cross-namespace
-    - toEntities: [world] # Anthropic; FQDN tightening is a recorded follow-up (standing Cilium justification)
+    - toEndpoints: # inference-proxy (same ns): the loge's /v1/messages goes here now (base-URL'd, with
+        - matchLabels: #  a placeholder token) — the proxy holds the real one and forwards to Anthropic.
+            app: inference-proxy
       toPorts:
+        - ports: [{ port: "8788", protocol: TCP }]
+    - toEntities: [world] # KEPT — loge egress deliberately NOT reduced: direct Anthropic + the hardcoded
+      toPorts: #            api.anthropic.com endpoints that ignore ANTHROPIC_BASE_URL. FQDN tightening TODO.
         - ports: [{ port: "443", protocol: TCP }, { port: "80", protocol: TCP }]

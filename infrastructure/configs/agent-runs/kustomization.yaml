@@ -6,5 +6,6 @@ resources:
   - limitrange.yaml
   - networkpolicy.yaml
   - loges-cnp.yaml
+  - inference-proxy-cnp.yaml
   - rbac.yaml
   - claude-oauth.secrets.yaml
