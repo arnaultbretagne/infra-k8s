@@ -13,8 +13,10 @@ metadata:
   namespace: agent-runs
 spec:
   hard:
-    pods: "5"
+    # Amended (feat/loge-inference-auth-proxy): +1 pod for the manager-owned inference-proxy singleton
+    # (a trusted, non-sandboxed pod — no gVisor overhead), so 5 loges + the proxy fit together.
+    pods: "6"
     requests.cpu: "1"
     requests.memory: 2Gi
-    limits.cpu: "5500m"
-    limits.memory: 8Gi
+    limits.cpu: "5750m"  # 5 loges (5×1020m sandboxed) + proxy 250m = 5350m, with drift headroom
+    limits.memory: 9Gi   # 5 loges (5×1600Mi) + proxy 256Mi = 8256Mi > 8Gi → 9Gi

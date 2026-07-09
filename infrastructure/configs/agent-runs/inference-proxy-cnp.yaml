@@ -1,0 +1,33 @@
+# CiliumNetworkPolicy for the inference-auth proxy (agent-runtime feat/loge-inference-auth-proxy).
+# The proxy is a manager-owned singleton pod in agent-runs — the ONLY holder of the real Claude token.
+# agent-runs is default-deny (networkpolicy.yaml); this grants exactly what the proxy needs: accept the
+# loges' base-URL'd inference traffic + the kubelet probe, and reach Anthropic. The real token never
+# leaves this pod; a compromised loge can only *use* it via HTTP, never read it (pod isolation).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: inference-proxy
+  namespace: agent-runs
+spec:
+  endpointSelector:
+    matchLabels:
+      app: inference-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: loge # same namespace → loges reach the proxy
+      toPorts:
+        - ports: [{ port: "8788", protocol: TCP }]
+    - fromEntities: [host] # kubelet readiness probe (/healthz)
+      toPorts:
+        - ports: [{ port: "8788", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [world] # Anthropic (api.anthropic.com) — the proxy injects the real token here
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
