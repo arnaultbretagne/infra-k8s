@@ -1,0 +1,54 @@
+# Broker network policy (agent-runtime ADR 0011 §3 / broker plan P2.5). Cilium is default-deny for a
+# selected endpoint, so each broker pod is locked to exactly its flows. The front is the ONLY entry
+# from a loge (data :8788) and from the manager (admin :8789); the adapters are reachable ONLY from
+# the front. No broker pod reaches the Kubernetes API or a public ingress.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-broker
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agent-broker
+  ingress:
+    # loges -> the data plane :8788 (cross-namespace). A lease is still required (401 without).
+    - fromEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
+      toPorts: [{ ports: [{ port: "8788", protocol: TCP }] }]
+    # the manager -> the admin plane :8789 (mint/revoke). The ONLY workload allowed on admin.
+    - fromEndpoints: [{ matchLabels: { app: runtime-manager } }]
+      toPorts: [{ ports: [{ port: "8789", protocol: TCP }] }]
+    # kubelet probes -> readyz/healthz on :8789
+    - fromEntities: [host]
+      toPorts: [{ ports: [{ port: "8789", protocol: TCP }] }]
+  egress:
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
+      toPorts: [{ ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }] }]
+    # front -> the three isolated adapters :8790
+    - toEndpoints:
+        - { matchLabels: { app: agent-broker-claude } }
+        - { matchLabels: { app: agent-broker-vault } }
+        - { matchLabels: { app: agent-broker-github } }
+      toPorts: [{ ports: [{ port: "8790", protocol: TCP }] }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-broker-adapters
+  namespace: agent
+spec:
+  endpointSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [agent-broker-claude, agent-broker-vault, agent-broker-github] }
+  ingress:
+    # ONLY the front reaches an adapter — never a loge, never the manager, never an ingress.
+    - fromEndpoints: [{ matchLabels: { app: agent-broker } }]
+      toPorts: [{ ports: [{ port: "8790", protocol: TCP }] }]
+    - fromEntities: [host] # kubelet probes
+      toPorts: [{ ports: [{ port: "8790", protocol: TCP }] }]
+  egress:
+    # DNS only while dark; each adapter's provider egress (Anthropic / Pocket-ID+Vault / GitHub) is
+    # added with its real implementation (P3/P5/P6).
+    - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
+      toPorts: [{ ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }] }]

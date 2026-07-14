@@ -13,6 +13,9 @@ resources:
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - broker.yaml            # the agent credential broker — dark (agent-runtime ADR 0011; broker plan P2)
+  - broker-pvc.yaml        # the lease store (RWO)
+  - broker-networkpolicy.yaml
 # NOTE: auth is now a static `setup-token` (CLAUDE_CODE_OAUTH_TOKEN, SOPS above) — agent-runtime
 # ADR 0007. The old rotating `claude-creds` Secret + the seed initContainer's creds-copy are gone
 # (removed 2026-07-02); the runtime never logs in itself, it only carries the static token.
