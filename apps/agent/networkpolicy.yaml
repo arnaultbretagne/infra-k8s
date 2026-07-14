@@ -61,6 +61,9 @@ spec:
       toPorts: [{ ports: [{ port: "6443", protocol: TCP }] }]
     - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
       toPorts: [{ ports: [{ port: "8080", protocol: TCP }] }]
+    # the broker admin plane — mint/revoke leases (agent-runtime ADR 0011; broker plan P2/P3)
+    - toEndpoints: [{ matchLabels: { app: agent-broker } }]
+      toPorts: [{ ports: [{ port: "8789", protocol: TCP }] }]
 ---
 # --- agora-pg: the hub's conversation store (agora ADR 0009) — cloned from pocket-id-pg ---
 apiVersion: cilium.io/v2

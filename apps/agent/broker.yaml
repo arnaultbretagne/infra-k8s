@@ -1,0 +1,209 @@
+# The agent credential broker (agent-runtime ADR 0011), deployed DARK (broker plan P2): a policy
+# front + three isolated provider adapters, no production secrets, no real consumer yet. All run the
+# agent-runtime image with a per-role entrypoint (like manager / inference-proxy). The front holds the
+# lease store (RWO PVC, single replica, plan §2.7); the adapters will each hold ONE provider secret
+# (P3/P5/P6). None reaches the Kubernetes API (automountServiceAccountToken: false).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # RWO PVC (the lease store)
+  selector:
+    matchLabels: { app: agent-broker }
+  template:
+    metadata:
+      labels: { app: agent-broker }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: front
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3a89bf5bcf885fa447c0c1731d608c72368ff084c695bed6295e7e33d0f4d5b9
+          args: ["node", "dist/broker/front.js"]
+          ports:
+            - { name: data, containerPort: 8788 } # loge-facing
+            - { name: admin, containerPort: 8789 } # manager-only
+          env:
+            - { name: LEASE_STORE_PATH, value: /var/lib/broker/leases.json }
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 15m, memory: 48Mi }
+            limits: { memory: 128Mi }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8789 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8789 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: leases, mountPath: /var/lib/broker }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: leases
+          persistentVolumeClaim: { claimName: agent-broker-leases }
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-broker
+spec:
+  selector: { app: agent-broker }
+  ports:
+    - { name: data, port: 8788, targetPort: 8788 }
+    - { name: admin, port: 8789, targetPort: 8789 }
+---
+# ---- adapters: one Deployment + Service each, one secret each (P3/P5/P6). P2 = stub (501). ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-claude
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: agent-broker-claude }
+  template:
+    metadata:
+      labels: { app: agent-broker-claude }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: adapter
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3a89bf5bcf885fa447c0c1731d608c72368ff084c695bed6295e7e33d0f4d5b9
+          args: ["node", "dist/broker/adapter-claude.js"]
+          ports: [{ name: adapter, containerPort: 8790 }]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 40Mi }
+            limits: { memory: 96Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 30
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-broker-claude
+spec:
+  selector: { app: agent-broker-claude }
+  ports: [{ name: adapter, port: 8790, targetPort: 8790 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: agent-broker-vault }
+  template:
+    metadata:
+      labels: { app: agent-broker-vault }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: adapter
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3a89bf5bcf885fa447c0c1731d608c72368ff084c695bed6295e7e33d0f4d5b9
+          args: ["node", "dist/broker/adapter-vault.js"]
+          ports: [{ name: adapter, containerPort: 8790 }]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 40Mi }
+            limits: { memory: 96Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 30
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-broker-vault
+spec:
+  selector: { app: agent-broker-vault }
+  ports: [{ name: adapter, port: 8790, targetPort: 8790 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-broker-github
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: agent-broker-github }
+  template:
+    metadata:
+      labels: { app: agent-broker-github }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: adapter
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3a89bf5bcf885fa447c0c1731d608c72368ff084c695bed6295e7e33d0f4d5b9
+          args: ["node", "dist/broker/adapter-github.js"]
+          ports: [{ name: adapter, containerPort: 8790 }]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 10m, memory: 40Mi }
+            limits: { memory: 96Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8790 }
+            periodSeconds: 30
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-broker-github
+spec:
+  selector: { app: agent-broker-github }
+  ports: [{ name: adapter, port: 8790, targetPort: 8790 }]

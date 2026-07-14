@@ -1,0 +1,11 @@
+# The broker's lease store (agent-runtime ADR 0011 §5 / plan §2.7): a small RWO volume holding
+# hash(token) + claims only — never a raw token. Single replica (Recreate) owns it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-broker-leases
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
