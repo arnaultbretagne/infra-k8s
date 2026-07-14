@@ -74,5 +74,5 @@ spec:
   selector:
     app: website
   ports:
-    - { port: 8600, targetPort: 8600 }
-    - { port: 8601, targetPort: 8601 }   # channel plane (broker plan P1)
+    - { name: human, port: 8600, targetPort: 8600 }
+    - { name: channel, port: 8601, targetPort: 8601 }   # channel plane (broker plan P1)
