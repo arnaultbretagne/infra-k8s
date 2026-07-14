@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault    # required by PSS 'restricted' (was the only missing field)
       containers:
         - name: pocket-id
-          image: ghcr.io/pocket-id/pocket-id:v2.5.0
+          image: ghcr.io/pocket-id/pocket-id:v2.11.0
           ports:
             - containerPort: 1411
           securityContext:
