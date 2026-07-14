@@ -23,11 +23,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: website
-          image: ghcr.io/arnaultbretagne/agora-website:latest
+          image: ghcr.io/arnaultbretagne/agora-website@sha256:d9ba2fb0c45b8c844530f32c365d549497519228eaf7f254336c3e7de6688636
           ports:
             - containerPort: 8600
+            - containerPort: 8601   # channel plane — loge-facing WS only (agora ADR 0002 amendment; broker plan P1)
           env:
             - { name: PORT, value: "8600" }
+            - { name: CHANNEL_PORT, value: "8601" }   # loge-facing channel WS listener (broker plan P1)
             - { name: HOST, value: "0.0.0.0" }
             - { name: DATA_DIR, value: /data }
             - name: DATABASE_URL
@@ -73,3 +75,4 @@ spec:
     app: website
   ports:
     - { port: 8600, targetPort: 8600 }
+    - { port: 8601, targetPort: 8601 }   # channel plane (broker plan P1)
