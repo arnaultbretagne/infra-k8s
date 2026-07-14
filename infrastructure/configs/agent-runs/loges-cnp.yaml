@@ -33,7 +33,7 @@ spec:
             k8s:io.kubernetes.pod.namespace: agent
             app: website
       toPorts:
-        - ports: [{ port: "8600", protocol: TCP }, { port: "8601", protocol: TCP }] # channel dial-back — 8601 = the channel plane (broker plan P1); 8600 kept for in-flight loges until Deploy C, cross-namespace
+        - ports: [{ port: "8601", protocol: TCP }] # channel dial-back to the channel plane (broker plan P1); split complete — the human plane :8600 is no longer reachable from a loge, cross-namespace
     - toEndpoints: # inference-proxy (same ns): the loge's /v1/messages goes here now (base-URL'd, with
         - matchLabels: #  a placeholder token) — the proxy holds the real one and forwards to Anthropic.
             app: inference-proxy
