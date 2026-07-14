@@ -48,7 +48,21 @@ spec:
     - fromEntities: [host] # kubelet probes
       toPorts: [{ ports: [{ port: "8790", protocol: TCP }] }]
   egress:
-    # DNS only while dark; each adapter's provider egress (Anthropic / Pocket-ID+Vault / GitHub) is
-    # added with its real implementation (P3/P5/P6).
+    # DNS for all adapters; each adapter's provider egress is added with its real implementation.
     - toEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: kube-system, k8s:k8s-app: kube-dns } }]
       toPorts: [{ ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }] }]
+---
+# claude adapter -> Anthropic (broker plan P3). world:443 like the inference-proxy it replaces (some
+# api.anthropic.com endpoints are IP-hardcoded + ignore base-URL); FQDN-tighten later, like the loge egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-broker-claude-egress
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agent-broker-claude
+  egress:
+    - toEntities: [world]
+      toPorts: [{ ports: [{ port: "443", protocol: TCP }] }]
