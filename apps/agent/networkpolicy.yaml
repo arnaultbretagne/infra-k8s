@@ -16,9 +16,11 @@ spec:
     # the OIDC gate -> hub (human traffic)
     - fromEndpoints: [{ matchLabels: { app: oauth2-proxy } }]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
-    # the channels (from a loge, the only substrate now) -> hub WS, cross-namespace (ADR 0010/0028)
+    # the channels (from a loge) -> hub WS, cross-namespace (ADR 0010/0028). Deploy A of the
+    # listener split (agora ADR 0002 amendment; broker plan P1): 8601 is the new channel plane,
+    # 8600 kept until loges are repointed (Deploy B removes 8600 from this rule).
     - fromEndpoints: [{ matchLabels: { k8s:io.kubernetes.pod.namespace: agent-runs, app: loge } }]
-      toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
+      toPorts: [{ ports: [{ port: "8600", protocol: TCP }, { port: "8601", protocol: TCP }] }]
     # kubelet health probes
     - fromEntities: [host]
       toPorts: [{ ports: [{ port: "8600", protocol: TCP }] }]
