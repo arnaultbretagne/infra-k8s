@@ -50,7 +50,7 @@ spec:
             - { name: PORT, value: "8080" }
             - { name: SHARED_SUPERVISOR_URL, value: http://agent:8080 }
             - { name: AGENT_RUNS_NS, value: agent-runs }
-            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:efab1a4f22656cd2e5b3b36cf9dc5f1ff40399b57be7b3dc4640789155800861" }
+            - { name: LOGE_IMAGE, value: "ghcr.io/arnaultbretagne/loge@sha256:57412c49d9ca86f8f3882b0b3e57751555a75e9eb462da91791e2352b5b796d0" }
             # Loge token dispossession (agent-runtime feat/loge-inference-auth-proxy): the manager runs a
             # singleton inference-proxy pod that holds the real token; loges get a placeholder + base-URL.
             - { name: PROXY_PORT, value: "8788" }
