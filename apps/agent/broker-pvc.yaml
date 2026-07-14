@@ -6,6 +6,7 @@ metadata:
   name: agent-broker-leases
 spec:
   accessModes: [ReadWriteOnce]
+  storageClassName: local-path # not the cluster default; must be named (like agora-data)
   resources:
     requests:
       storage: 1Gi
