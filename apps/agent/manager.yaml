@@ -57,7 +57,7 @@ spec:
             - { name: ANTHROPIC_ACCOUNT_UUID, value: "f9255ae9-488d-40f8-bca8-0ca636702652" }
             # Broker migration canary (P3): false = the proven inference-proxy path (unchanged). Flip to
             # "true" to route NEW loges through the broker; rollback = flip back. BROKER_*_URL default in code.
-            - { name: USE_BROKER, value: "false" }
+            - { name: USE_BROKER, value: "true" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
