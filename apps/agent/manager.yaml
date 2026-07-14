@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:20423fde62d4547dbaf3ca4ad897b36630c838111ca843e6888b0bde02bf47de
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3c996e46e819496a7b8bf40c3a5b2ed49da9b34639e22125e94fbe6272813fa8
           command: ["node", "dist/manager.js"]
           ports:
             - containerPort: 8080
@@ -55,6 +55,9 @@ spec:
             # singleton inference-proxy pod that holds the real token; loges get a placeholder + base-URL.
             - { name: PROXY_PORT, value: "8788" }
             - { name: ANTHROPIC_ACCOUNT_UUID, value: "f9255ae9-488d-40f8-bca8-0ca636702652" }
+            # Broker migration canary (P3): false = the proven inference-proxy path (unchanged). Flip to
+            # "true" to route NEW loges through the broker; rollback = flip back. BROKER_*_URL default in code.
+            - { name: USE_BROKER, value: "false" }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
