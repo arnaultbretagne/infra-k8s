@@ -36,6 +36,13 @@
       "pkceEnabled": false
     },
     {
+      "_comment": "MACHINE client for the agent broker's vault adapter (agent-broker plan P5). No callbackURLs: it never runs authorization_code — only client_credentials, whose token carries the client identity in sub=client-<uuid>. That UUID is what MCP_ALLOWED_CLIENT_IDS lists on the vault MCP, and what makes an aud-forged token from any OTHER client fail. Its client_secret lives ONLY in the vault-adapter's SOPS Secret and never enters a loge.",
+      "name": "agent_broker_vault",
+      "callbackURLs": [],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
+    },
+    {
       "name": "claude_auth",
       "callbackURLs": [
         "https://claude.ai/api/mcp/auth_callback",
