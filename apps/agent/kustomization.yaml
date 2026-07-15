@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - secrets.yaml          # oauth2-proxy (SOPS). claude-creds is created out-of-band (see README-note below)
   - claude-oauth.secrets.yaml   # static setup-token OAuth token (SOPS) — runtime auth, agent-runtime ADR 0007
+  - vault-broker.secrets.yaml   # Pocket-ID machine client_secret for the broker's vault adapter (SOPS, P5)
   - pvc.yaml              # agora-data (the website PVC). agent-claude (the retired shared substrate) was removed 2026-07-06.
   - cnpg.yaml
   - restore-test.yaml

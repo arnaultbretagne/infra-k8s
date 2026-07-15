@@ -146,6 +146,14 @@ spec:
             # POCKET_ID_CLIENT_ID and the client secret — are absent until the machine client exists
             # (Arnault's IAM checkpoint, plan P5.2 step 3). Missing config => the adapter serves an
             # honest 503 rather than crash-looping, exactly as the claude adapter did before P3.
+            # The machine client created by the oidc-reconciler (spec.json: agent_broker_vault).
+            # Its UUID is public and MUST match what MCP_ALLOWED_CLIENT_IDS lists on the vault MCP —
+            # the token carries it as `sub = client-<uuid>`, which is the only unforgeable identity
+            # Pocket-ID asserts. Recreating the client changes this UUID and breaks both ends.
+            - { name: POCKET_ID_CLIENT_ID, value: "285e5889-e9b4-40cf-b1e8-a6f430f42c35" }
+            # Read from a FILE, never an env var: `kubectl exec ... env` and a crashed process's
+            # environ both miss a mounted file, and it rotates without touching this pod spec.
+            - { name: POCKET_ID_CLIENT_SECRET_FILE, value: /etc/broker/client-secret }
             - { name: POCKET_ID_TOKEN_ENDPOINT, value: https://id.bretagne.dev/api/oidc/token }
             # RFC 8707 resource -> becomes the token's `aud`, which is what the vault MCP gates on.
             # It must stay the resource IDENTIFIER the MCP server advertises, not the URL we dial.
@@ -169,8 +177,14 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz, port: 8790 }
             periodSeconds: 30
-          volumeMounts: [{ name: tmp, mountPath: /tmp }]
-      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: client-secret, mountPath: /etc/broker, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
+        - name: client-secret
+          secret: { secretName: pocket-id-broker-client, defaultMode: 0400 }
 ---
 apiVersion: v1
 kind: Service
