@@ -24,7 +24,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: front
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3860f14612222577ac183c20ef10fac0f6f69500745119ca64c46b0a11652b19
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:4caccbc30b406d6989d7794b22578d4bee2f44a41bb7b0b897d4e4028c08ae76
           args: ["node", "dist/broker/front.js"]
           ports:
             - { name: data, containerPort: 8788 } # loge-facing
@@ -84,7 +84,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3860f14612222577ac183c20ef10fac0f6f69500745119ca64c46b0a11652b19
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:4caccbc30b406d6989d7794b22578d4bee2f44a41bb7b0b897d4e4028c08ae76
           args: ["node", "dist/broker/adapter-claude.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
           env:
@@ -142,7 +142,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3860f14612222577ac183c20ef10fac0f6f69500745119ca64c46b0a11652b19
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:4caccbc30b406d6989d7794b22578d4bee2f44a41bb7b0b897d4e4028c08ae76
           args: ["node", "dist/broker/adapter-vault.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
           env:
@@ -218,12 +218,23 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
+        # fsGroup so the mounted App key is group-readable by uid 1000 (a Secret volume lands
+        # root:fsGroup — without this, 0440 is root-only and the adapter cannot read its own key).
+        fsGroup: 1000
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3860f14612222577ac183c20ef10fac0f6f69500745119ca64c46b0a11652b19
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:4caccbc30b406d6989d7794b22578d4bee2f44a41bb7b0b897d4e4028c08ae76
           args: ["node", "dist/broker/adapter-github.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
+          env:
+            # The GitHub App `k8s-broker`. Its id is public; the private key is a FILE (0440), never
+            # an env var — `kubectl exec ... env` and a crashed process's environ both miss a file.
+            - { name: GITHUB_APP_ID, value: "4307707" }
+            - { name: GITHUB_APP_KEY_FILE, value: /etc/broker/app-key.pem }
+            # The installation id is deliberately NOT pinned: reinstalling the App mints a new one,
+            # and a pinned value would fail closed forever with a puzzling 404. The adapter discovers
+            # it, and refuses to guess if the App ever has more than one.
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
@@ -240,8 +251,14 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz, port: 8790 }
             periodSeconds: 30
-          volumeMounts: [{ name: tmp, mountPath: /tmp }]
-      volumes: [{ name: tmp, emptyDir: { sizeLimit: 16Mi } }]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: app-key, mountPath: /etc/broker, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }
+        - name: app-key
+          secret: { secretName: github-app-key, defaultMode: 0440 }
 ---
 apiVersion: v1
 kind: Service
