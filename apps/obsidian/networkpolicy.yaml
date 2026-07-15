@@ -84,6 +84,17 @@ spec:
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "4000", protocol: TCP }]
+    # The agent broker's vault adapter (agent-broker plan P5.3): it holds the Pocket-ID machine
+    # client and injects that bearer server-side, so a loge reaches the vault WITHOUT ever holding a
+    # vault credential. This is the in-cluster path — the adapter's matching egress is in
+    # apps/agent/broker-networkpolicy.yaml, in this same commit. Note this opens the pod, not the
+    # auth: the MCP server still demands a valid bearer whose `aud` binds it to this resource.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            app: agent-broker-vault
+      toPorts:
+        - ports: [{ port: "4000", protocol: TCP }]
   egress:
     - toEndpoints:
         - matchLabels:

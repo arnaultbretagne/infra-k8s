@@ -66,3 +66,30 @@ spec:
   egress:
     - toEntities: [world]
       toPorts: [{ ports: [{ port: "443", protocol: TCP }] }]
+---
+# The vault adapter's two upstreams (P5.3). Both halves of the obsidian flow land together: the
+# matching ingress on obsidian-mcp is in apps/obsidian/networkpolicy.yaml, in this same commit —
+# opening one side without the other is how the P1 flip stalled every run.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-broker-vault-egress
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agent-broker-vault
+  egress:
+    # -> the vault MCP, in-cluster. Deliberately NOT via vault.bretagne.dev: the public route would
+    # hairpin out through traefik for a call that never has to leave the cluster. The machine token
+    # stays valid either way — its `aud` is the resource IDENTIFIER Pocket-ID echoed, not the URL used.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: obsidian
+            app: obsidian-mcp
+      toPorts: [{ ports: [{ port: "4000", protocol: TCP }] }]
+    # -> Pocket-ID's token endpoint (client_credentials). `world` because id.bretagne.dev resolves
+    # publicly; same shape as agent-broker-claude-egress. Tighten to toFQDNs when the DNS-proxy
+    # pattern is proven somewhere less load-bearing than a credential path.
+    - toEntities: [world]
+      toPorts: [{ ports: [{ port: "443", protocol: TCP }] }]

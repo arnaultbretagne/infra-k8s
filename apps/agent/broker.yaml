@@ -138,9 +138,21 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3a89bf5bcf885fa447c0c1731d608c72368ff084c695bed6295e7e33d0f4d5b9
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:8f9c7cd2197bda01826de6260a416bd631b83f4188595f8cdb8a06adc17d2058
           args: ["node", "dist/broker/adapter-vault.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
+          env:
+            # P5.3, deployed DARK. Everything here is public config; the two secret-adjacent pieces —
+            # POCKET_ID_CLIENT_ID and the client secret — are absent until the machine client exists
+            # (Arnault's IAM checkpoint, plan P5.2 step 3). Missing config => the adapter serves an
+            # honest 503 rather than crash-looping, exactly as the claude adapter did before P3.
+            - { name: POCKET_ID_TOKEN_ENDPOINT, value: https://id.bretagne.dev/api/oidc/token }
+            # RFC 8707 resource -> becomes the token's `aud`, which is what the vault MCP gates on.
+            # It must stay the resource IDENTIFIER the MCP server advertises, not the URL we dial.
+            - { name: VAULT_RESOURCE, value: https://vault.bretagne.dev }
+            # ...and the URL we actually dial is in-cluster: no hairpin out through traefik for a call
+            # that never has to leave the cluster.
+            - { name: VAULT_MCP_URL, value: http://obsidian-mcp.obsidian.svc.cluster.local:4000/mcp }
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000
