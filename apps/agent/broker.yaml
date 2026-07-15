@@ -135,6 +135,10 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
+        # fsGroup so the mounted client-secret is group-readable by the adapter's uid 1000. A Secret
+        # volume lands owned root:fsGroup, so without this the file is root-only and 0400 locks the
+        # adapter out of its own credential (hit live 2026-07-15: EACCES -> honest 503).
+        fsGroup: 1000
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
@@ -184,7 +188,7 @@ spec:
         - name: tmp
           emptyDir: { sizeLimit: 16Mi }
         - name: client-secret
-          secret: { secretName: pocket-id-broker-client, defaultMode: 0400 }
+          secret: { secretName: pocket-id-broker-client, defaultMode: 0440 }
 ---
 apiVersion: v1
 kind: Service
