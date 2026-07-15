@@ -98,3 +98,19 @@ spec:
             k8s:io.kubernetes.pod.namespace: pocket-id
             app: pocket-id
       toPorts: [{ ports: [{ port: "1411", protocol: TCP }] }]
+---
+# The github adapter's one upstream: api.github.com. Unlike the vault (in-cluster) and Pocket-ID
+# (whose FQDN hairpins onto this node's own IP), GitHub is genuinely external, so `world` is the
+# honest entity here — same shape as agent-broker-claude-egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agent-broker-github-egress
+  namespace: agent
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agent-broker-github
+  egress:
+    - toEntities: [world]
+      toPorts: [{ ports: [{ port: "443", protocol: TCP }] }]
