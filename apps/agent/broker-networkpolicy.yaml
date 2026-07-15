@@ -88,8 +88,13 @@ spec:
             k8s:io.kubernetes.pod.namespace: obsidian
             app: obsidian-mcp
       toPorts: [{ ports: [{ port: "4000", protocol: TCP }] }]
-    # -> Pocket-ID's token endpoint (client_credentials). `world` because id.bretagne.dev resolves
-    # publicly; same shape as agent-broker-claude-egress. Tighten to toFQDNs when the DNS-proxy
-    # pattern is proven somewhere less load-bearing than a credential path.
-    - toEntities: [world]
-      toPorts: [{ ports: [{ port: "443", protocol: TCP }] }]
+    # -> Pocket-ID's token endpoint (client_credentials), IN-CLUSTER. Not world:443 via
+    # id.bretagne.dev: that FQDN resolves to the node's own InternalIP, so the call hairpins at its
+    # own host, which Cilium classes as `host` rather than `world` — the world rule silently timed
+    # out (hit live 2026-07-15). This is tighter anyway: one service, not the whole internet. The
+    # matching ingress on pocket-id is in apps/pocket-id/networkpolicy.yaml, this same commit.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: pocket-id
+            app: pocket-id
+      toPorts: [{ ports: [{ port: "1411", protocol: TCP }] }]
