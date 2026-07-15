@@ -24,7 +24,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: front
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:e50c40b1848f1ba967a30a38e88d88a92d68ca7fe2e752c2f9fdd02045cdc0eb
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:97e1baac7a248ea40ed0b05344e26e24b4be7559f700a7ec472ef95a8a1d18c7
           args: ["node", "dist/broker/front.js"]
           ports:
             - { name: data, containerPort: 8788 } # loge-facing
@@ -84,7 +84,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:e50c40b1848f1ba967a30a38e88d88a92d68ca7fe2e752c2f9fdd02045cdc0eb
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:97e1baac7a248ea40ed0b05344e26e24b4be7559f700a7ec472ef95a8a1d18c7
           args: ["node", "dist/broker/adapter-claude.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
           env:
@@ -142,7 +142,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:e50c40b1848f1ba967a30a38e88d88a92d68ca7fe2e752c2f9fdd02045cdc0eb
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:97e1baac7a248ea40ed0b05344e26e24b4be7559f700a7ec472ef95a8a1d18c7
           args: ["node", "dist/broker/adapter-vault.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
           env:
@@ -224,7 +224,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: adapter
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:e50c40b1848f1ba967a30a38e88d88a92d68ca7fe2e752c2f9fdd02045cdc0eb
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:97e1baac7a248ea40ed0b05344e26e24b4be7559f700a7ec472ef95a8a1d18c7
           args: ["node", "dist/broker/adapter-github.js"]
           ports: [{ name: adapter, containerPort: 8790 }]
           env:
