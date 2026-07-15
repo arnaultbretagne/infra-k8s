@@ -42,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:40f52f88739a43171f59a0e6ca52a80e2ba8384133aa358cfaaac79816009800
+          image: ghcr.io/arnaultbretagne/agent-runtime@sha256:3860f14612222577ac183c20ef10fac0f6f69500745119ca64c46b0a11652b19
           command: ["node", "dist/manager.js"]
           ports:
             - containerPort: 8080
