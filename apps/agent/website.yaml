@@ -23,7 +23,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: website
-          image: ghcr.io/arnaultbretagne/agora-website@sha256:dd989e26cc4603022e10b5475c7f4d5a260392f5f7cea4d3682fe365aaa57e0e
+          image: ghcr.io/arnaultbretagne/agora-website@sha256:a1d6adf33e646f491708dd998172980f406cf9b63b5381a832eac3b9cee422fb
           ports:
             - containerPort: 8600
             - containerPort: 8601   # channel plane — loge-facing WS only (agora ADR 0002 amendment; broker plan P1)
