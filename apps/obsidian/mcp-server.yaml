@@ -51,6 +51,24 @@ spec:
             # update here. (claude_auth, openai_auth.)
             - name: MCP_ALLOWED_AUDIENCE
               value: "https://vault.bretagne.dev,a8bcf978-4c56-4cbd-bedc-e369777a6713,7db41a0c-cc74-433a-a11b-0b3cc1fe289c"
+            # ACTIVE (agent-broker plan P5.2 step 6). Proven live 2026-07-15, gate OFF: oauth2-proxy's
+            # own client (ff448523) minted a token with aud=https://vault.bretagne.dev — Pocket-ID
+            # echoes the requested `resource` into `aud` with zero validation — and this server
+            # ACCEPTED it (200). Any confidential client could read/write the vault.
+            #
+            # `aud` therefore proves intent, not identity. The only identity Pocket-ID asserts on a
+            # client_credentials token is `sub = client-<uuid>`, which a client cannot lie about.
+            # Listing the broker's machine client here means a forged-audience token from any other
+            # client is refused by its REAL sub (403).
+            #
+            # The human connectors are unaffected: authorization_code tokens carry no client id at
+            # all, so they present none, and the gate only rejects a token that PRESENTS an id not on
+            # this list. They keep passing on `aud` exactly as before (verified live after this flip).
+            #
+            # This is the client_id of `agent_broker_vault` in apps/pocket-id/oidc-reconciler/spec.json.
+            # Recreating that client changes its UUID and silently breaks this gate.
+            - name: MCP_ALLOWED_CLIENT_IDS
+              value: "285e5889-e9b4-40cf-b1e8-a6f430f42c35"
             # v0.4.0 (agent-broker plan P5.2 step 1): this image KNOWS how to enforce
             # MCP_ALLOWED_CLIENT_IDS, but the variable stays ABSENT — absent is the documented way to
             # leave the gate off. Do NOT set it to "" to disable it: v0.4.0 refuses to start on a gate
