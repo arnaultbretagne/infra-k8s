@@ -158,7 +158,13 @@ spec:
             # Read from a FILE, never an env var: `kubectl exec ... env` and a crashed process's
             # environ both miss a mounted file, and it rotates without touching this pod spec.
             - { name: POCKET_ID_CLIENT_SECRET_FILE, value: /etc/broker/client-secret }
-            - { name: POCKET_ID_TOKEN_ENDPOINT, value: https://id.bretagne.dev/api/oidc/token }
+            # IN-CLUSTER, not https://id.bretagne.dev: that FQDN resolves to the node's own
+            # InternalIP (85.17.246.41), so the call hairpins back at its own host — which Cilium
+            # classes as `host`, not `world`, and a world:443 egress silently times out (hit live
+            # 2026-07-15). The minted token is unchanged: `iss` comes from Pocket-ID's configured
+            # APP_URL (https://id.bretagne.dev) and `aud` from the `resource` we send, neither from
+            # the URL we dial. Same endpoint the oidc-reconciler uses.
+            - { name: POCKET_ID_TOKEN_ENDPOINT, value: http://pocket-id.pocket-id.svc.cluster.local:1411/api/oidc/token }
             # RFC 8707 resource -> becomes the token's `aud`, which is what the vault MCP gates on.
             # It must stay the resource IDENTIFIER the MCP server advertises, not the URL we dial.
             - { name: VAULT_RESOURCE, value: https://vault.bretagne.dev }
