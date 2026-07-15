@@ -23,7 +23,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: mcp-server
-          image: ghcr.io/arnaultbretagne/obsidian-mcp:0.3.0
+          image: ghcr.io/arnaultbretagne/obsidian-mcp:0.4.0
           ports:
             - containerPort: 4000
           securityContext:
@@ -51,6 +51,15 @@ spec:
             # update here. (claude_auth, openai_auth.)
             - name: MCP_ALLOWED_AUDIENCE
               value: "https://vault.bretagne.dev,a8bcf978-4c56-4cbd-bedc-e369777a6713,7db41a0c-cc74-433a-a11b-0b3cc1fe289c"
+            # v0.4.0 (agent-broker plan P5.2 step 1): this image KNOWS how to enforce
+            # MCP_ALLOWED_CLIENT_IDS, but the variable stays ABSENT — absent is the documented way to
+            # leave the gate off. Do NOT set it to "" to disable it: v0.4.0 refuses to start on a gate
+            # variable that is present but blank, precisely so a gate can never read as configured
+            # while enforcing nothing (obsidian-stack ADR 0002, Update 2026-07-15).
+            # Turning the gate on is Arnault's checkpoint (plan P5.2 step 6) and needs the broker's
+            # dedicated Pocket-ID machine client to exist first: MCP_ALLOWED_CLIENT_IDS would then list
+            # that client's UUID (matched via its `sub = client-<uuid>`), and the connectors keep
+            # passing on `aud` since authorization_code tokens present no client id at all.
             - name: LOG_LEVEL
               value: info
           resources:
