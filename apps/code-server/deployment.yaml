@@ -24,7 +24,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: code-server
-          image: codercom/code-server:4.126.0
+          image: codercom/code-server:4.129.0
           command: ["/bin/bash", "/etc/code-server-config/bootstrap.sh"]
           ports:
             - containerPort: 8080
