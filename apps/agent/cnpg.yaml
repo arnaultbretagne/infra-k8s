@@ -59,6 +59,13 @@ spec:
       - name: agora_next_owner
         login: true
         createdb: true
+        # The migration itself (contracts/database/002-access.sql) runs `CREATE ROLE ... NOLOGIN`
+        # for the 5 group roles above — role creation needs CREATEROLE, not just database
+        # ownership (database ownership alone does not grant it; found live, first reconcile
+        # attempt, `agora_web_login` etc. stuck "role agora_product does not exist" because
+        # nothing had run the migration yet, and the role that would run it couldn't have created
+        # those roles either without this).
+        createrole: true
         passwordSecret:
           name: agora-next-owner-pg
 
