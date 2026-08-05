@@ -217,12 +217,30 @@ spec:
             gnetId: 19105
             revision: 9
             datasource: Prometheus
+      # Sized off 20 days of observed working set: steady state is 290-340Mi,
+      # with spikes past 378Mi when unified storage rebuilds its bleve index in
+      # memory (cache expires every 10 min). The previous 384Mi limit left only
+      # 45-95Mi of headroom and blew up three times in a month: memcg OOM-kills
+      # on 2026-07-04 and 2026-07-19, then a 29-minute outage on 2026-08-05
+      # where the pod never died at all -- GOMEMLIMIT is wired to limits.memory,
+      # so Go ground itself into a GC death spiral (1.1 core, every request
+      # timing out, SQLITE_BUSY) until the liveness probe finally restarted it.
+      # The request also has to tell the truth: at 128Mi the scheduler was
+      # budgeting for a third of what Grafana actually holds.
       resources:
         requests:
           cpu: 50m
-          memory: 128Mi
-        limits:
           memory: 384Mi
+        limits:
+          memory: 768Mi
+      # The chart default inherits Kubernetes' 1s probe timeout, which pulls the
+      # pod out of the Service on any transient slow /api/health. That endpoint
+      # hits the database, so it is exactly what goes slow under load.
+      readinessProbe:
+        httpGet:
+          path: /api/health
+          port: grafana
+        timeoutSeconds: 5
       testFramework:
         enabled: false
 
