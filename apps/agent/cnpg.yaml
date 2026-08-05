@@ -29,6 +29,39 @@ spec:
       database: agora
       owner: agora
 
+  # P11 (agora refactoring branch): reuses this same cluster instead of standing up a new one —
+  # the NEW system gets its own `agora_next` database (see agora-next-database.yaml), not the
+  # `agora` database above (that one stays exclusively the OLD channels-era hub's, live in
+  # production until cutover — reusing the CLUSTER, never the DATABASE, keeps the two systems'
+  # data fully separate while sharing the Postgres instance itself). These 4 login roles are the
+  # "workload login roles" contracts/database/002-access.sql's own comment already anticipated
+  # ("Deployment creates these NOLOGIN roles and grants them to workload login roles") — the
+  # NOLOGIN group roles themselves (agora_product, agora_projector, agora_custody_meta,
+  # agora_custody_runtime, agora_broker) are created idempotently by that migration, not here;
+  # `_login` suffix avoids any name collision with them.
+  managed:
+    roles:
+      - name: agora_web_login
+        login: true
+        inRoles: [agora_product, agora_projector, agora_custody_meta]
+        passwordSecret:
+          name: agora-web-login-pg
+      - name: agora_controller_login
+        login: true
+        inRoles: [agora_custody_runtime]
+        passwordSecret:
+          name: agora-controller-login-pg
+      - name: agora_broker_login
+        login: true
+        inRoles: [agora_broker]
+        passwordSecret:
+          name: agora-broker-login-pg
+      - name: agora_next_owner
+        login: true
+        createdb: true
+        passwordSecret:
+          name: agora-next-owner-pg
+
   backup:
     barmanObjectStore:
       destinationPath: s3://bretagne-pg-backups/agora

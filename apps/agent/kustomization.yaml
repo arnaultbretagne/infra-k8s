@@ -9,6 +9,11 @@ resources:
   - github-app.secrets.yaml     # GitHub App private key for the broker's github adapter (SOPS, P6)
   - pvc.yaml              # agora-data (the website PVC). agent-claude (the retired shared substrate) was removed 2026-07-06.
   - cnpg.yaml
+  - agora-next-database.yaml   # P11 (agora refactoring): new DB inside this same cluster, not a new one
+  - agora-web-login-role.secrets.yaml
+  - agora-controller-login-role.secrets.yaml
+  - agora-broker-login-role.secrets.yaml
+  - agora-next-owner-role.secrets.yaml
   - restore-test.yaml
   - manager.yaml          # runtime-manager (agent-runtime ADR 0010 / infra-k8s ADR 0028): the hub's single endpoint. All runs are isolated loges now — the shared agent-runtime pod is retired.
   - website.yaml

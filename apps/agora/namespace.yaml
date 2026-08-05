@@ -1,0 +1,7 @@
+# P11 (agora refactoring branch): the new system's own namespace, separate from `agent` (the
+# currently-live channels-era system) so both can run side by side until cutover — no shared
+# blast radius, no dual product truth in one namespace.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora

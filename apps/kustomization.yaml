@@ -7,4 +7,5 @@ resources:
   - code-server
   - obsidian
   - agent
+  - agora
   - terminal
