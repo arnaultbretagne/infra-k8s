@@ -25,6 +25,64 @@ spec:
       ports:
         - { protocol: TCP, port: 10254 }
         - { protocol: TCP, port: 10255 }
+    # The oauth2-proxy gate — same-namespace, dashboard/API port only (never the gateway port,
+    # human operators never need it).
+    - from:
+        - podSelector:
+            matchLabels:
+              app: oauth2-proxy
+      ports:
+        - { protocol: TCP, port: 10254 }
+---
+# docs/hosting-an-app.md §7/§10.3: the oauth2-proxy gate itself — mirrors apps/code-server's own
+# oauth2-proxy CiliumNetworkPolicy (Cilium enforces both plain NetworkPolicy and this CRD; this one
+# needs `toEntities`, which the plain API can't express).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: agora-onecli
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    # Traefik serves onecli.bretagne.dev -> proxy :4180
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> upstream OneCLI dashboard/API
+    - toEndpoints:
+        - matchLabels:
+            app: onecli
+      toPorts:
+        - ports: [{ port: "10254", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token). The public IP resolves to the node, then
+    # kube-proxy DNATs to the Traefik pod — allow both paths (code-server's own pattern).
+    - toEntities: [world, host]
+      toPorts:
+        - ports:
+            - { port: "443", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

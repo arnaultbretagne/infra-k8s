@@ -106,3 +106,18 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # P11 (agora refactoring): OneCLI's own admin dashboard — the credential-gateway vault
+    # (Claude Max / ChatGPT tokens, CA, route policy). Pocket-ID SSO gated (ALLOWED_GROUPS=admin),
+    # same pattern as https-code — deliberately never left reachable without the OIDC gate.
+    - name: https-onecli
+      port: 8443
+      protocol: HTTPS
+      hostname: onecli.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All

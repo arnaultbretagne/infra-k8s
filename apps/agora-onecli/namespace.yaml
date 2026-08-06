@@ -12,3 +12,4 @@ metadata:
   name: agora-onecli
   labels:
     agora.dev/purpose: onecli-production
+    pod-security.kubernetes.io/enforce: restricted
