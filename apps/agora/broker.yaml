@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: broker
-          image: ghcr.io/arnaultbretagne/agora-broker@sha256:b99c9157f0975c95edc6451c1074c4fe984860bfda3c1459de76096710645640
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:5bd904825193dc312365379a439b281a2ba348e0d42c2ad4481e526cbdf2504a
           env:
             - { name: PORT, value: "8443" }
             - { name: RELAY_PORT, value: "8444" }
