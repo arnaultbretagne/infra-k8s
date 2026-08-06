@@ -101,3 +101,32 @@ spec:
               app: onecli
       ports:
         - { protocol: TCP, port: 5432 }
+---
+# The CNPG-managed store (cluster.yaml). Same shape as the Deployment-based one it replaces: only
+# OneCLI itself may reach Postgres. CNPG's own operator traffic and the instance manager are not
+# subject to this (they use the API server and the pod's own loopback), and Prometheus scrapes the
+# metrics port, not 5432.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: onecli-pg-ingress
+  namespace: agora-onecli
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: onecli-pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: onecli
+      ports:
+        - { protocol: TCP, port: 5432 }
+    # Prometheus scrapes the operator-managed PodMonitor on the metrics port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - { protocol: TCP, port: 9187 }
