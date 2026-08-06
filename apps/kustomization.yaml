@@ -8,4 +8,5 @@ resources:
   - obsidian
   - agent
   - agora
+  - agora-runs
   - terminal

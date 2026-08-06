@@ -1,0 +1,19 @@
+# First-pass blast-radius bound, same reasoning as infrastructure/configs/agent-runs/quota.yaml's
+# own (the 2026-07-04 double-freeze lesson) — not yet tuned against live measured usage (matches
+# CODEX_DEFINITION/CLAUDE_CODE_DEFINITION's own resources block, first-pass estimates pending
+# observation). Sized for 4 concurrent Session Runtime Pods: each requests 250m/256Mi, limits
+# 1000m/1Gi per packages/agent-registry's own definitions, plus gVisor's ~20m cpu/64Mi memory
+# scheduler overhead per pod (found empirically in the OLD system's own quota drill) — real cost
+# per Pod is ~1020m/1088Mi, not 1000m/1024Mi.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agora-runs-quota
+  namespace: agora-runs
+spec:
+  hard:
+    pods: "4"
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "4500m"    # 4 × 1020m = 4080m, with drift headroom
+    limits.memory: 5Gi     # 4 × 1088Mi = 4352Mi, with drift headroom

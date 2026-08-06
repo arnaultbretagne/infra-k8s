@@ -1,0 +1,87 @@
+# docs/specs/11-security.md's own Network section, verbatim: "Default-deny NetworkPolicies
+# isolate: Session Runtime Pods from product Postgres; ... from the Kubernetes API; ... from other
+# Session Runtime Pods... Session Runtime Pods may reach the authenticated Broker access relay,
+# ACP bridge and explicitly required internal services. They MUST NOT reach providers, the public
+# Internet, OneCLI control API or OneCLI gateway directly." Unlike the OLD system's own loges (which
+# kept a `toEntities: [world]` exception for a provider's hardcoded, base-URL-ignoring endpoints —
+# infrastructure/configs/agent-runs/loges-cnp.yaml's own comment), this architecture routes
+# everything through the Broker relay, so no direct internet egress is needed at all — a strictly
+# narrower policy than the old one, not a port of it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: session-runtime-default-deny
+  namespace: agora-runs
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: session-runtime-egress
+  namespace: agora-runs
+spec:
+  podSelector:
+    matchLabels:
+      agora.dev/app: session-runtime
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # The Broker access relay — the ONLY path to any provider (relay.ts -> OneCLI gateway).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora
+          podSelector:
+            matchLabels:
+              app: agora-broker
+      ports:
+        - { protocol: TCP, port: 8444 }
+    # The custody restore-stream pull (plans/06's own design: a one-time, controller-minted
+    # credential, same trust level as the relay above) — never an attacker-reachable destination,
+    # AGORA_CUSTODY_RESTORE_URL is controller-set, not user input.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora
+          podSelector:
+            matchLabels:
+              app: agora-controller
+      ports:
+        - { protocol: TCP, port: 8443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: session-runtime-ingress
+  namespace: agora-runs
+spec:
+  podSelector:
+    matchLabels:
+      agora.dev/app: session-runtime
+  policyTypes: [Ingress]
+  ingress:
+    # The controller's own ACP bridge WebSocket connection, /healthz and /custody GET calls.
+    # kubelet's own readiness-probe traffic needs no explicit rule here — P04's own live-verification
+    # (apps/session-runtime-controller/live-verification/) already proved a Pod materializes and
+    # passes readiness under this exact cluster's Cilium CNI without one; node-local probe traffic
+    # isn't subject to the same NetworkPolicy enforcement as overlay pod-to-pod traffic.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora
+          podSelector:
+            matchLabels:
+              app: agora-controller
+      ports:
+        - { protocol: TCP, port: 8080 }
