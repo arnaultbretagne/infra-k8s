@@ -7,3 +7,5 @@ resources:
   - quota.yaml
   - limitrange.yaml
   - networkpolicy.yaml
+  - onecli-ca.yaml
+  - onecli-stubs.secrets.yaml
