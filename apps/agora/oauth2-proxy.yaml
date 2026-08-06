@@ -1,0 +1,78 @@
+# The OIDC gate (ADR 0021) — the new system's own public door, replacing apps/agent/oauth2-proxy.yaml
+# at cutover. Same single-operator-hub posture. Unlike the OLD one (relies solely on the Pocket-ID
+# client's own group restriction), this sets ALLOWED_GROUPS explicitly too — belt-and-suspenders,
+# matching the stronger convention docs/hosting-an-app.md recommends and code-server/onecli already use.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: agora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+          args:
+            - --http-address=0.0.0.0:4180
+          securityContext:
+            runAsUser: 2000
+            runAsGroup: 2000
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
+            - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: https://id.bretagne.dev }
+            - { name: OAUTH2_PROXY_REDIRECT_URL, value: https://agora.bretagne.dev/oidc/callback }
+            - { name: OAUTH2_PROXY_PROXY_PREFIX, value: /oidc }
+            - { name: OAUTH2_PROXY_UPSTREAMS, value: http://agora-web.agora.svc.cluster.local:8080 }
+            - { name: OAUTH2_PROXY_SCOPE, value: openid email profile groups }
+            - { name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM, value: groups }
+            - { name: OAUTH2_PROXY_ALLOWED_GROUPS, value: admin }
+            - { name: OAUTH2_PROXY_EMAIL_DOMAINS, value: '*' }
+            - { name: OAUTH2_PROXY_COOKIE_SECURE, value: "true" }
+            - { name: OAUTH2_PROXY_COOKIE_DOMAINS, value: agora.bretagne.dev }
+            - { name: OAUTH2_PROXY_WHITELIST_DOMAINS, value: agora.bretagne.dev }
+            - { name: OAUTH2_PROXY_REVERSE_PROXY, value: "true" }
+            - { name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON, value: "true" }
+            # Pocket-ID does not emit email_verified (known upstream gap, ADR 0021)
+            - { name: OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL, value: "true" }
+          envFrom:
+            - secretRef:
+                name: oauth2-proxy
+          ports:
+            - containerPort: 4180
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          readinessProbe:
+            httpGet: { path: /ping, port: 4180 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ping, port: 4180 }
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+  namespace: agora
+spec:
+  selector:
+    app: oauth2-proxy
+  ports:
+    - { port: 4180, targetPort: 4180 }
