@@ -52,6 +52,13 @@
       "pkceEnabled": true
     },
     {
+      "_comment": "P11 (agora refactoring): OneCLI's own admin dashboard, gated via oauth2-proxy (same pattern as code-server) since OneCLI has no native OIDC. Client created directly against the API (POST /oidc/clients, then POST /oidc/clients/{id}/secret to reveal the secret) before this entry was added — the reconciler's own CREATE path only logs the id, never the secret, so a fresh client's secret must always be bootstrapped by hand regardless of which caller creates it (ADR 0022).",
+      "name": "onecli",
+      "callbackURLs": ["https://onecli.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
+    },
+    {
       "name": "openai_auth",
       "callbackURLs": [
         "https://chatgpt.com/connector/oauth/b1u3srH76huV",

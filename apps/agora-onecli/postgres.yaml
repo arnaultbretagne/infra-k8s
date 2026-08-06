@@ -31,6 +31,18 @@ spec:
       labels:
         app: onecli-postgres
     spec:
+      # docs/hosting-an-app.md §12 gotcha: local-path PVs are hostPath-backed, kubelet skips
+      # fsGroup on them — a non-root postgres (uid 70, confirmed via `docker run --entrypoint sh
+      # postgres:17-alpine -c 'id postgres'`) can't write a freshly-provisioned root:shared dir.
+      # Root init chown, idempotent, rebuild-safe.
+      initContainers:
+        - name: fix-permissions
+          image: postgres:17-alpine
+          command: ["sh", "-c", "chown -R 70:70 /var/lib/postgresql/data"]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+          securityContext:
+            runAsUser: 0
       containers:
         - name: postgres
           image: postgres:17-alpine
@@ -43,6 +55,15 @@ spec:
             - containerPort: 5432
           volumeMounts:
             - { name: data, mountPath: /var/lib/postgresql/data, subPath: pgdata }
+            - { name: run, mountPath: /var/run/postgresql }
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           resources:
             requests: { cpu: 100m, memory: 128Mi }
             limits: { memory: 512Mi }
@@ -51,10 +72,15 @@ spec:
               command: ["pg_isready", "-U", "postgres"]
             initialDelaySeconds: 2
             periodSeconds: 2
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: onecli-postgres-data
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service

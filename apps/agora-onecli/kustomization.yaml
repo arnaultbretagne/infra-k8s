@@ -5,6 +5,10 @@ resources:
   - namespace.yaml
   - postgres.secrets.yaml
   - onecli-database-url.secrets.yaml
+  - oauth2-proxy.secrets.yaml
   - postgres.yaml
   - onecli.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
   - networkpolicy.yaml
+  - limitrange.yaml

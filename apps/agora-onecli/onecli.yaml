@@ -32,6 +32,17 @@ spec:
       labels:
         app: onecli
     spec:
+      # docs/hosting-an-app.md §12 gotcha: local-path PVs are hostPath-backed, kubelet skips
+      # fsGroup on them — the image's own `node` user (uid 1000, confirmed via `docker run id`)
+      # can't write a freshly-provisioned root:shared dir. Root init chown, idempotent, rebuild-safe.
+      initContainers:
+        - name: fix-permissions
+          image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
+          command: ["sh", "-c", "chown -R 1000:1000 /app/data"]
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+          securityContext:
+            runAsUser: 0
       containers:
         - name: onecli
           image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
@@ -53,6 +64,14 @@ spec:
             - { containerPort: 10255, name: gateway }
           volumeMounts:
             - { name: data, mountPath: /app/data }
+            - { name: tmp, mountPath: /tmp }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           resources:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: 500m, memory: 512Mi }
@@ -60,10 +79,14 @@ spec:
             httpGet: { path: /v1/health, port: 10254 }
             initialDelaySeconds: 5
             periodSeconds: 3
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: onecli-app-data
+        - { name: tmp, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
