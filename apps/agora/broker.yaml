@@ -1,12 +1,16 @@
-# The Broker (apps/broker): control API (execution grants, agent access relay). Owns no
-# Kubernetes API access at all — unlike the controller, it never creates/deletes workloads, only
-# issues grants and relays already-authenticated Session traffic to OneCLI.
+# The Broker (apps/broker): control API (execution grants, agent access relay). Never
+# creates/deletes workloads, unlike the controller — but DOES need read-only Kubernetes API access
+# now (found live, P11: relay.ts derives the connecting Session Runtime Pod's workload identity
+# from its own real source IP, resolved via the K8s API — this cluster has no service mesh to
+# inject an X-Workload-Identity header the way relay.ts's own module doc originally assumed).
+# Scoped to get/list pods in agora-runs ONLY (apps/agora-runs/rbac.yaml) — no write access, no
+# other namespace, nothing else.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: agora-broker
   namespace: agora
-automountServiceAccountToken: false
+automountServiceAccountToken: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -24,7 +28,7 @@ spec:
         app: agora-broker
     spec:
       serviceAccountName: agora-broker
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
@@ -35,10 +39,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: broker
-          image: ghcr.io/arnaultbretagne/agora-broker@sha256:3e56852864b2e161cd86c2228d7cfe92f421f05c085d84b6ecc83e1bf8f45d09
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:8ca7ec2aec1dd38ab9d30d1d1d94dc0c644c23c8c5c154076a4c16e9df6bf3c5
           env:
             - { name: PORT, value: "8443" }
             - { name: RELAY_PORT, value: "8444" }
+            # Found live, P11: relay.ts's own real workload-identity source (k8s-pod-lookup.ts) —
+            # matches the controller's own AGORA_NAMESPACE naming exactly.
+            - { name: AGORA_NAMESPACE, value: agora-runs }
             - { name: ONECLI_URL, value: http://onecli.agora-onecli.svc.cluster.local:10254 }
             - { name: ONECLI_GATEWAY_URL, value: http://onecli.agora-onecli.svc.cluster.local:10255 }
             - name: DATABASE_URL
