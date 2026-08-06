@@ -76,10 +76,33 @@ spec:
     matchLabels:
       cnpg.io/cluster: agora-pg
   ingress:
-    # app -> postgres
+    # app -> postgres (the OLD system)
     - fromEndpoints:
         - matchLabels:
             app: website
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # P11: the NEW system's own 3 core services (namespace agora), same cluster/database
+    # (agora_next, contracts/database/*.sql's least-privilege roles). Found live: this rule was
+    # missing entirely — every earlier "verified real DB connectivity" check this pass went through
+    # kubectl port-forward, which (like kubelet probes) bypasses Cilium's pod-to-pod enforcement
+    # entirely, so the gap went unnoticed until a real in-pod request hit `connect ETIMEDOUT`.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: agora-web
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: agora-controller
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: agora-broker
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
     # CNPG operator -> instance (status :8000 + SQL :5432 for management)
