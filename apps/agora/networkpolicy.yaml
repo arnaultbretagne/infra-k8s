@@ -166,6 +166,14 @@ spec:
             cnpg.io/cluster: agora-pg
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
+    # Found live, P11: relay.ts's own real workload-identity source (k8s-pod-lookup.ts, read-only
+    # get/list pods in agora-runs, apps/agora-runs/rbac.yaml). 6443, not 443 — Cilium's
+    # toEntities: [kube-apiserver] match enforces against the real backend port, not the
+    # kubernetes.default.svc ClusterIP's own exposed port (already found live once this same
+    # session, apps/agora-runs's own egress rule right above this one's controller equivalent).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
     # The one path to any provider — agora-onecli's own ingress rule already scopes this to
     # agora-broker specifically (apps/agora-onecli/networkpolicy.yaml).
     - toEndpoints:

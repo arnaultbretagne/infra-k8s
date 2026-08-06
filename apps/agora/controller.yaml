@@ -25,7 +25,7 @@ spec:
         app: agora-controller
     spec:
       serviceAccountName: session-runtime-controller
-      automountServiceAccountToken: true # the SOLE exception in this namespace (mirrors ADR 0024 §3)
+      automountServiceAccountToken: true # a justified exception (mirrors ADR 0024 §3) — agora-broker now has a second, narrower one (read-only pod lookup, apps/agora/broker.yaml)
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
