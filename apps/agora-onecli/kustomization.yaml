@@ -7,6 +7,8 @@ resources:
   - onecli-database-url.secrets.yaml
   - oauth2-proxy.secrets.yaml
   - postgres.yaml
+  - cluster.yaml
+  - restore-test.yaml
   - onecli.yaml
   - oauth2-proxy.yaml
   - httproute.yaml

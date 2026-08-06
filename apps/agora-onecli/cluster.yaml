@@ -1,0 +1,68 @@
+# OneCLI's backing store, CNPG-managed (P11).
+#
+# It previously ran as a plain Deployment + local-path PVC (postgres.yaml), which meant it had NO
+# backups at all — while holding the operator's linked Claude Max and ChatGPT credentials, OneCLI's
+# own gateway CA/private key and its SECRET_ENCRYPTION_KEY-encrypted material. Losing that volume
+# would have meant re-linking every provider credential by hand, and (per ONECLI-SPIKE.md) losing CA
+# continuity for every Session Runtime that pins it. Same CNPG posture as every other stateful app
+# here (pocket-id, stremio, agent/agora-pg): object-store backups, WAL archiving, a scheduled
+# backup, and a per-app restore drill (restore-test.yaml) that proves the backup is actually
+# restorable rather than merely present.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: onecli-pg
+  namespace: agora-onecli
+spec:
+  instances: 1
+
+  # Same bounded-resources posture as the other single-node clusters here: OneCLI's store is small
+  # (a handful of tables) but must not be able to contribute to a node OOM (cf. the 2026-07-04
+  # double freeze — swapless thrash, not a cgroup OOM).
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  monitoring:
+    enablePodMonitor: true
+
+  storage:
+    size: 1Gi
+    storageClass: local-path
+
+  bootstrap:
+    initdb:
+      database: onecli
+      owner: onecli
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/onecli
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-s3-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: snappy
+    retentionPolicy: "3d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: onecli-pg-daily
+  namespace: agora-onecli
+spec:
+  # Six fields, seconds first (robfig/cron) — a 5-field expression silently runs hourly. 03:30:00
+  # daily, staggered off pocket-id's 03:00 so two dumps never contend on this single node.
+  schedule: "0 30 3 * * *"
+  immediate: true
+  cluster:
+    name: onecli-pg
+  backupOwnerReference: self
