@@ -81,9 +81,15 @@ spec:
       toPorts:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     # Pod/ServiceAccount CRUD in agora-runs — rbac.yaml (agora-runs) scopes what it can actually do.
+    # Found live, P11: 443 is the kubernetes.default.svc ClusterIP's own exposed port (what
+    # k8s-client.ts's API_PORT actually dials) — but Cilium's kube-apiserver entity match enforces
+    # against the REAL backend port (6443, the node's own API server), same as apps/agent's own
+    # already-working equivalent rule (networkpolicy.yaml, agent-runs/agora-pg). 443 here silently
+    # timed out every real materialize call (connect ETIMEDOUT 10.96.0.1:443) — no Pod, no error
+    # until this segment's own Problem.detail surfacing fix made the real cause visible at all.
     - toEntities: [kube-apiserver]
       toPorts:
-        - ports: [{ port: "443", protocol: TCP }] # matches k8s-client.ts's own API_PORT (kubernetes.default.svc)
+        - ports: [{ port: "6443", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
             app: agora-broker
