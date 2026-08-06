@@ -9,4 +9,3 @@ resources:
   - networkpolicy.yaml
   - onecli-ca.yaml
   - onecli-stubs.secrets.yaml
-  - workspace-pvc-default.yaml
