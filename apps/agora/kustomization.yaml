@@ -6,3 +6,7 @@ resources:
   - agora-web-database-url.secrets.yaml
   - agora-controller-custody-database-url.secrets.yaml
   - agora-broker-database-url.secrets.yaml
+  - agora-broker-encryption-key.secrets.yaml
+  - web.yaml
+  - controller.yaml
+  - networkpolicy.yaml

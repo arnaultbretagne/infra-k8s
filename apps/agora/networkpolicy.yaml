@@ -1,0 +1,144 @@
+# The `agora` namespace's own east-west policy (docs/hosting-an-app.md §7, ADR 0006/0020) —
+# CiliumNetworkPolicy throughout (not plain NetworkPolicy) because the controller's own
+# kube-apiserver egress needs Cilium's `toEntities: [kube-apiserver]`, unavailable in the plain API
+# — kept consistent across all three components rather than mixing frameworks.
+#
+# Public ingress for agora-web (a Gateway HTTPRoute + hostname) is deliberately NOT part of this
+# pass — the operator hasn't decided the public hostname/cutover posture yet (plans/11's own
+# pending-tasks list). Once that lands, its own ingress rule slots in here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-web
+  namespace: agora
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agora-web
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # traefik -> agora-web is added alongside the HTTPRoute, once the public hostname is decided.
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: agora-controller
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-controller
+  namespace: agora
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agora-controller
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            app: agora-web
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    # Session Runtime Pods pulling their custody restore stream (agora-runs's own egress rule,
+    # the other half of this same path).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: session-runtime
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # Pod/ServiceAccount CRUD in agora-runs — rbac.yaml (agora-runs) scopes what it can actually do.
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }] # matches k8s-client.ts's own API_PORT (kubernetes.default.svc)
+    - toEndpoints:
+        - matchLabels:
+            app: agora-broker
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # The controller's own ACP bridge connection into a Session Runtime Pod (agora-runs's own
+    # ingress rule, the other half of this same path).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: session-runtime
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-broker
+  namespace: agora
+spec:
+  endpointSelector:
+    matchLabels:
+      app: agora-broker
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            app: agora-controller
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    # Session Runtime Pods' access relay traffic (agora-runs's own egress rule, the other half).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: session-runtime
+      toPorts:
+        - ports: [{ port: "8444", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agent
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # The one path to any provider — agora-onecli's own ingress rule already scopes this to
+    # agora-broker specifically (apps/agora-onecli/networkpolicy.yaml).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-onecli
+            app: onecli
+      toPorts:
+        - ports: [{ port: "10254", protocol: TCP }, { port: "10255", protocol: TCP }]
