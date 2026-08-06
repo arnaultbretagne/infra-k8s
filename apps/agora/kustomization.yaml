@@ -8,6 +8,8 @@ resources:
   - agora-broker-database-url.secrets.yaml
   - agora-broker-encryption-key.secrets.yaml
   - agora-onecli-ca.yaml
+  - agora-broker-onecli.secrets.yaml
   - web.yaml
   - controller.yaml
+  - broker.yaml
   - networkpolicy.yaml
