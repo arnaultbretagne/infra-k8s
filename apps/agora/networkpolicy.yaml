@@ -46,6 +46,17 @@ spec:
             app: agora-broker
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
+    # Found live, P11: apps/web's own connectAcpBridge (orchestration.ts) dials the Session
+    # Runtime Pod's own IP DIRECTLY (the controller's handleOpenAcpConnection mints
+    # `${podIp}:${bridge.listenPort}`, never proxying through itself) — same path
+    # agora-controller's own equivalent egress rule below already covers for ITS OWN bridge
+    # connections; agora-runs's own ingress rule is the other half (agora-runs/networkpolicy.yaml).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: session-runtime
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

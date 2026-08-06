@@ -85,3 +85,17 @@ spec:
               app: agora-controller
       ports:
         - { protocol: TCP, port: 8080 }
+    # Found live, P11: apps/web's own connectAcpBridge (orchestration.ts) dials the Session
+    # Runtime Pod's own IP DIRECTLY — the URL the controller mints in handleOpenAcpConnection is
+    # `${podIp}:${bridge.listenPort}`, never proxied through the controller itself. This rule (and
+    # apps/agora's own egress half) never existed because apps/web's own real grant/materialize
+    # call never got this far before (FAKE_EXECUTION_GRANT_REF placeholder).
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora
+          podSelector:
+            matchLabels:
+              app: agora-web
+      ports:
+        - { protocol: TCP, port: 8080 }
