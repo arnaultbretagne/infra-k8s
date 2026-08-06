@@ -35,10 +35,15 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/arnaultbretagne/agora-web@sha256:753c3e504c9505ac806a83eb32cac5e75727e6a2dfd1cc424f7b6d3f20f8a42b
+          image: ghcr.io/arnaultbretagne/agora-web@sha256:28c93ae84d4886cb66c21d2f2178655016f584eb346eca85ae3bc12c5f235fc5
           env:
             - { name: PORT, value: "8080" }
             - { name: SESSION_RUNTIME_CONTROLLER_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
+            # Found live, P11: apps/web now calls the Broker's real POST /v1/execution-grants
+            # (issue) and POST /v1/execution-grants/{id}/renew directly (broker-grant-client.ts) —
+            # this env var and its NetworkPolicy egress rule (networkpolicy.yaml) never existed
+            # before because that call didn't either (FAKE_EXECUTION_GRANT_REF placeholder).
+            - { name: BROKER_CONTROL_BASE_URL, value: http://agora-broker.agora.svc.cluster.local:8443 }
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef: { name: agora-web-database-url, key: DATABASE_URL }

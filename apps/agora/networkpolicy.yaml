@@ -38,6 +38,14 @@ spec:
             app: agora-controller
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
+    # Found live, P11: apps/web now calls the Broker's real POST /v1/execution-grants (issue) and
+    # POST /v1/execution-grants/{id}/renew directly (broker-grant-client.ts) — this egress rule
+    # never existed before because that call didn't either (FAKE_EXECUTION_GRANT_REF placeholder).
+    - toEndpoints:
+        - matchLabels:
+            app: agora-broker
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -112,6 +120,13 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: agora-controller
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+    # Found live, P11: apps/web's own real execution-grant issue/renew calls (the other half of
+    # agora-web's own new egress rule above).
+    - fromEndpoints:
+        - matchLabels:
+            app: agora-web
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
     # Session Runtime Pods' access relay traffic (agora-runs's own egress rule, the other half).
