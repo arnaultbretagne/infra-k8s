@@ -59,6 +59,13 @@
       "pkceEnabled": false
     },
     {
+      "_comment": "P11 (agora refactoring): the new system's own public façade, agora.bretagne.dev — replaces the 'agent' client at cutover. Own client (not a reuse of 'agent') so both can run side by side during the shadow period, same ADR 0022 blast-radius-per-app principle. Secret bootstrapped the same way as 'onecli'.",
+      "name": "agora",
+      "callbackURLs": ["https://agora.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
+    },
+    {
       "name": "openai_auth",
       "callbackURLs": [
         "https://chatgpt.com/connector/oauth/b1u3srH76huV",

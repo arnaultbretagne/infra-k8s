@@ -2,10 +2,6 @@
 # CiliumNetworkPolicy throughout (not plain NetworkPolicy) because the controller's own
 # kube-apiserver egress needs Cilium's `toEntities: [kube-apiserver]`, unavailable in the plain API
 # — kept consistent across all three components rather than mixing frameworks.
-#
-# Public ingress for agora-web (a Gateway HTTPRoute + hostname) is deliberately NOT part of this
-# pass — the operator hasn't decided the public hostname/cutover posture yet (plans/11's own
-# pending-tasks list). Once that lands, its own ingress rule slots in here.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -19,7 +15,11 @@ spec:
     - fromEntities: [host] # kubelet probes
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    # traefik -> agora-web is added alongside the HTTPRoute, once the public hostname is decided.
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
   egress:
     - toEndpoints:
         - matchLabels:
@@ -142,3 +142,46 @@ spec:
             app: onecli
       toPorts:
         - ports: [{ port: "10254", protocol: TCP }, { port: "10255", protocol: TCP }]
+---
+# The public OIDC gate (agora.bretagne.dev) — mirrors apps/code-server's/apps/agora-onecli's own
+# oauth2-proxy CiliumNetworkPolicy exactly.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: agora
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: agora-web
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token). The public IP resolves to the node, then
+    # kube-proxy DNATs to the Traefik pod — allow both paths.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

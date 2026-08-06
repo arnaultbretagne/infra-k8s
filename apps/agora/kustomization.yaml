@@ -9,7 +9,10 @@ resources:
   - agora-broker-encryption-key.secrets.yaml
   - agora-onecli-ca.yaml
   - agora-broker-onecli.secrets.yaml
+  - oauth2-proxy.secrets.yaml
   - web.yaml
   - controller.yaml
   - broker.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
   - networkpolicy.yaml
