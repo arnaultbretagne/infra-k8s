@@ -1,0 +1,76 @@
+# The new system's own human façade (apps/web) — replaces the OLD system's website.yaml for the
+# `agora` namespace's own traffic once cutover happens. Talks to agora-controller for Session
+# Runtime lifecycle; owns no state of its own beyond the product database.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agora-web
+  namespace: agora
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-web
+  namespace: agora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-web
+  template:
+    metadata:
+      labels:
+        app: agora-web
+    spec:
+      serviceAccountName: agora-web
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: ghcr.io/arnaultbretagne/agora-web@sha256:646de943411892566ae52d0ae480b6f3a2cdfd83523e55d8d11789897e8620e0
+          env:
+            - { name: PORT, value: "8080" }
+            - { name: SESSION_RUNTIME_CONTROLLER_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: agora-web-database-url, key: DATABASE_URL }
+          ports:
+            - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 384Mi }
+          readinessProbe:
+            httpGet: { path: /, port: 8080 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 8080 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-web
+  namespace: agora
+spec:
+  selector:
+    app: agora-web
+  ports:
+    - { port: 8080, targetPort: 8080 }

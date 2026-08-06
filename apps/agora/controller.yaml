@@ -1,0 +1,97 @@
+# The Session Runtime controller (apps/session-runtime-controller). Holds the ONLY ServiceAccount
+# token in this namespace that talks to the Kubernetes API — scoped by
+# infrastructure/agora-runs/rbac.yaml to pod/serviceaccount CRUD in agora-runs and nothing else,
+# same shape as the OLD system's manager/agent-runs pattern (apps/agent/manager.yaml's own doc
+# comment).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: session-runtime-controller
+  namespace: agora
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-controller
+  namespace: agora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-controller
+  template:
+    metadata:
+      labels:
+        app: agora-controller
+    spec:
+      serviceAccountName: session-runtime-controller
+      automountServiceAccountToken: true # the SOLE exception in this namespace (mirrors ADR 0024 §3)
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: ghcr.io/arnaultbretagne/agora-controller@sha256:dfe4fec02e7c2c42b14f2d72bc403ad17b5e89b3eb4e7434f00b86934ad1f4b8
+          env:
+            - { name: AGORA_NAMESPACE, value: agora-runs }
+            - { name: CONTROLLER_REVISION, value: "dfe4fec02e7c" } # image digest short hash — traceable, stable per rollout
+            - { name: PORT, value: "8443" }
+            - { name: RUNTIME_CLASS_NAME, value: sandboxed }
+            - { name: RUN_AS_USER, value: "1000" }
+            - { name: IMAGE_PULL_SECRET_NAME, value: ghcr-pull }
+            - { name: CUSTODY_CONTROLLER_BASE_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
+            # The Broker access relay (P08) — never a per-Session value, no embedded bearer
+            # (relay.ts's own design: workload identity authenticates it, not a URL userinfo).
+            - { name: AGORA_BROKER_RELAY_ENDPOINT, value: https://agora-broker.agora.svc.cluster.local:8444 }
+            - { name: BROKER_CONTROL_BASE_URL, value: http://agora-broker.agora.svc.cluster.local:8443 }
+            # Validated at startup but NOT itself consumed for Pod construction (P11 finding) —
+            # pod-spec.ts hardcodes the `agora-onecli-ca` ConfigMap by name instead
+            # (infrastructure/apps/agora-runs/onecli-ca.yaml provisions its real content). Kept
+            # here because main.ts fails closed without it.
+            - name: AGORA_ONECLI_CA_PEM
+              valueFrom:
+                configMapKeyRef: { name: agora-onecli-ca, key: ca.pem }
+            # Same story: only authStubEntries' KEYS matter (which ConfigMap/Secret keys to
+            # project into a Pod) — the JSON's VALUES are never read. Real values live in
+            # agora-runs's own onecli-stubs Secret.
+            - { name: AGORA_ONECLI_AUTH_STUBS_JSON, value: '{"claude-code-oauth-token":"onecli-managed","codex-auth-json":"onecli-managed"}' }
+            - name: CUSTODY_DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: agora-controller-custody-database-url, key: CUSTODY_DATABASE_URL }
+          ports:
+            - containerPort: 8443
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 384Mi }
+          readinessProbe:
+            httpGet: { path: /v1/agents, port: 8443 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /v1/agents, port: 8443 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-controller
+  namespace: agora
+spec:
+  selector:
+    app: agora-controller
+  ports:
+    - { port: 8443, targetPort: 8443 }
