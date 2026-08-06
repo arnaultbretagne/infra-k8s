@@ -1,0 +1,23 @@
+# pod-spec.ts (apps/session-runtime-controller) hardcodes this ConfigMap's name/key — it does not
+# create or sync it itself (P11 finding: AGORA_ONECLI_CA_PEM at controller startup is validated but
+# never actually consumed for Pod construction). Deployment-provisioned, matching the doc comment
+# there. Public trust cert (agora-onecli's own gateway CA, 10y validity, minted 2026-08-06) — no
+# confidentiality need, plaintext in git is correct here (unlike onecli-stubs.secrets.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-onecli-ca
+  namespace: agora-runs
+data:
+  ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBrDCCAVGgAwIBAgIUWnIoDQIcJ/bEt0qhybvIwbEteoAwCgYIKoZIzj0EAwIw
+    MzEgMB4GA1UEAwwXT25lQ0xJIExvY2FsIEdhdGV3YXkgQ0ExDzANBgNVBAoMBk9u
+    ZUNMSTAeFw0yNjA4MDYwOTM2MDRaFw0zNjA4MDMwOTM2MDRaMDMxIDAeBgNVBAMM
+    F09uZUNMSSBMb2NhbCBHYXRld2F5IENBMQ8wDQYDVQQKDAZPbmVDTEkwWTATBgcq
+    hkjOPQIBBggqhkjOPQMBBwNCAAToF5ypGbt4H/bFQBCdltiKDvoXfjoeM/qR4OsX
+    IWOal6DCVCR2+gN/rr+Eb9g2RgmPZgR2ufML5SEoK7L3LaeRo0MwQTAPBgNVHQ8B
+    Af8EBQMDBwYAMB0GA1UdDgQWBBSlVcUtUItox/0OLfKOBc79EASUMzAPBgNVHRMB
+    Af8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQDipIw5hdqpcHxjNI1aHtv/tR9l
+    kuMxhpmwg8BAA0SCMgIhALodGVcdD/0Ndtqnon6rUo2trZT4XOhxlYkEWjley1Xg
+    -----END CERTIFICATE-----
