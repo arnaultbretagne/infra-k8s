@@ -47,7 +47,15 @@ spec:
             - { name: CUSTODY_CONTROLLER_BASE_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
             # The Broker access relay (P08) — never a per-Session value, no embedded bearer
             # (relay.ts's own design: workload identity authenticates it, not a URL userinfo).
-            - { name: AGORA_BROKER_RELAY_ENDPOINT, value: https://agora-broker.agora.svc.cluster.local:8444 }
+            # http://, NOT https:// — found live, P11: relay.ts serves a PLAIN `node:http` CONNECT
+            # listener (its own module doc: it trusts the transport, same convention as the control
+            # API on 8443 right below, which was already correctly http://). Declaring https:// here
+            # made every Agent attempt a TLS handshake against a plaintext port; the real `claude`
+            # binary reported that as `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR` and never emitted a
+            # CONNECT at all (zero relay audit rows for the attempt, while a raw-TCP reproduction of
+            # the same request succeeded — which is exactly what made this look like a CA problem
+            # for hours). `curl` against this port says it plainly: "wrong version number".
+            - { name: AGORA_BROKER_RELAY_ENDPOINT, value: http://agora-broker.agora.svc.cluster.local:8444 }
             - { name: BROKER_CONTROL_BASE_URL, value: http://agora-broker.agora.svc.cluster.local:8443 }
             # Validated at startup but NOT itself consumed for Pod construction (P11 finding) —
             # pod-spec.ts hardcodes the `agora-onecli-ca` ConfigMap by name instead
