@@ -12,4 +12,12 @@ metadata:
   name: agora-onecli
   labels:
     agora.dev/purpose: onecli-production
-    pod-security.kubernetes.io/enforce: restricted
+    # 'restricted' rejects ANY root container, init or not — verified live: it blocked the
+    # chown initContainers postgres.yaml/onecli.yaml need for the local-path/fsGroup gotcha
+    # (docs/hosting-an-app.md §12). 'baseline' is that same doc's own sanctioned escape hatch
+    # ("Infra components that can't (yet) run non-root... leave a # TODO: restricted") — main
+    # containers still declare full non-root/drop-ALL/no-priv-esc hardening, just not
+    # admission-enforced at the init-container step.
+    # TODO: restricted — revisit if a non-root-compatible chown path is found (e.g. a
+    # storageClass that isn't hostPath-backed, so fsGroup itself would suffice).
+    pod-security.kubernetes.io/enforce: baseline
