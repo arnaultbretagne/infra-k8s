@@ -1,0 +1,68 @@
+# OneCLI's own backing store — the SAME image/config apps/broker/live-verification/03-postgres.yaml
+# proved live, promoted here to a real Deployment (not a bare Pod) for restart resilience, PVC-backed
+# so data survives a restart (unlike the ORIGINAL spike's `emptyDir`, which lost CA continuity —
+# ONECLI-SPIKE.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: onecli-postgres-data
+  namespace: agora-onecli
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onecli-postgres
+  namespace: agora-onecli
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO PVC
+  selector:
+    matchLabels:
+      app: onecli-postgres
+  template:
+    metadata:
+      labels:
+        app: onecli-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - { name: POSTGRES_DB, value: onecli }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: onecli-postgres, key: POSTGRES_PASSWORD }
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data, subPath: pgdata }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 2
+            periodSeconds: 2
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: onecli-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: onecli-postgres
+  namespace: agora-onecli
+spec:
+  selector:
+    app: onecli-postgres
+  ports:
+    - { port: 5432, targetPort: 5432 }

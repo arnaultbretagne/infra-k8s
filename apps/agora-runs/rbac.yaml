@@ -1,0 +1,37 @@
+# Scopes the Session Runtime controller's ServiceAccount (apps/agora/controller.yaml, namespace
+# `agora`) to pod/serviceaccount CRUD in THIS namespace only — docs/specs/11-security.md: "Only
+# the Session Runtime controller ServiceAccount may create/delete Session Runtime workloads."
+# Mirrors infrastructure/configs/agent-runs/rbac.yaml's own cross-namespace-subject pattern (the
+# manager's ServiceAccount lives in `agent`, this Role lives in `agent-runs`) and
+# apps/session-runtime-controller/live-verification/03-role.yaml's already-live-verified rule set
+# (P04) — serviceaccounts CRUD included because pod-spec.ts materializes one ServiceAccount per
+# Session (`serviceAccountName(sessionId)`), not a single shared identity.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: session-runtime-controller
+  namespace: agora-runs
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: session-runtime-controller
+  namespace: agora-runs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: session-runtime-controller
+subjects:
+  - kind: ServiceAccount
+    name: session-runtime-controller
+    namespace: agora

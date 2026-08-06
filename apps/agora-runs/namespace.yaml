@@ -1,0 +1,14 @@
+# P11 (agora refactoring): the untrusted-compute namespace for Session Runtime Pods, mirroring
+# infrastructure/configs/agent-runs' own established pattern (agent-runtime ADR 0010/infra-k8s ADR
+# 0028) — docs/specs/11-security.md's own threat model is explicit: "The Agent and everything it
+# executes inside a Session Runtime are untrusted." Same label this cluster's existing
+# ValidatingAdmissionPolicy binding (`untrusted-compute-requires-sandbox`) already selects on
+# namespaceSelector, so every Pod here is denied unless it carries `runtimeClassName: sandboxed` —
+# no new admission policy needed, just this label.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-runs
+  labels:
+    platform.bretagne.dev/profile: untrusted-compute
+    pod-security.kubernetes.io/enforce: restricted
