@@ -2,8 +2,10 @@
 # create or sync it itself (P11 finding: AGORA_ONECLI_CA_PEM at controller startup is validated but
 # never actually consumed for Pod construction). Deployment-provisioned, matching the doc comment
 # there. Public trust cert (agora-onecli's own gateway CA) — no confidentiality need, plaintext in
-# git is correct here. RE-CAPTURED 2026-08-06 (drift found live: the CA regenerated across an
-# onecli Pod restart during the PSS-baseline fix, invalidating the first snapshot).
+# git is correct here. RE-CAPTURED 2026-08-06 (drift found live twice this session: the CA
+# regenerated across an onecli Pod restart, and an earlier recapture attempt never actually landed
+# in git — verified this time by hashing the live fetch, the written file, AND the live broker env
+# all match before committing).
 apiVersion: v1
 kind: ConfigMap
 metadata:
