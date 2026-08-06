@@ -1,0 +1,78 @@
+# Self-hosted OneCLI (ADR 0013), same pinned digest ONECLI-SPIKE.md tested and
+# apps/broker/live-verification/06-onecli.yaml already proved live end to end (Claude Max +
+# ChatGPT/Codex through real container-config/gateway paths, route-policy enforcement, CA continuity
+# across a restart). This IS a fresh instance (2026-08-06 operator decision, not a promotion of the
+# test one) — same known-good image, PVC-backed `/app/data` from the start.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: onecli-app-data
+  namespace: agora-onecli
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: onecli
+  namespace: agora-onecli
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # RWO PVC
+  selector:
+    matchLabels:
+      app: onecli
+  template:
+    metadata:
+      labels:
+        app: onecli
+    spec:
+      containers:
+        - name: onecli
+          image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: onecli-database-url, key: DATABASE_URL }
+            - { name: APP_URL, value: http://onecli.agora-onecli.svc.cluster.local:10254 }
+            - { name: GATEWAY_PORT, value: "10255" }
+            # Without this, OneCLI defaults its advertised gateway host to `host.docker.internal`
+            # (a Docker-Desktop convention) — unreachable from this k0s/containerd cluster's Pods.
+            # No scheme here: the server prepends `http://<bearer>@` itself; a scheme in this value
+            # produces a broken double-scheme proxy URL (verified live — live-verification/06's own
+            # comment).
+            - { name: GATEWAY_BASE_URL, value: onecli.agora-onecli.svc.cluster.local:10255 }
+            - { name: LOG_LEVEL, value: info }
+          ports:
+            - { containerPort: 10254, name: api }
+            - { containerPort: 10255, name: gateway }
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /v1/health, port: 10254 }
+            initialDelaySeconds: 5
+            periodSeconds: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: onecli-app-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: onecli
+  namespace: agora-onecli
+spec:
+  selector:
+    app: onecli
+  ports:
+    - { name: api, port: 10254, targetPort: 10254 }
+    - { name: gateway, port: 10255, targetPort: 10255 }

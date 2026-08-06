@@ -1,0 +1,45 @@
+# Unlike apps/broker/live-verification/08-network-policy.yaml's "same-namespace-only" rule (fine
+# for a disposable test instance nothing else needed to reach), this is a REAL cross-namespace
+# dependency: agora-broker (namespace `agora`) is the one workload allowed to reach OneCLI's control
+# API and gateway. OneCLI's own OUTBOUND egress is intentionally left unrestricted by this policy —
+# unlike a Session Runtime Pod, OneCLI itself is the ONE component this architecture expects to
+# reach providers directly (ADR 0014).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: onecli-ingress-from-broker-only
+  namespace: agora-onecli
+spec:
+  podSelector:
+    matchLabels:
+      app: onecli
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora
+          podSelector:
+            matchLabels:
+              app: agora-broker
+      ports:
+        - { protocol: TCP, port: 10254 }
+        - { protocol: TCP, port: 10255 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: onecli-postgres-ingress-from-onecli-only
+  namespace: agora-onecli
+spec:
+  podSelector:
+    matchLabels:
+      app: onecli-postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: onecli
+      ports:
+        - { protocol: TCP, port: 5432 }

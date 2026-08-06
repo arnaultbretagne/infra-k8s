@@ -1,0 +1,14 @@
+# P11 (agora refactoring branch): the production, GitOps-managed self-hosted OneCLI instance the
+# real `agora-broker` (namespace `agora`) talks to. Deliberately a FRESH instance, not a promotion
+# of `agora-onecli-test` (apps/broker/live-verification/, applied out-of-band via `kubectl apply -f`,
+# bare Pods, disposable-by-its-own-README) — the operator chose a clean build over reusing the test
+# instance's already-linked credentials (2026-08-06). Own namespace, same as the test instance and
+# the OLD system's own agent-runtime OneCLI precedent: OneCLI is the one component this architecture
+# expects to reach providers directly (ADR 0014), so it deliberately sits outside both `agora` and
+# `agora-runs`'s own narrower trust boundaries.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-onecli
+  labels:
+    agora.dev/purpose: onecli-production
