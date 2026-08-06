@@ -1,0 +1,24 @@
+# The controller's OWN startup check (main.ts's `requireEnv('AGORA_ONECLI_CA_PEM')`) needs this
+# ConfigMap in ITS OWN namespace (agora) — a SEPARATE reference from the identically-named
+# ConfigMap in agora-runs (apps/agora-runs/onecli-ca.yaml) that pod-spec.ts mounts into every
+# Session Runtime Pod. Found live: the controller failed CreateContainerConfigError without this
+# duplicate. Same content, same public trust cert (no confidentiality need) — kept in sync by hand
+# since both are deployment-provisioned, not reconciled by any controller code.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-onecli-ca
+  namespace: agora
+data:
+  ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBrDCCAVGgAwIBAgIUWnIoDQIcJ/bEt0qhybvIwbEteoAwCgYIKoZIzj0EAwIw
+    MzEgMB4GA1UEAwwXT25lQ0xJIExvY2FsIEdhdGV3YXkgQ0ExDzANBgNVBAoMBk9u
+    ZUNMSTAeFw0yNjA4MDYwOTM2MDRaFw0zNjA4MDMwOTM2MDRaMDMxIDAeBgNVBAMM
+    F09uZUNMSSBMb2NhbCBHYXRld2F5IENBMQ8wDQYDVQQKDAZPbmVDTEkwWTATBgcq
+    hkjOPQIBBggqhkjOPQMBBwNCAAToF5ypGbt4H/bFQBCdltiKDvoXfjoeM/qR4OsX
+    IWOal6DCVCR2+gN/rr+Eb9g2RgmPZgR2ufML5SEoK7L3LaeRo0MwQTAPBgNVHQ8B
+    Af8EBQMDBwYAMB0GA1UdDgQWBBSlVcUtUItox/0OLfKOBc79EASUMzAPBgNVHRMB
+    Af8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQDipIw5hdqpcHxjNI1aHtv/tR9l
+    kuMxhpmwg8BAA0SCMgIhALodGVcdD/0Ndtqnon6rUo2trZT4XOhxlYkEWjley1Xg
+    -----END CERTIFICATE-----
