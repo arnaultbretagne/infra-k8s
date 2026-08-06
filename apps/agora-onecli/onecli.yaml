@@ -47,9 +47,12 @@ spec:
         - name: onecli
           image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
           env:
+            # CNPG-managed credential (cluster.yaml). Points at the -rw service and is rotated by
+            # the operator — no hand-maintained password in SOPS any more, and no second copy of it
+            # to drift. Same shape the OLD system already used for agora-pg (`…-app` secret, `uri`).
             - name: DATABASE_URL
               valueFrom:
-                secretKeyRef: { name: onecli-database-url, key: DATABASE_URL }
+                secretKeyRef: { name: onecli-pg-app, key: uri }
             - { name: APP_URL, value: http://onecli.agora-onecli.svc.cluster.local:10254 }
             - { name: GATEWAY_PORT, value: "10255" }
             # Without this, OneCLI defaults its advertised gateway host to `host.docker.internal`

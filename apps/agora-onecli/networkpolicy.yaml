@@ -84,49 +84,52 @@ spec:
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
 ---
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
+# The CNPG-managed store (cluster.yaml). Modelled on apps/pocket-id/networkpolicy.yaml's own CNPG
+# block — found live, P11: my first version only allowed onecli->5432 and observability->9187, which
+# left the operator unable to reach the instance manager's status port and the Cluster reported
+# "Instance Status Extraction Error: HTTP communication issue". A CNPG instance needs FOUR ingress
+# paths, not one.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
 metadata:
-  name: onecli-postgres-ingress-from-onecli-only
+  name: onecli-pg
   namespace: agora-onecli
 spec:
-  podSelector:
-    matchLabels:
-      app: onecli-postgres
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: onecli
-      ports:
-        - { protocol: TCP, port: 5432 }
----
-# The CNPG-managed store (cluster.yaml). Same shape as the Deployment-based one it replaces: only
-# OneCLI itself may reach Postgres. CNPG's own operator traffic and the instance manager are not
-# subject to this (they use the API server and the pod's own loopback), and Prometheus scrapes the
-# metrics port, not 5432.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: onecli-pg-ingress
-  namespace: agora-onecli
-spec:
-  podSelector:
+  endpointSelector:
     matchLabels:
       cnpg.io/cluster: onecli-pg
-  policyTypes: [Ingress]
   ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app: onecli
-      ports:
-        - { protocol: TCP, port: 5432 }
-    # Prometheus scrapes the operator-managed PodMonitor on the metrics port.
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: observability
-      ports:
-        - { protocol: TCP, port: 9187 }
+    # OneCLI itself -> postgres
+    - fromEndpoints:
+        - matchLabels:
+            app: onecli
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # CNPG operator -> instance (status :8000 + SQL :5432 for management)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+            k8s:app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+            - { port: "5432", protocol: TCP }
+    # intra-cluster (replication / future HA)
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: onecli-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    # kubelet probes -> status :8000
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    # Prometheus -> CNPG metrics :9187 (PodMonitor)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
