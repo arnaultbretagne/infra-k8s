@@ -1,0 +1,100 @@
+# The Broker (apps/broker): control API (execution grants, agent access relay). Owns no
+# Kubernetes API access at all — unlike the controller, it never creates/deletes workloads, only
+# issues grants and relays already-authenticated Session traffic to OneCLI.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agora-broker
+  namespace: agora
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-broker
+  namespace: agora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-broker
+  template:
+    metadata:
+      labels:
+        app: agora-broker
+    spec:
+      serviceAccountName: agora-broker
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: broker
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:b99c9157f0975c95edc6451c1074c4fe984860bfda3c1459de76096710645640
+          env:
+            - { name: PORT, value: "8443" }
+            - { name: RELAY_PORT, value: "8444" }
+            - { name: ONECLI_URL, value: http://onecli.agora-onecli.svc.cluster.local:10254 }
+            - { name: ONECLI_GATEWAY_URL, value: http://onecli.agora-onecli.svc.cluster.local:10255 }
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: agora-broker-database-url, key: DATABASE_URL }
+            - name: BROKER_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef: { name: agora-broker-encryption-key, key: BROKER_ENCRYPTION_KEY }
+            - name: ONECLI_API_KEY
+              valueFrom:
+                secretKeyRef: { name: agora-broker-onecli, key: ONECLI_API_KEY }
+            # Same public trust cert the controller mounts into every Session Runtime Pod (P11
+            # finding, agora-runs/onecli-ca.yaml) — the broker's own job is only to verify OneCLI
+            # itself hasn't drifted from this operator-pinned value (grant-service.ts).
+            - name: AGORA_ONECLI_CA_PEM
+              valueFrom:
+                configMapKeyRef: { name: agora-onecli-ca, key: ca.pem, optional: true }
+            # {containerPath, content}[] — matches what pod-spec.ts actually mounts into every
+            # Session Runtime Pod (ONECLI_CA_PATH + AUTH_STUBS_DIR/<key> per agora-runs's own
+            # onecli-stubs Secret keys). Real content depends on the Claude Max/ChatGPT credential
+            # linking pass (plans/11 Evidence, in progress 2026-08-06) — filled in once the
+            # agents' real containerConfig is known from OneCLI itself.
+            - name: AGORA_ONECLI_CREDENTIAL_STUBS_JSON
+              valueFrom:
+                secretKeyRef: { name: agora-broker-onecli, key: AGORA_ONECLI_CREDENTIAL_STUBS_JSON, optional: true }
+          ports:
+            - { containerPort: 8443, name: control }
+            - { containerPort: 8444, name: relay }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 384Mi }
+          readinessProbe:
+            httpGet: { path: /v1/equipment-catalogue, port: 8443 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /v1/equipment-catalogue, port: 8443 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-broker
+  namespace: agora
+spec:
+  selector:
+    app: agora-broker
+  ports:
+    - { name: control, port: 8443, targetPort: 8443 }
+    - { name: relay, port: 8444, targetPort: 8444 }
