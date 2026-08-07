@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: agora
 resources:
   - namespace.yaml
+  - limits.yaml
   # The product database — its own cluster, in this namespace. It used to be a guest database
   # (`agora_next`) inside the OLD channels-era hub's cluster over in `agent`; see cluster.yaml.
   - cluster.yaml
