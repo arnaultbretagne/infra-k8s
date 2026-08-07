@@ -1,0 +1,37 @@
+# P11 "Configure resource limits, quotas and admission policy" — the `agora` namespace's own half.
+#
+# The bound that matters on this box is MEMORY, not CPU: the 2026-07-04 double freeze was swapless
+# thrash, not a cgroup OOM, and CPU is compressible while memory is not. `limits.cpu` is deliberately
+# absent from the quota for that reason and one more — a quota naming a resource forces EVERY
+# container to declare it, and several here legitimately do not set a CPU ceiling. Naming it would
+# turn the next rollout into a rejection for no safety gained.
+#
+# Sized against what the namespace actually declares today (220m / 512Mi of requests across five
+# Pods, 1792Mi of memory limits) with room for a rollout to run old and new Pods side by side.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agora-defaults
+  namespace: agora
+spec:
+  limits:
+    - type: Container
+      # So a container that forgets its own numbers still gets bounded ones, which is what makes the
+      # quota below enforceable rather than a source of surprise rejections.
+      defaultRequest: { cpu: 25m, memory: 64Mi }
+      default: { cpu: 500m, memory: 512Mi }
+      # No single container in this namespace has any business above this; the Session Runtimes that
+      # legitimately need more live in `agora-runs`, which has its own quota.
+      max: { memory: 1Gi }
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agora-quota
+  namespace: agora
+spec:
+  hard:
+    pods: "12"
+    requests.cpu: "1"
+    requests.memory: 1536Mi
+    limits.memory: 4Gi

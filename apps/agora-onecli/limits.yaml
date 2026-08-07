@@ -1,0 +1,29 @@
+# P11 "Configure resource limits, quotas and admission policy" — the `agora-onecli` namespace's half.
+# Same reasoning as apps/agora/limits.yaml: memory is the bound worth enforcing on this node, and
+# naming `limits.cpu` in a quota would force every container to declare one for no gain.
+#
+# Sized against what the namespace declares today (220m / 544Mi of requests, 1152Mi of memory limits
+# across three Pods) with rollout headroom. OneCLI itself is the only component here that grows.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agora-onecli-defaults
+  namespace: agora-onecli
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 25m, memory: 64Mi }
+      default: { cpu: 500m, memory: 512Mi }
+      max: { memory: 1Gi }
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agora-onecli-quota
+  namespace: agora-onecli
+spec:
+  hard:
+    pods: "8"
+    requests.cpu: "1"
+    requests.memory: 1536Mi
+    limits.memory: 3Gi

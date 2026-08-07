@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: agora-onecli
 resources:
   - namespace.yaml
+  - limits.yaml
   - oauth2-proxy.secrets.yaml
   - cluster.yaml
   - restore-test.yaml
