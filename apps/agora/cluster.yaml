@@ -1,0 +1,118 @@
+# The product database of the agora platform — its own CNPG cluster, in its own namespace.
+#
+# History, because the shape here only makes sense against it: the new engine was built inside the
+# OLD channels-era hub's cluster (apps/agent/cnpg.yaml) as a second database called `agora_next`,
+# deliberately disposable while the old hub was still the live production system. That cutover is
+# now done, so both halves of that arrangement are wrong: the database must not be called
+# `agora_next` (it IS agora), and it must not live in the `agent` namespace (which is being
+# decommissioned wholesale). Rather than renaming a database and a role in place and leaving the
+# cluster stranded in a dead namespace, this is a fresh cluster in `agora` with the right names
+# from the start; the ~10 MB of real data is carried over by a logical dump.
+#
+# Same posture as every other stateful app here (pocket-id, stremio, agora-onecli): object-store
+# backups, WAL archiving, a scheduled backup, and a restore drill (restore-test.yaml) that proves
+# the backup restores rather than merely exists.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: agora-pg
+  namespace: agora
+spec:
+  instances: 1
+
+  # The box is RAM-tight and this is not on the cluster's own critical path (cf. the 2026-07-04
+  # double freeze — swapless thrash, not a cgroup OOM): modest envelope on purpose. Slightly above
+  # the retired cluster's 128Mi/384Mi because this database now carries the projection and custody
+  # tiers too, not just a conversation log.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+  # operator-managed PodMonitor (:9187) — feeds the generic CNPG backup/WAL alerts
+  monitoring:
+    enablePodMonitor: true
+
+  storage:
+    size: 2Gi
+    storageClass: local-path
+
+  bootstrap:
+    initdb:
+      database: agora
+      owner: agora_owner
+
+  # The workload login roles contracts/database/002-access.sql's own comment anticipates
+  # ("Deployment creates these NOLOGIN roles and grants them to workload login roles"). The NOLOGIN
+  # group roles themselves (agora_product, agora_projector, agora_custody_meta,
+  # agora_custody_runtime, agora_broker) are created idempotently BY that migration, not here — so
+  # on a cold cluster these three `inRoles` references dangle until the migration has run once, and
+  # CNPG reports them as failed roles in the meantime. That is expected and self-heals on the next
+  # reconcile; the `_login` suffix exists only to avoid colliding with the group role names.
+  managed:
+    roles:
+      - name: agora_owner
+        login: true
+        createdb: true
+        # Role creation needs CREATEROLE — database ownership alone does not grant it (found live
+        # on the retired cluster: agora_web_login et al. stuck on "role agora_product does not
+        # exist" because the only role that could have run the migration couldn't create roles).
+        createrole: true
+        passwordSecret:
+          name: agora-owner-pg
+      - name: agora_web_login
+        login: true
+        inRoles: [agora_product, agora_projector, agora_custody_meta]
+        passwordSecret:
+          name: agora-web-login-pg
+      - name: agora_controller_login
+        login: true
+        inRoles: [agora_custody_runtime]
+        passwordSecret:
+          name: agora-controller-login-pg
+      - name: agora_broker_login
+        login: true
+        inRoles: [agora_broker]
+        passwordSecret:
+          name: agora-broker-login-pg
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/agora
+      # Explicit, and NOT the default (which is the cluster name, `agora-pg`): the retired
+      # channels-era cluster was also called `agora-pg` and also backed up under this same prefix.
+      # Two clusters sharing one serverName would interleave base backups and WAL from two
+      # unrelated timelines into the same barman server — corrupting the backup store for both.
+      # `s3://bretagne-pg-backups/agora/agora-pg/` is that retired history and is purgeable once
+      # the `agent` namespace is gone; this cluster owns `.../agora/agora-product/` alone.
+      serverName: agora-product
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-s3-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: snappy
+    retentionPolicy: "3d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: agora-pg-daily
+  namespace: agora
+spec:
+  # Six fields, seconds first (robfig/cron) — a 5-field expression silently runs hourly. 03:15:00
+  # daily, staggered off pocket-id's 03:00 and agora-onecli's 03:30 so no two base backups contend
+  # on this single node.
+  schedule: "0 15 3 * * *"
+  # Back up immediately on creation so a fresh cluster never sits backup-less until the first
+  # scheduled slot (avoids a cold-start CNPGBackupTooOld).
+  immediate: true
+  cluster:
+    name: agora-pg
+  backupOwnerReference: self

@@ -3,6 +3,14 @@ kind: Kustomization
 namespace: agora
 resources:
   - namespace.yaml
+  # The product database — its own cluster, in this namespace. It used to be a guest database
+  # (`agora_next`) inside the OLD channels-era hub's cluster over in `agent`; see cluster.yaml.
+  - cluster.yaml
+  - agora-owner-role.secrets.yaml
+  - agora-web-login-role.secrets.yaml
+  - agora-controller-login-role.secrets.yaml
+  - agora-broker-login-role.secrets.yaml
+  - restore-test.yaml
   - agora-web-database-url.secrets.yaml
   - agora-controller-custody-database-url.secrets.yaml
   - agora-broker-database-url.secrets.yaml

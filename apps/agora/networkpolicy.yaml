@@ -29,7 +29,6 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent
             cnpg.io/cluster: agora-pg
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
@@ -108,7 +107,6 @@ spec:
         - ports: [{ port: "8443", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent
             cnpg.io/cluster: agora-pg
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
@@ -162,7 +160,6 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent
             cnpg.io/cluster: agora-pg
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
@@ -225,3 +222,87 @@ spec:
             k8s:io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
+---
+# --- agora-pg: this namespace's own product database (cluster.yaml) ---
+#
+# Cilium is default-deny for any endpoint a policy selects, and a CNPG instance needs FOUR distinct
+# ingress paths, not one. Found live on the retired cluster: a policy carrying only the app rule
+# left the operator unable to reach the instance manager's status endpoint, surfacing as a
+# permanent "Instance Status Extraction Error" with the database itself perfectly healthy.
+#
+# Equally load-bearing, and learned the hard way on 2026-08-06: `kubectl port-forward` and kubelet
+# probes both BYPASS Cilium's pod-to-pod enforcement, so neither proves connectivity here. The
+# missing app->postgres rule on the retired cluster survived several rounds of "verified the
+# database is reachable" for exactly that reason. Verify from inside a real pod, with a real query.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-pg
+  namespace: agora
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: agora-pg
+  ingress:
+    # 1. the three workloads -> postgres
+    - fromEndpoints:
+        - matchLabels:
+            app: agora-web
+        - matchLabels:
+            app: agora-controller
+        - matchLabels:
+            app: agora-broker
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # 2. CNPG operator -> instance (status :8000 + SQL :5432 for management)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+            k8s:app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+            - { port: "5432", protocol: TCP }
+    # 3. intra-cluster (replication / future HA) + kubelet probes -> status :8000
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    # 4. Prometheus (observability) -> CNPG metrics :9187 (PodMonitor)
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    # instance manager -> kube-apiserver. 6443, not 443: Cilium's kube-apiserver entity match
+    # enforces against the real backend port, not the kubernetes.default.svc ClusterIP's.
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # barman backups -> S3 / Cloudflare R2 (external HTTPS). Tighten to toFQDNs later.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
