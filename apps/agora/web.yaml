@@ -35,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/arnaultbretagne/agora-web@sha256:705e2cdfb33a488a8f8210c9de954ef4e83a2a15b937498d12abfc2f63581a01
+          image: ghcr.io/arnaultbretagne/agora-web@sha256:51a0fbb5587977de667ce4336d37bc88582f91e200506f1d377bb9ca34d81855
           env:
             - { name: PORT, value: "8080" }
             - { name: SESSION_RUNTIME_CONTROLLER_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
