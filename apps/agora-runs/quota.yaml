@@ -13,7 +13,13 @@ metadata:
 spec:
   hard:
     pods: "4"
-    requests.cpu: "1"
-    requests.memory: 1Gi
+    # Found live 2026-08-07: these two were the ONLY entries not scaled to the 4 pods the comment
+    # above and `pods: "4"` both promise. A Session Runtime requests 270m/320Mi once gVisor's
+    # overhead is counted, so 4 of them need 1080m/1280Mi — a 1/1Gi ceiling admits three and
+    # refuses the fourth. The cluster then answered 403 "exceeded quota" to every new Session while
+    # three idle ones sat holding the namespace, which is a confusing way to discover an
+    # off-by-one in your own quota.
+    requests.cpu: "1200m"  # 4 × 270m = 1080m, with drift headroom
+    requests.memory: 1400Mi # 4 × 320Mi = 1280Mi, with drift headroom
     limits.cpu: "4500m"    # 4 × 1020m = 4080m, with drift headroom
     limits.memory: 5Gi     # 4 × 1088Mi = 4352Mi, with drift headroom
