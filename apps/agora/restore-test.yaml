@@ -1,10 +1,20 @@
+# Proves agora-pg's backups are RESTORABLE, not merely present (project-backup-restore-testing):
+# pulls the latest base backup from R2 into a throwaway pod, replays WAL to the earliest consistent
+# point, starts PostgreSQL and runs a real query against the real product schema.
+#
+# Same drill as pocket-id's and agora-onecli's. The health query is deliberately schema-specific
+# rather than a bare `SELECT 1` or a table count: a restored-but-empty database passes both of
+# those, which is precisely the failure this exists to catch (found live 2026-08-07 on the
+# agora-onecli drill, where a copy-paste health query masked an otherwise healthy restore).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: onecli-pg-restore-test
-  namespace: agora-onecli
+  name: agora-pg-restore-test
+  namespace: agora
 spec:
-  schedule: "45 4 * * *"
+  # 05:15 — after this cluster's own 03:15 base backup and clear of pocket-id's (04:00) and
+  # agora-onecli's (04:45) drills, so no two restore pods contend on this single node.
+  schedule: "15 5 * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -21,7 +31,7 @@ spec:
             runAsGroup: 102
             fsGroup: 102
             seccompProfile:
-              type: RuntimeDefault    # agora-onecli enforces PSS 'baseline'; keep the stricter shape anyway
+              type: RuntimeDefault
           containers:
             - name: restore-test
               image: ghcr.io/cloudnative-pg/postgresql:17
@@ -49,9 +59,12 @@ spec:
                 - pipefail
                 - -c
                 - |
-                  S3_DEST="s3://bretagne-pg-backups/onecli"
+                  S3_DEST="s3://bretagne-pg-backups/agora"
                   S3_ENDPOINT="https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com"
-                  SERVER="onecli-pg"
+                  # NOT the cluster name — cluster.yaml sets an explicit serverName so this
+                  # cluster's barman history never collides with the retired channels-era
+                  # cluster's, which also lived under this same destinationPath.
+                  SERVER="agora-product"
 
                   echo "==> Listing backups..."
                   barman-cloud-backup-list --endpoint-url "$S3_ENDPOINT" "$S3_DEST" "$SERVER"
@@ -71,8 +84,6 @@ spec:
                   restore_command = 'barman-cloud-wal-restore --endpoint-url $S3_ENDPOINT $S3_DEST $SERVER %f %p'
                   recovery_target = immediate
                   recovery_target_action = promote
-                  # Neutralise every CNPG runtime setting that points at /controller/*
-                  # (absent in this standalone pod). auto.conf is read last => wins.
                   ssl = off
                   archive_mode = off
                   logging_collector = off
@@ -81,7 +92,7 @@ spec:
                   touch "$PGDATA/recovery.signal"
 
                   # throwaway pod: allow passwordless local connections for the health query
-                  # (CNPG superuser has no password, app creds aren't mounted here).
+                  # (the CNPG superuser has no password, app creds aren't mounted here).
                   # PREPEND — pg_hba is first-match, CNPG's scram rules must not win first.
                   { printf '%s\n' "local all all trust" "host all all 127.0.0.1/32 trust" "host all all ::1/128 trust"; cat "$PGDATA/pg_hba.conf"; } > "$PGDATA/pg_hba.conf.tmp"
                   mv "$PGDATA/pg_hba.conf.tmp" "$PGDATA/pg_hba.conf"
@@ -92,23 +103,16 @@ spec:
                   echo "==> Checking readiness..."
                   pg_isready -h localhost -p 5433
 
-                  # Connect as the CNPG-managed `postgres` superuser (always present, and the
-                  # trust rules above make it passwordless here) rather than the app role — the
-                  # app role's password lives in a Secret this throwaway pod does not mount.
-                  #
-                  # Asserting a NON-ZERO table count is the whole point: `SELECT count(*)` alone
-                  # succeeds just as happily against a restored-but-empty database, which is
-                  # exactly the failure this drill exists to catch. Found live 2026-08-07 — the
-                  # first real run of this drill failed on `role "pocketid" does not exist`,
-                  # left over from the pocket-id drill this was copied from. The restore itself
-                  # had worked (WAL replayed from R2, consistent state reached); only the health
-                  # query was wrong, so a healthy backup was being reported as a failed drill.
+                  # `postgres` (the CNPG superuser) rather than an app role: the app roles'
+                  # passwords live in Secrets this throwaway pod deliberately does not mount.
                   echo "==> Running health query..."
-                  TABLES=$(psql -h localhost -p 5433 -U postgres -d onecli -tAc \
-                    "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');")
-                  echo "restored user tables: $TABLES"
-                  if [ "$TABLES" -lt 1 ]; then
-                    echo "FAIL: restored database has no user tables" >&2
+                  WORKSTREAMS=$(psql -h localhost -p 5433 -U postgres -d agora -tAc "SELECT count(*) FROM product.workstreams;")
+                  SESSIONS=$(psql -h localhost -p 5433 -U postgres -d agora -tAc "SELECT count(*) FROM product.sessions;")
+                  echo "restored: $WORKSTREAMS workstreams, $SESSIONS sessions"
+                  # The real product schema must be there AND carry data. A restore that comes
+                  # back structurally intact but empty is a failed restore, not a passing drill.
+                  if [ "$WORKSTREAMS" -lt 1 ]; then
+                    echo "FAIL: restored database has no workstreams" >&2
                     exit 1
                   fi
 
