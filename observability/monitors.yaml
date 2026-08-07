@@ -76,7 +76,9 @@ spec:
         - https://grafana.bretagne.dev
         - https://code.bretagne.dev
         - https://stremio.bretagne.dev
-        - https://agent.bretagne.dev
+        # agent.bretagne.dev was decommissioned 2026-08-07; agora.bretagne.dev is the
+        # platform's public façade now.
+        - https://agora.bretagne.dev
         - https://terminal.bretagne.dev
 ---
 # vault.bretagne.dev has no handler for bare GET / (404 "Cannot GET /" is its

@@ -6,7 +6,7 @@ resources:
   - stremio
   - code-server
   - obsidian
-  - agent
+  # `agent` (the channels-era hub) was decommissioned 2026-08-07 — replaced by `agora`.
   - agora
   - agora-onecli
   - agora-runs
