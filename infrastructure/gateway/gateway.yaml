@@ -80,18 +80,6 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    - name: https-agent
-      port: 8443
-      protocol: HTTPS
-      hostname: agent.bretagne.dev
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - kind: Secret
-            name: bretagne-tls
-      allowedRoutes:
-        namespaces:
-          from: All
     # Web shell (host-level, ADR 0023). Backend is a host systemd oauth2-proxy reached
     # via a selector-less Service + manual EndpointSlice (apps/terminal), not a pod.
     - name: https-terminal
@@ -106,8 +94,9 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # P11 (agora refactoring): the new system's own public façade, replacing https-agent
-    # (agent.bretagne.dev) at cutover. Same OIDC-gate posture (single-operator hub).
+    # The platform's public façade. Replaced the channels-era hub's own `https-agent`
+    # (agent.bretagne.dev), removed at decommission on 2026-08-07. Same OIDC-gate posture
+    # (single-operator hub).
     - name: https-agora
       port: 8443
       protocol: HTTPS

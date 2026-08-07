@@ -31,15 +31,11 @@ spec:
             app: oidc-reconciler
       toPorts:
         - ports: [{ port: "1411", protocol: TCP }]
-    # The agent broker's vault adapter (agent-broker plan P5.3) -> token endpoint :1411. It mints its
-    # OWN client_credentials bearer (client agent_broker_vault) so a loge never holds a vault
-    # credential. Its matching egress is in apps/agent/broker-networkpolicy.yaml, this same commit.
-    - fromEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent
-            app: agent-broker-vault
-      toPorts:
-        - ports: [{ port: "1411", protocol: TCP }]
+    # The channels-era broker's vault adapter used to reach the token endpoint :1411 from the
+    # `agent` namespace, minting its own client_credentials bearer so a loge never held a vault
+    # credential. Removed with that system on 2026-08-07. The new platform's own vault equipment
+    # is not wired yet; when it is, its rule belongs here alongside its matching egress — do not
+    # pre-open the path for a caller that does not exist.
   egress:
     # -> Postgres (CNPG)
     - toEndpoints:

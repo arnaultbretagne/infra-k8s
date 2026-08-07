@@ -84,17 +84,12 @@ spec:
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "4000", protocol: TCP }]
-    # The agent broker's vault adapter (agent-broker plan P5.3): it holds the Pocket-ID machine
-    # client and injects that bearer server-side, so a loge reaches the vault WITHOUT ever holding a
-    # vault credential. This is the in-cluster path — the adapter's matching egress is in
-    # apps/agent/broker-networkpolicy.yaml, in this same commit. Note this opens the pod, not the
-    # auth: the MCP server still demands a valid bearer whose `aud` binds it to this resource.
-    - fromEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent
-            app: agent-broker-vault
-      toPorts:
-        - ports: [{ port: "4000", protocol: TCP }]
+    # The channels-era broker's vault adapter held the Pocket-ID machine client and injected that
+    # bearer server-side, so a loge reached the vault WITHOUT ever holding a vault credential.
+    # Removed with that system on 2026-08-07. The new platform's own vault equipment is not wired
+    # yet; when it is, its rule belongs here. Note what such a rule does and does not do: it opens
+    # the pod, not the auth — the MCP server still demands a valid bearer whose `aud` binds it to
+    # this resource (and see the standing gap: that check is still missing, obsidian-mcp-auth-gap).
   egress:
     - toEndpoints:
         - matchLabels:

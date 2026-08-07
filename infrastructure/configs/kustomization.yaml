@@ -12,4 +12,5 @@ resources:
   - sandboxed-runtime
   - policies
   - preview
-  - agent-runs
+  # `agent-runs` (the channels-era loges) was decommissioned 2026-08-07 alongside `agent`.
+  # Its replacement, `agora-runs`, lives under apps/ with the rest of the new system.
