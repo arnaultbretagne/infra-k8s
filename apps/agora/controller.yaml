@@ -36,7 +36,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: controller
-          image: ghcr.io/arnaultbretagne/agora-controller@sha256:e2dd5ebb1c0ceebd471580121d3618e4bcca52acb83a60a1eca3f6fbdde58b8f
+          image: ghcr.io/arnaultbretagne/agora-controller@sha256:2a2ca8444a9b755fca90472383766f6b5dd03c95981c342b1c084e40f988a8ab
           env:
             - { name: AGORA_NAMESPACE, value: agora-runs }
             - { name: CONTROLLER_REVISION, value: "6ced2f359b36" } # image digest short hash — traceable, stable per rollout
