@@ -53,7 +53,13 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef: { name: onecli-pg-app, key: uri }
-            - { name: APP_URL, value: http://onecli.agora-onecli.svc.cluster.local:10254 }
+            # The externally reachable origin, NOT the in-cluster Service address: OneCLI builds the
+            # URLs it hands to a browser and to GitHub out of this value. With the Service address
+            # here, the GitHub App connect flow sent GitHub a `redirect_uri` on `…svc.cluster.local`
+            # — unresolvable from a browser, so the operator signed in and silently landed back on
+            # the App page. The UI kept working throughout, which is what hid it: the Service address
+            # is still correct as the oauth2-proxy's upstream (oauth2-proxy.yaml).
+            - { name: APP_URL, value: https://onecli.bretagne.dev }
             - { name: GATEWAY_PORT, value: "10255" }
             # Without this, OneCLI defaults its advertised gateway host to `host.docker.internal`
             # (a Docker-Desktop convention) — unreachable from this k0s/containerd cluster's Pods.
