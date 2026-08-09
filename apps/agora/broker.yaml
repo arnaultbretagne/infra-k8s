@@ -44,7 +44,9 @@ spec:
           # `/v1/agents/{id}/grants`, which does not exist before OneCLI 1.44 (404 on 1.43.3,
           # verified live), and the previous broker calls `/v1/policy/publish`, which is 410 Gone
           # from 1.44 on. Neither version works with the other's OneCLI. Land and roll back together.
-          image: ghcr.io/arnaultbretagne/agora-broker@sha256:279603bbee032f45d8ed27fd351e6d6d2fd1e08ebd999940bdc63b08d4ef5c49
+          # Built from agora main @ 4835ec8 (the P13 merge), superseding the ee1c064 pin that was
+          # built from main just before it.
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:8f390a15202b6d10eda783a5e83fffae78ec0cd9138f87f06e9ba88cecb46897
           env:
             - { name: PORT, value: "8443" }
             - { name: RELAY_PORT, value: "8444" }
