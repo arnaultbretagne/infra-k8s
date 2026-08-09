@@ -1,8 +1,25 @@
-# Self-hosted OneCLI (ADR 0013), same pinned digest ONECLI-SPIKE.md tested and
-# apps/broker/live-verification/06-onecli.yaml already proved live end to end (Claude Max +
-# ChatGPT/Codex through real container-config/gateway paths, route-policy enforcement, CA continuity
-# across a restart). This IS a fresh instance (2026-08-06 operator decision, not a promotion of the
-# test one) — same known-good image, PVC-backed `/app/data` from the start.
+# Self-hosted OneCLI (ADR 0013), pinned by digest. This IS a fresh instance (2026-08-06 operator
+# decision, not a promotion of the test one), PVC-backed `/app/data` from the start.
+#
+# 2026-08-09, agora P13 / ADR 0015 — pinned 1.43.3 -> 1.45.0. READ BEFORE APPLYING SEPARATELY:
+#
+# This bump is COUPLED to the agora-broker image bump in ../agora/broker.yaml and neither half
+# works with the other's old half. Measured, not assumed:
+#   * old broker + OneCLI >=1.44: `/v1/policy/rules` + `/v1/policy/publish` answer `410 Gone`
+#     ("project rules are compiled from agent credential grants, not authored directly"), so the
+#     broker's grant-issue path fails on every request;
+#   * new broker + OneCLI 1.43.3: `GET /v1/agents/{id}/grants` answers `404` (verified live against
+#     this very instance), so the broker's credential-grant sync fails on every request.
+# Land them in one commit. Rolling back means rolling BOTH back.
+#
+# On first start of 1.45.0 the `[grant-conversion]` boot converter materializes each existing
+# `secretMode: all` Agent's whole credential pool as explicit per-Agent grants. The broker does not
+# trust that outcome: it refuses to issue for any Agent whose effective credential set is larger
+# than what it attached, and its orphan reaper deletes the `sagt-` Agents no live Session accounts
+# for. Expect the pre-upgrade orphans to disappear within one reap cycle of the new broker.
+#
+# 1.45.0 = ghcr.io/onecli/onecli:1.45.0, resolved to the digest below from the GHCR manifest on
+# 2026-08-09; it is the newest tag the upstream repository publishes.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -37,7 +54,7 @@ spec:
       # can't write a freshly-provisioned root:shared dir. Root init chown, idempotent, rebuild-safe.
       initContainers:
         - name: fix-permissions
-          image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
+          image: ghcr.io/onecli/onecli@sha256:d0177458b1f9ecece4abbe9abb6c5f925475357c1734f50a675d83a2ef9c8687
           command: ["sh", "-c", "chown -R 1000:1000 /app/data"]
           volumeMounts:
             - { name: data, mountPath: /app/data }
@@ -45,7 +62,7 @@ spec:
             runAsUser: 0
       containers:
         - name: onecli
-          image: ghcr.io/onecli/onecli@sha256:7a4fef94337b3c7b16a044998eee342d3e6a6ab1b18c2c4b54e66d050337201b
+          image: ghcr.io/onecli/onecli@sha256:d0177458b1f9ecece4abbe9abb6c5f925475357c1734f50a675d83a2ef9c8687
           env:
             # CNPG-managed credential (cluster.yaml). Points at the -rw service and is rotated by
             # the operator — no hand-maintained password in SOPS any more, and no second copy of it
