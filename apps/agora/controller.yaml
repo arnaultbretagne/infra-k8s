@@ -15,6 +15,11 @@ metadata:
   name: agora-controller
   namespace: agora
 spec:
+  # Default is 10, i.e. 10 stale ReplicaSets each pinning the image digest it
+  # was rolled out with, which is what kubelet image GC counts as "in use".
+  # On a single-node box that turned 3 Deployments into 33 undeletable images
+  # (~19 agora-web versions alone) and drove HostRootDiskUsageHigh.
+  revisionHistoryLimit: 2
   replicas: 1
   selector:
     matchLabels:
