@@ -35,7 +35,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/arnaultbretagne/agora-web@sha256:ede0df84abe29424cbe17705b6be475c4497ae14770e6e762657cd7b39d88339
+          # Built from agora main @ 1914e7c. Fixes a blank page: every image built from a clean
+          # tree shipped WITHOUT `dist/client/app.js`, because `build-workspaces.mjs` ran a bare
+          # `tsc -p <dir>` and @agora/web is the one package whose build is two steps — the second
+          # emits the browser bundle. With the file missing, the server's static handler fell
+          # through to the API router and answered the page's own `<script>` tag with
+          # `401 Bearer required`; the stylesheets live in `public/` and still loaded, so the shell
+          # painted and nothing else did.
+          image: ghcr.io/arnaultbretagne/agora-web@sha256:ec753f2d513056cffcea5a97fe9984207fd7f128e74fe0104c7b8ea7798cebe3
           env:
             - { name: PORT, value: "8080" }
             - { name: SESSION_RUNTIME_CONTROLLER_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
