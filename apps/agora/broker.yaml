@@ -44,9 +44,12 @@ spec:
           # `/v1/agents/{id}/grants`, which does not exist before OneCLI 1.44 (404 on 1.43.3,
           # verified live), and the previous broker calls `/v1/policy/publish`, which is 410 Gone
           # from 1.44 on. Neither version works with the other's OneCLI. Land and roll back together.
-          # Built from agora main @ 4835ec8 (the P13 merge), superseding the ee1c064 pin that was
-          # built from main just before it.
-          image: ghcr.io/arnaultbretagne/agora-broker@sha256:8f390a15202b6d10eda783a5e83fffae78ec0cd9138f87f06e9ba88cecb46897
+          # Built from agora main @ f54d37e. Follows the P13 cutover: the reaper now also cleans up
+          # the Agent of an ABANDONED Session, not just a revoked one. Found by auditing this
+          # instance right after the 1.45.0 upgrade — 15 `sagt-` Agents whose grants had expired up
+          # to 2.7 days earlier were protected forever, because only a revoke ever marks a mapping
+          # deleted and an abandoned Session is never revoked.
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:0f75f421a8b12ebd919d3563df3b5200e39990ce81ee581098ae4aaf2a994c3c
           env:
             - { name: PORT, value: "8443" }
             - { name: RELAY_PORT, value: "8444" }
