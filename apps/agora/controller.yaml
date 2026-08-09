@@ -36,10 +36,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: controller
-          image: ghcr.io/arnaultbretagne/agora-controller@sha256:215744c49d177f5f1da74b43932b5455064fa56fdf69ab022eb98a09d7d9f905
+          image: ghcr.io/arnaultbretagne/agora-controller@sha256:eb08442551c553f66e700a9917d79740fd6b07eba5a9a6e6264674022f6c914b
           env:
             - { name: AGORA_NAMESPACE, value: agora-runs }
-            - { name: CONTROLLER_REVISION, value: "6ced2f359b36" } # image digest short hash — traceable, stable per rollout
+            - { name: CONTROLLER_REVISION, value: "eb08442551c5" } # image digest short hash — traceable, stable per rollout
             - { name: PORT, value: "8443" }
             - { name: RUNTIME_CLASS_NAME, value: sandboxed }
             - { name: RUN_AS_USER, value: "1000" }
