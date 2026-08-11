@@ -51,7 +51,10 @@ spec:
           #
           # This process now also settles, at startup, prompt Commands no live connection can ever
           # finish — including the three from that incident, which are still non-terminal.
-          image: ghcr.io/arnaultbretagne/agora-web@sha256:9e2418596b2b21290fef986c63220d6e0bbec0405d1e74b0e3256bf195167d14
+          # Built from agora main @ a1034b1 (agora#30). Suspending a Session now releases its OneCLI
+          # Agent (the Pod is gone, so its credential authority goes with it); resume re-provisions
+          # one through the Broker's renew. Same lifecycle, same gesture.
+          image: ghcr.io/arnaultbretagne/agora-web@sha256:4db2fc7e52e8197744b3816b5389fb1b3bd2b3a2a803a940f9b1291170d861be
           env:
             - { name: PORT, value: "8080" }
             - { name: SESSION_RUNTIME_CONTROLLER_URL, value: http://agora-controller.agora.svc.cluster.local:8443 }
