@@ -54,7 +54,7 @@ spec:
           # instance right after the 1.45.0 upgrade — 15 `sagt-` Agents whose grants had expired up
           # to 2.7 days earlier were protected forever, because only a revoke ever marks a mapping
           # deleted and an abandoned Session is never revoked.
-          # Built from agora main @ e9fcd00 (agora#30 + #31). The OneCLI Agent now lives and dies with its
+          # Built from agora main @ 65b8940 (agora#30, #31, #32). The OneCLI Agent now lives and dies with its
           # Session Runtime: released on suspend, provisioned again on resume, revoked on close.
           # The orphan reaper used to decide that for itself from grant expiry and got it wrong —
           # all 14 suspended Sessions were left unresumable (`no onecli agent found`). It now
@@ -64,7 +64,7 @@ spec:
           # old reaper deleted Agents without touching the mapping, so the Sessions it broke all
           # read `active` while their Agent was gone — #30 alone skipped re-provisioning for
           # exactly the Sessions it was meant to rescue.
-          image: ghcr.io/arnaultbretagne/agora-broker@sha256:6ba6adb3129da10b7f4abbed627a7c070c5226f827fbbcf8cca59fba1b08e541
+          image: ghcr.io/arnaultbretagne/agora-broker@sha256:7bb603bbaa0cd51bffc069bb16b8d0d85833e4704ba626e81df18da33894df77
           env:
             - { name: PORT, value: "8443" }
             - { name: RELAY_PORT, value: "8444" }
