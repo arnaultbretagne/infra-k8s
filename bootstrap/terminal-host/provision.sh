@@ -2,10 +2,10 @@
 # Provision the host side of terminal.bretagne.dev (ADR 0023) — idempotent.
 #
 # Why host units and not a pod: the terminal must give the SAME low-level host access as
-# an operator session (`su - dev` + sudo), not a container's own namespaces. So `ttyd`
-# runs on the host, bound to loopback, and a host `oauth2-proxy` (Pocket-ID admin gate) is
-# the ONLY thing exposed — and only to the pod CIDR (firewall). The cluster owns just the
-# edge glue (apps/terminal: Service + EndpointSlice + HTTPRoute).
+# an operator session (a `dev` login shell + sudo), not a container's own namespaces. So
+# `ttyd` runs directly as dev on the host, bound to loopback, and a host `oauth2-proxy`
+# (Pocket-ID admin gate) is the ONLY thing exposed — and only to the pod CIDR (firewall).
+# The cluster owns just the edge glue (apps/terminal: Service + EndpointSlice + HTTPRoute).
 #
 # Run as root from the repo root:  sudo bootstrap/terminal-host/provision.sh
 set -euo pipefail

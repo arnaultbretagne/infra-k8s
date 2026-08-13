@@ -2,14 +2,15 @@
 
 ## Status
 
-**Accepted — 2026-07-03.** Live. Builds on [ADR 0021](0021-oauth2-proxy-oidc-gate.md)
-(oauth2-proxy gate) and [ADR 0022](0022-oidc-authz-model.md) (OIDC authz model).
+**Accepted — 2026-07-03; amended 2026-08-13.** Live. Builds on
+[ADR 0021](0021-oauth2-proxy-oidc-gate.md) (oauth2-proxy gate) and
+[ADR 0022](0022-oidc-authz-model.md) (OIDC authz model).
 
 ## Context
 
 We want a browser-reachable terminal that gives the **same low-level host access as an operator
-session** — `su - dev` on the node, with `dev`'s NOPASSWD sudo — not a shell confined to a
-container's own namespaces. It must sit behind Pocket-ID, restricted to the `admin` group.
+session** — a `dev` login shell on the node, with `dev`'s NOPASSWD sudo — not a shell confined to
+a container's own namespaces. It must sit behind Pocket-ID, restricted to the `admin` group.
 
 A pod-based terminal (ttyd in a container) is the obvious first thought but is the wrong tool: it
 would expose the *pod's* filesystem/PID space, not the host's. Making a pod escape to the host
@@ -20,9 +21,12 @@ fragile (image must ship a real `nsenter`) than simply running the shell on the 
 
 Run the shell **on the host as systemd units**; the cluster owns only the edge glue.
 
-- **`ttyd-terminal.service`** — `ttyd` bound to **`127.0.0.1:7681`**, exec'ing `/bin/su - dev`.
-  Loopback-only ⇒ **no pod can reach it** (closes the "rogue pod → host root shell" pivot — relevant
-  because the `agent` namespace runs Claude with bypass permissions).
+- **`ttyd-terminal.service`** — `ttyd` runs as `dev`, binds to **`127.0.0.1:7681`**, and execs
+  `/bin/bash -l`. Running the shell directly is required for lifecycle correctness: ttyd sends its
+  child SIGHUP when the WebSocket closes, whereas an intermediate `su` blocks that signal and leaks
+  the complete `su → bash → agent` process tree and its logind session. Loopback-only ⇒ **no pod can
+  reach it** (closes the "rogue pod → host root shell" pivot — relevant because agent workloads run
+  with bypass permissions).
 - **`terminal-oauth2-proxy.service`** — host `oauth2-proxy` on `:4180`, upstream `127.0.0.1:7681`.
   The **only** exposed surface, and only to the **pod CIDR** (nftables `10.244.0.0/16 → 4180`). Runs
   the OIDC flow against Pocket-ID and enforces `--allowed-groups=admin`.
@@ -31,7 +35,7 @@ Run the shell **on the host as systemd units**; the cluster owns only the edge g
   listener) with the standard HSTS filter. TLS is the usual cert-manager multi-SAN.
 
 Request path: `browser → Traefik(:443) → Service/EndpointSlice → host oauth2-proxy(:4180) →
-ttyd(127.0.0.1:7681) → su - dev`.
+ttyd(127.0.0.1:7681, User=dev) → bash -l`.
 
 ### Authorization — two enforced layers (per ADR 0022)
 
@@ -47,8 +51,14 @@ ttyd(127.0.0.1:7681) → su - dev`.
   session, deliberately scoped to `admin`, and no more powerful than the existing `code-server`.
 - **Not fully GitOps** — the two host units are outside Kubernetes by nature. They are reproduced by
   `bootstrap/terminal-host/provision.sh` (idempotent); the OIDC secret is in SOPS
-  (`bootstrap/terminal-host/oauth2-proxy.secret.yaml`); the firewall rule is in `bootstrap.sh`. The
-  cluster edge is normal GitOps.
-- **ttyd runs as root to `su - dev`.** A host-local process could reach `127.0.0.1:7681`, but the
-  only local accounts are `root`/`dev`, which already have this access — no new escalation.
+  (`bootstrap/terminal-host/oauth2-proxy.secret.yaml`); the firewall rule is in `bootstrap.sh`.
+  Flux reconciles only the cluster edge, not `/etc/systemd/system`: changing a host unit still
+  requires an operator to apply it and restart the affected service, while Git remains the source
+  for rebuilds.
+- **ttyd runs directly as `dev`, not root.** The daemon needs no root privilege to bind its high
+  loopback port. The resulting shell remains intentionally root-equivalent through `dev`'s
+  NOPASSWD sudo. A host-local process could reach `127.0.0.1:7681`, but the only local accounts are
+  `root`/`dev`, which already have this access — no new escalation.
+- **WebSocket disconnects reap their shell.** `KillMode=control-group` also makes service stops reap
+  any remaining descendants instead of leaving background agents behind.
 - **Single node, no HA**: if the node is down the terminal is down (so is everything else).
