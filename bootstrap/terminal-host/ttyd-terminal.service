@@ -4,14 +4,20 @@ Documentation=https://github.com/tsl0922/ttyd
 After=network.target
 
 [Service]
-# Runs as root so it can `su - dev` into a full host login shell (dev has sudo NOPASSWD),
-# giving the SAME low-level host access as an operator session — deliberately NOT a container.
+# Run ttyd directly as dev and start a login shell (dev has sudo NOPASSWD), giving the
+# SAME low-level host access as an operator session — deliberately NOT a container.
+# Avoid an intermediate `su`: it blocks ttyd's SIGHUP on WebSocket disconnect and leaves
+# the su/bash process tree and its logind session running indefinitely.
 # Bound to loopback ONLY: unreachable from the pod network; the sole ingress path is
 # terminal-oauth2-proxy (Pocket-ID admin gate) -> 127.0.0.1:7681.
-ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 7681 --writable --cwd /home/dev /bin/su - dev
+User=dev
+Group=dev
+WorkingDirectory=/home/dev
+ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 7681 --writable --cwd /home/dev /bin/bash -l
 Restart=always
 RestartSec=2
-KillMode=mixed
+KillMode=control-group
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
