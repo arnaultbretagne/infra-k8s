@@ -32,7 +32,7 @@ Run the shell **on the host as systemd units**; the cluster owns only the edge g
   the OIDC flow against Pocket-ID and enforces `--allowed-groups=admin`.
 - **Cluster edge (`apps/terminal/`, GitOps)** — a selector-less `Service` + a manual `EndpointSlice`
   pointing at the node IP `:4180`, plus an `HTTPRoute` on the shared Gateway (`https-terminal`
-  listener) with the standard HSTS filter. TLS is the usual cert-manager multi-SAN.
+  listener) with the standard HSTS filter. TLS uses the shared cert-manager multi-SAN certificate.
 
 Request path: `browser → Traefik(:443) → Service/EndpointSlice → host oauth2-proxy(:4180) →
 ttyd(127.0.0.1:7681, User=dev) → bash -l`.

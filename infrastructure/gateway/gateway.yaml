@@ -4,10 +4,8 @@ metadata:
   name: bretagne-gateway
   namespace: traefik
   annotations:
-    # cert-manager provisions the listener certs (ADR 0008 updated).
-    # FLIP: prod issuer — HTTP-01 now resolves (Traefik owns :80, DNS already -> VPS).
-    # cert-manager aggregates all listener hostnames sharing `bretagne-tls` into one
-    # multi-SAN Certificate, validated per-host via HTTP-01.
+    # gateway-shim keeps the stable listener hostnames in one multi-SAN Certificate.
+    # The issuer validates them through Cloudflare DNS-01; public port 80 is not needed.
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   gatewayClassName: traefik
@@ -30,8 +28,8 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # Per-host listener for aiostreams. Shares bretagne-tls -> cert-manager adds
-    # stremio.bretagne.dev as a SAN on the same multi-SAN cert. Add one block per app.
+    # Per-host listener for aiostreams. Stable listeners share bretagne-tls;
+    # gateway-shim adds their hostnames to the multi-SAN Certificate.
     - name: https-stremio
       port: 8443
       protocol: HTTPS

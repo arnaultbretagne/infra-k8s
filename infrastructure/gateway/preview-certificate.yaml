@@ -1,15 +1,13 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: bretagne-wildcard
+  name: bretagne-preview-wildcard
   namespace: traefik
 spec:
-  secretName: bretagne-wildcard-tls
+  secretName: bretagne-preview-wildcard-tls
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
     name: letsencrypt-prod
   dnsNames:
-    - bretagne.dev
-    - "*.bretagne.dev"
     - "*.preview.bretagne.dev"

@@ -201,15 +201,18 @@ Everything is fronted by the one `bretagne-gateway` (namespace `traefik`), **pur
 Traefik CRDs). To serve `myapp.bretagne.dev`:
 
 1. Add a **listener** to `infrastructure/gateway/gateway.yaml` — one HTTPS block per host, all sharing
-   the `bretagne-tls` secret (cert-manager adds the host as a SAN automatically). Give it a `sectionName`.
+   the `bretagne-tls` secret. gateway-shim adds the listener hostname to this multi-SAN certificate.
+   Give it a `sectionName`.
 2. Add an **`HTTPRoute`** in your app → `parentRefs: bretagne-gateway` + `sectionName: <listener>` +
    `hostnames: [myapp.bretagne.dev]` + `backendRefs: [your Service]`, and the **HSTS filter** below.
-3. **DNS**: point `myapp.bretagne.dev` at the VPS IP (`85.17.246.41`).
-4. **TLS is automatic** (cert-manager HTTP-01 via `letsencrypt-prod`). No manual certs.
+3. **DNS**: point `myapp.bretagne.dev` at the public IP forwarded to the cluster.
+4. **TLS is automatic**: cert-manager issues and renews the multi-SAN certificate through Cloudflare
+   DNS-01 and `letsencrypt-prod`. Dynamic previews use the separate
+   `*.preview.bretagne.dev` wildcard certificate.
 
 **HTTP→HTTPS is redirected globally** (S8): a catch-all `RequestRedirect` HTTPRoute on the `http`
-listener 301s every plaintext request to HTTPS. You don't add anything — it just works, and the ACME
-challenge path still resolves (its exact-path route out-prioritises the `/` catch-all).
+listener 301s every plaintext request to HTTPS. You don't add anything — it just works. ACME
+validation uses DNS-01 and does not depend on this listener or public port 80.
 
 **HSTS** is per-route (Gateway API has no gateway-wide header hook; a `Strict-Transport-Security`
 header is only honoured over HTTPS, so it can't live on the redirect). Add this filter to every

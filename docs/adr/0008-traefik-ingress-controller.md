@@ -46,7 +46,10 @@ Traefik.
 
 ### Note on TLS
 
-Traefik with integrated ACME avoids deploying cert-manager. Certificates are managed directly by Traefik (Let's Encrypt resolvers, storage in a K8s Secret). This reduces the operational surface. If certificate needs beyond ingress arise (mTLS between services, webhook certificates), cert-manager can be added later.
+The original bootstrap plan used Traefik's integrated ACME. The current implementation uses the
+already-deployed cert-manager instead: gateway-shim maintains one multi-SAN certificate for stable
+listeners, while a separate `*.preview.bretagne.dev` wildcard covers dynamic previews. Cloudflare
+DNS-01 performs validation without requiring public port 80.
 
 ## Consequences
 
@@ -54,4 +57,4 @@ Traefik with integrated ACME avoids deploying cert-manager. Certificates are man
 - Routes use Gateway API HTTPRoutes (ADR 0004), not Traefik IngressRoute CRDs
 - Middlewares (ForwardAuth, headers, rate-limit) use Traefik CRDs — this is the only non-standard Gateway API part
 - If the controller is changed in the future, HTTPRoutes remain identical but Middlewares would need to be re-implemented
-- No cert-manager at bootstrap — Traefik handles TLS via ACME
+- cert-manager owns TLS issuance and renewal; Traefik only consumes the generated Secret

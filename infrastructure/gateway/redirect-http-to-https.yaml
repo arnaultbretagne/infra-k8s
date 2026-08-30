@@ -8,10 +8,8 @@ spec:
     - name: bretagne-gateway
       namespace: traefik
       sectionName: http        # attach ONLY to the :80 HTTP listener
-  # No hostnames → matches every HTTP request. The "/" PathPrefix is the LEAST specific
-  # match, so cert-manager's ACME solver HTTPRoute (exact /.well-known/acme-challenge/<token>
-  # path) always wins Gateway API precedence during a challenge — HTTP-01 renewals keep
-  # working while every other HTTP request gets a 301 to HTTPS.
+  # No hostnames → matches every HTTP request. ACME uses DNS-01, so certificate
+  # issuance and renewal do not depend on this listener or public port 80.
   rules:
     - matches:
         - path:

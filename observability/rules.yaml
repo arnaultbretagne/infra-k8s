@@ -70,7 +70,7 @@ spec:
             severity: warning
           annotations:
             summary: 'Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in less than 14 days'
-            description: 'cert-manager should renew at 30 days before expiry — if this fires, renewal is broken (ACME/HTTP-01 path).'
+            description: 'cert-manager should renew at 30 days before expiry — if this fires, renewal is broken (ACME/DNS-01 path).'
 ---
 # Edge RED (ADR 0014's promised custom rules, part 1): low-cardinality series for
 # 30d trends + the missing symptom alerts (error ratio / latency at the edge).
