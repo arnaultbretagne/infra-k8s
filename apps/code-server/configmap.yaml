@@ -32,9 +32,10 @@ data:
     grep -qF 'alias claude=' ~/.bashrc 2>/dev/null \
       || echo "alias claude='claude --dangerously-skip-permissions'" >> ~/.bashrc
 
-    # Claude Code CLI — native installer targets ~/.local/bin (user-space)
-    command -v claude >/dev/null 2>&1 \
-      || curl -fsSL https://claude.ai/install.sh | bash || true
+    # Agent CLIs (claude, codex, …) are deliberately NOT installed here. They are
+    # hand-installed into the home PVC by the operator, on purpose: the bootstrap
+    # provisions tooling and identity, never the agents themselves. Do not add an
+    # installer for one back into this script.
 
     # gh CLI — static tarball, user-space (no apt)
     if [ ! -x ~/.local/share/gh/bin/gh ]; then

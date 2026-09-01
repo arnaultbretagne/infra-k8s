@@ -50,7 +50,7 @@ spec:
             httpGet:
               path: /healthz
               port: 8080
-            failureThreshold: 30   # first boot installs claude+gh into the PVC
+            failureThreshold: 30   # first boot installs gh + wrappers into the PVC
             periodSeconds: 5
           livenessProbe:
             httpGet:
