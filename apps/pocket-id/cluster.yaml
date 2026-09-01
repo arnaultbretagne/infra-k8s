@@ -2,6 +2,8 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: pocket-id-pg
+  annotations:
+    cnpg.io/skipEmptyWalArchiveCheck: enabled
 spec:
   instances: 1
 
@@ -25,9 +27,26 @@ spec:
     storageClass: local-path
 
   bootstrap:
-    initdb:
+    recovery:
+      source: pocket-id-pg-backup
       database: pocketid
       owner: pocketid
+
+  externalClusters:
+    - name: pocket-id-pg-backup
+      barmanObjectStore:
+        destinationPath: s3://bretagne-pg-backups/pocket-id
+        serverName: pocket-id-pg
+        endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+        s3Credentials:
+          accessKeyId:
+            name: cnpg-s3-creds
+            key: ACCESS_KEY_ID
+          secretAccessKey:
+            name: cnpg-s3-creds
+            key: SECRET_ACCESS_KEY
+        wal:
+          compression: snappy
 
   backup:
     barmanObjectStore:
