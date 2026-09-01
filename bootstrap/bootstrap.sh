@@ -621,6 +621,11 @@ log "Phase 5 — Cilium CNI (pre-Flux)"
 # Flux needs pods → pods need CNI → CNI is a HelmRelease managed by Flux.
 # Break the cycle: install Cilium via helm. When Flux starts, its
 # helm-controller adopts the existing release (ADR 0006).
+# The Cilium chart also renders dashboards directly into `observability`.
+# Pre-create that checked-in Namespace or Flux's first adoption upgrade blocks
+# the dependency chain before the observability Kustomization can create it.
+k0s kubectl apply --server-side -f "$REPO_DIR/observability/namespace.yaml"
+ok "Observability namespace prepared for Cilium dashboards"
 
 if helm status cilium -n kube-system &>/dev/null 2>&1; then
   ok "Cilium Helm release already exists"
