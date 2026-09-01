@@ -6,11 +6,14 @@ kind: Deployment
 metadata:
   name: obsidian-sync
 spec:
-  # Paused after the G4 cutover: starting from an empty local vault caused the
-  # bidirectional client to propagate deletions to the remote mirror. Keep the
-  # writer fenced until the remote history has been reconciled from the VPS
-  # snapshot now present on the G4 PVC.
-  replicas: 0
+  # Unfenced 2026-09-01 after the cutover incident was fully reconciled. For the
+  # record, because the sync.log is the only place it is written down: restarting
+  # the client against an empty local vault made it delete 446 files and 20
+  # folders from the remote at 15:26Z; the accidental Flux restart at 15:36Z,
+  # once the vault had been restored from the VPS snapshot, re-uploaded 450 files
+  # and recreated the same 20 folders, leaving zero orphans. Content is intact —
+  # only the server-side version history of those files was reset.
+  replicas: 1
   strategy:
     type: Recreate          # single sync session; two writers would fight
   selector:
