@@ -19,6 +19,7 @@ resources:
   - agora-onecli-ca.yaml
   - agora-broker-onecli.secrets.yaml
   - oauth2-proxy.secrets.yaml
+  - ghcr-pull.secrets.yaml
   - web.yaml
   - controller.yaml
   - broker.yaml

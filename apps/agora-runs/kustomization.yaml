@@ -9,3 +9,4 @@ resources:
   - networkpolicy.yaml
   - onecli-ca.yaml
   - onecli-stubs.secrets.yaml
+  - ghcr-pull.secrets.yaml
