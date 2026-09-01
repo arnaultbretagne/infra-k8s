@@ -82,28 +82,35 @@ Each layer is a Flux `Kustomization` with `dependsOn` on the previous one. The g
 ## Bootstrap
 
 Prerequisites:
-- a fresh Debian VPS with root SSH access
+- a fresh Debian host with root access, a static node IPv4 address, working NTP, and TCP/443 free
+- `git` installed (`sudo apt-get update && sudo apt-get install -y git`)
 - the **Age private key** (SOPS decryption), restored from backup
-- an **SSH deploy key** whose public half is registered as a deploy key (read/write) on this repo, for Flux git access
+- an **SSH deploy key** whose public half is registered as a read-only deploy key on this repo, for Flux git access
 
 ```bash
-git clone https://github.com/arnaultbretagne/infra-k8s.git /srv/infra-k8s
-cd /srv/infra-k8s
+sudo -n env \
+  GIT_SSH_COMMAND='ssh -i /root/.ssh/infra-k8s-deploy -o IdentitiesOnly=yes' \
+  git clone ssh://git@github.com/arnaultbretagne/infra-k8s.git /opt/infra-k8s
+cd /opt/infra-k8s
 
-export AGE_KEY_FILE=/root/.config/sops/age/keys.txt    # restored from backup
-export DEPLOY_KEY_FILE=/root/.ssh/infra-k8s-deploy      # private key; pubkey registered on the repo
-# PUBLIC_IP is auto-detected; AES_KEY_FILE is auto-generated at
-# /root/.config/k0s/encryption-key if absent
-
-./bootstrap/bootstrap.sh    # run as root; idempotent, safe to re-run
+sudo -n env \
+  PUBLIC_IP="<static-node-ip>" \
+  ./bootstrap/bootstrap.sh
 ```
 
+`PUBLIC_IP` is the only runtime input and must already be assigned to the host. The SOPS Age key
+must be at `/root/.config/sops/age/keys.txt`, and the Flux deploy key at
+`/root/.ssh/infra-k8s-deploy`. A new AES key is generated at
+`/root/.config/k0s/encryption-key` when absent. The script is idempotent and safe to re-run.
+
 The script handles:
-1. OS hardening (nftables firewall, SSH, fail2ban, unattended-upgrades, sysctl)
-2. Installing k0s, Helm, Flux CLI, age, sops (pinned versions)
-3. Generating or loading the AES key for encryption at rest
-4. Starting k0s (kube-proxy disabled), then installing Cilium via Helm (CNI + LB, pre-Flux)
-5. Bootstrapping Flux with the deploy key and creating the SOPS Age secret
+1. Strict preflight (static IP, NTP, deploy key, Age key, and TCP/443)
+2. OS hardening (HTTPS-only nftables firewall, SSH, fail2ban, unattended-upgrades, kernel modules, sysctl)
+3. Installing k0s, Helm, Flux CLI, age, sops (pinned versions)
+4. Generating or loading the AES key for encryption at rest
+5. Starting k0s, arming netguard, then installing Cilium via Helm (CNI + LB, pre-Flux)
+6. Installing the checked-in Flux manifests, adding its read-only deploy key and creating the SOPS Age secret
+7. Creating the dedicated `dev` account with NOPASSWD sudo and provisioning the host-side terminal services
 
 After bootstrap, Flux reconciles the full dependency chain automatically.
 
