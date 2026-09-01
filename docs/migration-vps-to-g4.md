@@ -24,7 +24,7 @@ depuis le VPS `85.17.246.41` vers le serveur homelab `g4` (`10.10.20.10`, WAN
 | Usage | Adresse |
 |---|---|
 | Ancien VPS et rollback DNS | `85.17.246.41` |
-| Nœud g4, API k0s et `externalIPs` Traefik | `10.10.20.10` |
+| Nœud g4 statique, API k0s et `externalIPs` Traefik | `10.10.20.10` |
 | Adresse WAN publiée dans Cloudflare | `188.61.65.22` |
 
 Les trois enregistrements DNS à basculer sont `bretagne.dev`, `*.bretagne.dev` et
@@ -58,8 +58,9 @@ assurance, mais elle ne devient pas une nouvelle archive active.
    - conservation des `destinationPath` et `serverName` ;
    - annotation de continuation de l'archive.
 3. Installer la clé AGE officielle et une nouvelle deploy key Flux sur g4.
-4. Confirmer que `10.10.20.10` est réservé de manière stable sur le DHCP/VLAN 20 et que le routeur
-   transfère TCP/443 vers cette adresse.
+4. Conserver `PUBLIC_IP` comme entrée obligatoire de `bootstrap.sh` et lui passer explicitement
+   `10.10.20.10` à l'exécution ; aucune valeur propre à g4 ne doit être codée dans le script.
+5. Vérifier que le routeur transfère TCP/443 vers l'adresse statique `10.10.20.10` sur le VLAN 20.
 
 ## Coupure
 
