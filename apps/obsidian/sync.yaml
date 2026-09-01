@@ -6,7 +6,11 @@ kind: Deployment
 metadata:
   name: obsidian-sync
 spec:
-  replicas: 1
+  # Paused after the G4 cutover: starting from an empty local vault caused the
+  # bidirectional client to propagate deletions to the remote mirror. Keep the
+  # writer fenced until the remote history has been reconciled from the VPS
+  # snapshot now present on the G4 PVC.
+  replicas: 0
   strategy:
     type: Recreate          # single sync session; two writers would fight
   selector:
