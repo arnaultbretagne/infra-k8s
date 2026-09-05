@@ -8,9 +8,8 @@
 # client_id: the Pocket-ID client_id of the `home-assistant` OIDC client (apps/pocket-id/
 # oidc-reconciler/spec.json). PUBLIC client + PKCE => there is NO client_secret; this id is the only
 # value to bootstrap, and it travels in every browser redirect anyway. Pocket-ID mints it at
-# creation, so: merge -> run the reconciler -> read the id in Pocket-ID admin -> put it here -> PR.
-# Until then HA boots with the placeholder: OIDC login fails cleanly and the native login stays
-# reachable (README.md).
+# creation; this one was minted by the reconciler run of 2026-09-05 (job oidc-reconciler-manual).
+# Recreating the client in spec.json changes the id — update here too.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,4 +17,4 @@ metadata:
 data:
   owner_username: arnault.bretagne
   owner_name: Arnault Bretagne
-  client_id: REPLACE_WITH_POCKET_ID_CLIENT_ID
+  client_id: c5b252e6-d957-4ac9-8c73-0405cfed990e
