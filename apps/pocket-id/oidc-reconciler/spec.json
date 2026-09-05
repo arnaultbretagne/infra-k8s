@@ -73,6 +73,14 @@
       ],
       "allowedGroups": ["admin"],
       "pkceEnabled": true
+    },
+    {
+      "_comment": "Home Assistant (apps/home-assistant): the app is its own OIDC relying party (hass-oidc-auth), no oauth2-proxy in front — the Companion app cannot cross a cookie gate (ADR 0021, amendment 2026-09-05). PUBLIC client + PKCE (RFC 7636): there is NO client_secret, nothing to bootstrap into SOPS. The only value to copy after the first reconcile is the minted client_id -> apps/home-assistant/oidc-configmap.yaml. Group-restricted to admin; HA mirrors it (auth_oidc.roles.user/admin = admin).",
+      "name": "home-assistant",
+      "callbackURLs": ["https://ha.bretagne.dev/auth/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "isPublic": true,
+      "pkceEnabled": true
     }
   ]
 }

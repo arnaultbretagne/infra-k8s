@@ -122,3 +122,18 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Home Assistant (apps/home-assistant). No oauth2-proxy on this listener: HA is its own OIDC
+    # relying party (hass-oidc-auth -> Pocket-ID) because the Companion app cannot cross a cookie
+    # gate (ADR 0021, amendment 2026-09-05).
+    - name: https-ha
+      port: 8443
+      protocol: HTTPS
+      hostname: ha.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All

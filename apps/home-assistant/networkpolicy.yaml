@@ -1,0 +1,86 @@
+# Default-deny + allow-list (ADR 0020).
+#
+# HA reaches exactly four things: DNS, its own Postgres, the Zigbee coordinator, and HTTPS out
+# (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.home-assistant.io for the one-time
+# custom-component deps install, HA's own integrations). Nothing intra-cluster beyond CNPG.
+#
+# The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638).
+# Pod egress leaves g4 masqueraded as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must
+# also allow VLAN 20 -> 10.10.40.10:6638/tcp — that rule is not in this repo (README.md).
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: home-assistant
+  namespace: home-assistant
+spec:
+  endpointSelector:
+    matchLabels:
+      app: home-assistant
+  ingress:
+    # Traefik serves ha.bretagne.dev -> HA :8123
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8123", protocol: TCP }]
+    # kubelet probes
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8123", protocol: TCP }]
+  egress:
+    # -> DNS
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    # -> recorder database (CNPG, same namespace)
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: ha-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # -> Zigbee coordinator (SLZB-06p10, IoT VLAN), serial over TCP. This IP and port only.
+    - toCIDR:
+        - 10.10.40.10/32
+      toPorts:
+        - ports: [{ port: "6638", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery, token, JWKS) + PyPI/wheels (init) + HA integrations.
+    #    The public IP resolves to the home line; kube-proxy/host may DNAT it to the Traefik pod
+    #    — same three-way allow as the oauth2-proxy CNPs.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+---
+# Backup + restore-drill jobs: DNS and R2 (HTTPS) only.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: home-assistant-jobs
+  namespace: home-assistant
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: home-assistant-backup
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

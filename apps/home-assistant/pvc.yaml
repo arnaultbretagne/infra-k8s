@@ -1,0 +1,14 @@
+# Stateful exception (ADR 0005): /config — HA's .storage (auth, entity/device registries, the ZHA
+# network settings + zigbee.db, i.e. the Zigbee network key: losing it means re-pairing every
+# device), YAML, and the pre-installed custom-component deps. The recorder history is NOT here
+# (CNPG, cluster.yaml). Backed up nightly to R2 by config-backup.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: home-assistant-config
+spec:
+  storageClassName: local-path
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

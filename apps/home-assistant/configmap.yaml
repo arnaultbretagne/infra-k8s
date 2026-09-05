@@ -1,0 +1,261 @@
+# Config-only provisioning (ADR 0015): stock HA image + this ConfigMap + a /config PVC.
+# `provision.py` runs as an initContainer before EVERY start and is the idempotent provisioning
+# layer: it pins the hass-oidc-auth custom component (tag + sha256), pre-installs its Python
+# requirements into /config/deps, and re-seeds configuration.yaml from here (Git is the source of
+# truth for the YAML; the UI owns .storage/, automations.yaml, scripts.yaml, scenes.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: home-assistant-config
+data:
+  configuration.yaml: |
+    # Managed by GitOps (apps/home-assistant/configmap.yaml) — overwritten at every pod start.
+    # Put UI-independent extras in packages/ (persisted on the PVC) rather than editing this file.
+    default_config:
+
+    homeassistant:
+      packages: !include_dir_named packages
+      # The native username/password provider deliberately STAYS enabled (default). It is the
+      # break-glass path if Pocket-ID or the OIDC client is broken; nobody uses it day to day
+      # (features.default_redirect below hides it). No password is stored anywhere: reset one when
+      # needed with `hass --script auth change_password` from inside the pod (README.md).
+
+    http:
+      # Traefik (pod network) fronts us. Without this HA sees every client as the Traefik pod, and
+      # ip_ban_enabled would ban Traefik itself on the 6th bad login.
+      use_x_forwarded_for: true
+      trusted_proxies:
+        - 10.244.0.0/16
+      ip_ban_enabled: true
+      login_attempts_threshold: 5
+
+    recorder:
+      # CNPG-managed credential (cluster.yaml -> ha-pg-app secret, `uri` key) via the environment.
+      db_url: !env_var HA_DB_URL
+      purge_keep_days: 14
+      commit_interval: 5
+
+    # Pocket-ID login (hass-oidc-auth, ADR 0021 amendment 2026-09-05). PUBLIC client + PKCE: no
+    # client_secret exists. The client_id is minted by Pocket-ID at creation (oidc-configmap.yaml).
+    auth_oidc:
+      client_id: !env_var OIDC_CLIENT_ID
+      discovery_url: https://id.bretagne.dev/.well-known/openid-configuration
+      display_name: "Pocket-ID"
+      features:
+        # Land the OIDC identity on the existing HA user with the same username (the owner account
+        # created at onboarding MUST use your Pocket-ID `preferred_username`), instead of creating
+        # a second, non-owner user.
+        automatic_user_linking: true
+        # Browser: straight to Pocket-ID, the native form is not shown. Backup login:
+        # https://ha.bretagne.dev/auth/authorize?...&skip_oidc_redirect=true (see README.md).
+        default_redirect: true
+        force_https: true
+      roles:
+        # Belt and braces on top of the Pocket-ID client's own group restriction (spec.json), same
+        # posture as OAUTH2_PROXY_ALLOWED_GROUPS. Widen `user` (e.g. a `home-users` group) the day
+        # the household gets accounts — and read README.md "Sessions" first.
+        admin: admin
+        user: admin
+
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+
+  provision.py: |
+    #!/usr/bin/env python3
+    """Idempotent provisioning of /config, run as an initContainer before every HA start.
+
+    1. hass-oidc-auth custom component at the PINNED tag, verified against the pinned sha256 of the
+       GitHub tag archive. Re-fetched only when the pinned version changes.
+    2. Its Python requirements pre-installed into /config/deps (persisted; PYTHONPATH on the main
+       container). In the official image HA pip-installs custom-component requirements into the
+       image rootfs — read-only here, and lost at every restart anyway. Installed with --no-deps
+       so nothing shadows the image's own pinned libraries (cryptography etc.); the manifest's deps
+       are checked afterwards.
+    3. configuration.yaml re-seeded from the ConfigMap; UI-editor include files created if absent.
+    """
+    import hashlib, importlib.metadata as md, io, json, os, shutil, subprocess, sys, tarfile
+    import urllib.request
+
+    CONFIG = "/config"
+    SEED = "/etc/home-assistant"
+    VERSION = os.environ["OIDC_VERSION"]
+    SHA256 = os.environ["OIDC_SHA256"]
+    COMP = os.path.join(CONFIG, "custom_components", "auth_oidc")
+    STAMP = os.path.join(COMP, ".installed-version")
+    DEPS = os.path.join(CONFIG, "deps")
+    PYSTAMP = os.path.join(DEPS, ".python-version")
+    PYVER = "%d.%d" % sys.version_info[:2]
+
+    def log(msg):
+        print(f"[provision] {msg}", flush=True)
+
+    # --- 1. component -------------------------------------------------------------------------
+    installed = open(STAMP).read().strip() if os.path.exists(STAMP) else None
+    if installed != VERSION:
+        url = f"https://github.com/christiaangoossens/hass-oidc-auth/archive/refs/tags/v{VERSION}.tar.gz"
+        log(f"fetching hass-oidc-auth v{VERSION} (have: {installed})")
+        data = urllib.request.urlopen(url, timeout=120).read()
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != SHA256:
+            sys.exit(f"[provision] FATAL sha256 mismatch for {url}: got {digest}, pinned {SHA256}")
+        tmp = COMP + ".new"
+        shutil.rmtree(tmp, ignore_errors=True)
+        marker = "/custom_components/auth_oidc/"
+        with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+            for m in tar.getmembers():
+                if marker not in m.name:
+                    continue
+                rel = m.name.split(marker, 1)[1]
+                if not rel or ".." in rel:
+                    continue
+                dest = os.path.join(tmp, rel)
+                if m.isdir():
+                    os.makedirs(dest, exist_ok=True)
+                elif m.isfile():
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with tar.extractfile(m) as src, open(dest, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+        if not os.path.exists(os.path.join(tmp, "manifest.json")):
+            sys.exit("[provision] FATAL archive has no custom_components/auth_oidc/manifest.json")
+        shutil.rmtree(COMP, ignore_errors=True)
+        os.rename(tmp, COMP)
+        with open(STAMP, "w") as f:
+            f.write(VERSION + "\n")
+        log(f"installed hass-oidc-auth v{VERSION} (sha256 ok)")
+    else:
+        log(f"hass-oidc-auth v{VERSION} already installed")
+
+    # --- 2. requirements ----------------------------------------------------------------------
+    if os.path.exists(PYSTAMP) and open(PYSTAMP).read().strip() != PYVER:
+        log(f"python changed ({open(PYSTAMP).read().strip()} -> {PYVER}), wiping deps")
+        shutil.rmtree(DEPS, ignore_errors=True)
+    os.makedirs(DEPS, exist_ok=True)
+    sys.path.insert(0, DEPS)  # see what is already there
+    reqs = json.load(open(os.path.join(COMP, "manifest.json"))).get("requirements", [])
+
+    def dist_name(req):
+        for sep in ("==", ">=", "<=", "~=", "!=", ">", "<", "["):
+            req = req.split(sep, 1)[0]
+        return req.strip()
+
+    def missing():
+        out = []
+        for r in reqs:
+            try:
+                md.version(dist_name(r))
+            except md.PackageNotFoundError:
+                out.append(r)
+        return out
+
+    todo = missing()
+    if todo:
+        log(f"installing into {DEPS}: {todo}")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--no-cache-dir", "--no-deps",
+                               "--only-binary=:all:", "--target", DEPS, *todo])
+        md.MetadataPathFinder.invalidate_caches()
+        still = missing()
+        if still:
+            sys.exit(f"[provision] FATAL requirements still missing after install: {still}")
+        with open(PYSTAMP, "w") as f:
+            f.write(PYVER + "\n")
+    else:
+        log("requirements satisfied")
+    for r in reqs:
+        # each requirement's own dependencies must already be in the image (we install --no-deps)
+        for dep in (md.requires(dist_name(r)) or []):
+            dep_name = dist_name(dep.split(";", 1)[0])
+            if ";" in dep and "extra ==" in dep:
+                continue
+            try:
+                md.version(dep_name)
+            except md.PackageNotFoundError:
+                sys.exit(f"[provision] FATAL {r} needs {dep_name}, absent from image and deps")
+
+    # --- 3. configuration ---------------------------------------------------------------------
+    shutil.copyfile(os.path.join(SEED, "configuration.yaml"), os.path.join(CONFIG, "configuration.yaml"))
+    os.makedirs(os.path.join(CONFIG, "packages"), exist_ok=True)
+    for name in ("automations.yaml", "scripts.yaml", "scenes.yaml"):
+        p = os.path.join(CONFIG, name)
+        if not os.path.exists(p):
+            open(p, "w").close()
+    log("configuration seeded; done")
+
+  onboard.py: |
+    #!/usr/bin/env python3
+    """Native sidecar: completes HA's first-run onboarding through the LOCAL API, then idles.
+
+    Why: ha.bretagne.dev is public the moment the route reconciles (wildcard DNS, and the multi-SAN
+    certificate lands in CT logs, which bots scan within minutes). An un-onboarded HA lets the first
+    visitor create the owner account. So the owner is created here, unattended: username = your
+    Pocket-ID preferred_username (hass-oidc-auth links the OIDC identity onto it), password random
+    and DISCARDED. Nobody knows it; break-glass = reset it from inside the pod (README.md).
+    No-op when onboarding is already done (normal restarts, restore from backup).
+    """
+    import json, os, secrets, sys, time, urllib.error, urllib.parse, urllib.request
+
+    BASE = "http://127.0.0.1:8123"
+    CLIENT_ID = "https://ha.bretagne.dev/"   # IndieAuth-style client id: any URL under our origin
+    USER = os.environ["OWNER_USERNAME"]
+    NAME = os.environ.get("OWNER_NAME") or USER
+    LANG = os.environ.get("OWNER_LANGUAGE", "fr")
+
+    def log(msg):
+        print(f"[onboard] {msg}", flush=True)
+
+    def idle():
+        os.execvp("sleep", ["sleep", "infinity"])
+
+    def call(path, data=None, token=None, form=False):
+        body, headers = None, {}
+        if data is not None:
+            if form:
+                body = urllib.parse.urlencode(data).encode()
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+            else:
+                body = json.dumps(data).encode()
+                headers["Content-Type"] = "application/json"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(BASE + path, data=body, headers=headers,
+                                     method="POST" if data is not None else "GET")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read()
+        return json.loads(raw) if raw else None
+
+    steps = None
+    for _ in range(600):                      # HA cold start can take a few minutes
+        try:
+            steps = call("/api/onboarding")
+            break
+        except Exception:
+            time.sleep(2)
+    if steps is None:
+        log("HA never answered /api/onboarding; giving up (no changes made)")
+        idle()
+    if all(s["done"] for s in steps):
+        log("already onboarded; nothing to do")
+        idle()
+    if next(s for s in steps if s["step"] == "user")["done"]:
+        log("owner exists but onboarding is unfinished - finish it in the UI as that user")
+        idle()
+
+    try:
+        auth = call("/api/onboarding/users", {
+            "client_id": CLIENT_ID, "name": NAME, "username": USER,
+            "password": secrets.token_urlsafe(48), "language": LANG,
+        })
+        tok = call("/auth/token", {"grant_type": "authorization_code",
+                                   "code": auth["auth_code"], "client_id": CLIENT_ID}, form=True)
+        access, refresh = tok["access_token"], tok.get("refresh_token")
+        call("/api/onboarding/core_config", {}, access)       # location/units/timezone: set in the UI
+        call("/api/onboarding/analytics", {}, access)
+        call("/api/onboarding/integration", {"client_id": CLIENT_ID, "redirect_uri": CLIENT_ID}, access)
+        if refresh:                                          # drop the bootstrap session
+            call("/auth/token", {"action": "revoke", "token": refresh}, form=True)
+        log(f"onboarded: owner '{USER}' created, bootstrap session revoked")
+    except urllib.error.HTTPError as e:
+        log(f"FAILED {e.code} on {e.url}: {e.read()[:300]!r} - finish onboarding by hand NOW (README.md)")
+    except Exception as e:                                    # never take HA down with us
+        log(f"FAILED: {e!r} - finish onboarding by hand NOW (README.md)")
+    idle()

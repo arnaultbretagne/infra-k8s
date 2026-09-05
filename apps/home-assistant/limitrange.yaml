@@ -1,0 +1,13 @@
+# Safety-net defaults: any container that omits requests/limits gets these. Defaults-only, never rejects.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 25m
+        memory: 64Mi
+      default:
+        memory: 256Mi
