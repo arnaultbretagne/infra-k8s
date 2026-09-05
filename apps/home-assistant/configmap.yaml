@@ -20,14 +20,10 @@ data:
       # (features.default_redirect below hides it). No password is stored anywhere: reset one when
       # needed with `hass --script auth change_password` from inside the pod (README.md).
 
-    http:
-      # Traefik (pod network) fronts us. Without this HA sees every client as the Traefik pod, and
-      # ip_ban_enabled would ban Traefik itself on the 6th bad login.
-      use_x_forwarded_for: true
-      trusted_proxies:
-        - 10.244.0.0/16
-      ip_ban_enabled: true
-      login_attempts_threshold: 5
+    # NO `http:` block here. Since 2026.x the HTTP config lives in .storage/http (stable/pending
+    # pair): YAML is migrated ONCE into a *pending* trial that an admin must promote within 5
+    # minutes, else HA reverts and restarts (bit us on first boot: no trusted_proxies -> 400 on
+    # every request via Traefik). provision.py writes the stable entry from http-config.json.
 
     recorder:
       # CNPG-managed credential (cluster.yaml -> ha-pg-app secret, `uri` key) via the environment.
@@ -61,6 +57,18 @@ data:
     script: !include scripts.yaml
     scene: !include scenes.yaml
 
+  http-config.json: |
+    {
+      "server_port": 8123,
+      "use_x_forwarded_for": true,
+      "trusted_proxies": ["10.244.0.0/16"],
+      "ip_ban_enabled": true,
+      "login_attempts_threshold": 5,
+      "cors_allowed_origins": ["https://cast.home-assistant.io"],
+      "ssl_profile": "modern",
+      "use_x_frame_options": true
+    }
+
   provision.py: |
     #!/usr/bin/env python3
     """Idempotent provisioning of /config, run as an initContainer before every HA start.
@@ -73,6 +81,11 @@ data:
        so nothing shadows the image's own pinned libraries (cryptography etc.); the manifest's deps
        are checked afterwards.
     3. configuration.yaml re-seeded from the ConfigMap; UI-editor include files created if absent.
+    4. The HTTP config (reverse-proxy trust, IP ban) written as the STABLE entry of .storage/http,
+       from http-config.json. HA >= 2026 keeps this config in storage: YAML is migrated once into a
+       pending trial that must be promoted by an admin within 5 minutes or HA reverts + restarts —
+       useless for an unattended, Git-owned config. Writing `stable` directly (same layout HA itself
+       writes, storage v2.2) makes the config active from the first request, no trial, no promotion.
     """
     import hashlib, importlib.metadata as md, io, json, os, shutil, subprocess, sys, tarfile
     import urllib.request
@@ -179,7 +192,38 @@ data:
         p = os.path.join(CONFIG, name)
         if not os.path.exists(p):
             open(p, "w").close()
-    log("configuration seeded; done")
+    log("configuration seeded")
+
+    # --- 4. HTTP config -> .storage/http (stable) --------------------------------------------
+    import datetime as _dt
+    store_path = os.path.join(CONFIG, ".storage", "http")
+    desired = json.load(open(os.path.join(SEED, "http-config.json")))
+    META = ("created_at", "error", "error_message")
+    store = None
+    if os.path.exists(store_path):
+        try:
+            store = json.load(open(store_path))
+        except ValueError:
+            log(f"{store_path} unreadable, rewriting it")
+    current = {k: v for k, v in (store or {}).get("data", {}).get("stable", {}).items() if k not in META}
+    pending = (store or {}).get("data", {}).get("pending")
+    if store and store.get("version") == 2 and current == desired and pending is None:
+        log("HTTP config already stable")
+    else:
+        stable = dict(desired)
+        stable["created_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        stable["error"] = None
+        stable["error_message"] = None
+        new = {"version": 2, "minor_version": 2, "key": "http",
+               "data": {"stable": stable, "pending": None, "yaml_migration_done": True}}
+        os.makedirs(os.path.dirname(store_path), exist_ok=True)
+        tmp = store_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(new, f, indent=2)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, store_path)
+        log("HTTP config written as stable (pending cleared)")
+    log("done")
 
   onboard.py: |
     #!/usr/bin/env python3
