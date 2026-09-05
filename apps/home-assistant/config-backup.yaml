@@ -63,6 +63,10 @@ spec:
                   value: Cloudflare
                 - name: RCLONE_CONFIG_R2_ENDPOINT
                   value: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+                # The R2 key is scoped to the bucket (no ListBuckets): without this rclone cannot
+                # confirm the bucket exists, tries CreateBucket and gets 403 (seen live 2026-09-05).
+                - name: RCLONE_CONFIG_R2_NO_CHECK_BUCKET
+                  value: "true"
                 - name: RCLONE_CONFIG_R2_ACCESS_KEY_ID
                   valueFrom:
                     secretKeyRef:
