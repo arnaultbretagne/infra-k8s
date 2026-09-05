@@ -15,7 +15,7 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
 | File | Role |
 |---|---|
 | `deployment.yaml` | HA (root image, PSS baseline, read-only rootfs) + `provision` init + `onboard` native sidecar |
-| `configmap.yaml` | `configuration.yaml` (Git-owned), `provision.py`, `onboard.py` |
+| `configmap.yaml` | `configuration.yaml` (Git-owned), `http-config.json` (reverse-proxy trust, written straight into `.storage/http` — see below), `provision.py`, `onboard.py` |
 | `oidc-configmap.yaml` | owner username (= Pocket-ID username) and the Pocket-ID `client_id` |
 | `cluster.yaml` | `ha-pg` CNPG cluster + daily backup; `restore-test.yaml` proves it restores |
 | `config-backup.yaml` | nightly tarball of `/config` to R2 (`home-assistant-config/` prefix, 14 days) |
@@ -66,6 +66,23 @@ found its requirements already in the image; `onboard` created the owner and rev
    the code. Once per phone.
 7. Backups: `Backup` objects `completed` for `ha-pg`, `ha-pg-restore-test` `PASSED` (05:45),
    `ha-config-backup` `DONE` (04:15). Restore of `/config` = untar the latest archive onto the PVC.
+
+## HTTP config is storage-backed (why there is no `http:` in the YAML)
+
+HA ≥ 2026 keeps `http` settings in `.storage/http` as a stable/pending pair. A YAML `http:` block is
+migrated **once** into a *pending* trial that an admin must promote in the UI within 5 minutes,
+otherwise HA reverts to the previous stable config and restarts (hit on first boot: reverted to
+"no trusted proxies", every request via Traefik answered 400). Unattended and Git-owned, so
+`provision.py` writes the desired config as the **stable** entry (from `http-config.json`) at every
+start. Change proxy trust or the ban threshold there, not in the YAML.
+
+## Config changes need a pod restart (known gap)
+
+The Deployment reads its settings from ConfigMaps (`configmap.yaml`, `oidc-configmap.yaml`) via
+env and a mounted volume: Flux updates the ConfigMaps, but a ConfigMap change does not roll the
+Deployment. After merging such a change: `k0s kubectl -n home-assistant rollout restart
+deploy/home-assistant`. TODO: switch both to kustomize `configMapGenerator` (hashed names) so a
+change rolls the pod by itself.
 
 ## Break-glass (native login)
 
