@@ -1,0 +1,26 @@
+# ha.bretagne.dev -> HA directly. NO oauth2-proxy in front (ADR 0021 amendment 2026-09-05): the
+# Companion app talks to the REST/WebSocket API with its own HA tokens, outside the browser session
+# that a cookie gate would establish, so a gate breaks the app. HA is its own relying party instead
+# (hass-oidc-auth against Pocket-ID, see configmap.yaml).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: home-assistant
+spec:
+  parentRefs:
+    - name: bretagne-gateway
+      namespace: traefik
+      sectionName: https-ha
+  hostnames:
+    - ha.bretagne.dev
+  rules:
+    - filters:
+        # HSTS (S8). Conservative 1-day max-age for the initial rollout; raise to 31536000 once proven.
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"
+      backendRefs:
+        - name: home-assistant
+          port: 8123

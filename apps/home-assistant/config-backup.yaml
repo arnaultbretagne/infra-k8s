@@ -1,0 +1,101 @@
+# Nightly tarball of /config to R2 (the non-database half of HA's state: .storage/ with the auth,
+# entity/device registries and the ZHA network settings; zigbee.db — the Zigbee network key and
+# device table, losing it means re-pairing everything; YAML; packages/). The recorder history is
+# covered separately by CNPG (cluster.yaml). Same bucket + credential as the CNPG backups, own
+# prefix; 14 dated archives kept.
+#
+# Runs as root: HA (root) writes .storage/* mode 0600. Reads the PVC read-only; RWO is node-scoped,
+# so a second pod on this single node may mount it. .storage writes are atomic renames, so a live
+# tar is consistent per file.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ha-config-backup
+spec:
+  schedule: "15 4 * * *"          # 04:15 daily (ha-pg backup 04:00, pocket-id/onecli 03:00-03:30)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 900
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: home-assistant-backup   # networkpolicy.yaml (jobs CNP)
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: rclone/rclone:1.75.1
+              command:
+                - /bin/sh
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  TS="$(date -u +%Y%m%dT%H%M%SZ)"
+                  DEST="r2:bretagne-pg-backups/home-assistant-config"
+                  echo "==> Archiving /config..."
+                  tar -C /config \
+                    --exclude=./deps \
+                    --exclude='./home-assistant.log*' \
+                    --exclude='./home-assistant_v2.db*' \
+                    --exclude=./.cache \
+                    -czf "/tmp/ha-config-$TS.tgz" .
+                  ls -l "/tmp/ha-config-$TS.tgz"
+                  echo "==> Uploading..."
+                  rclone copyto "/tmp/ha-config-$TS.tgz" "$DEST/ha-config-$TS.tgz"
+                  echo "==> Pruning archives older than 14 days..."
+                  rclone delete --min-age 14d "$DEST"
+                  echo "==> Remote listing (latest 5):"
+                  rclone lsl "$DEST" | sort -k2,3 | tail -5
+                  echo "==> Config backup DONE"
+              env:
+                - name: RCLONE_CONFIG_R2_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_R2_PROVIDER
+                  value: Cloudflare
+                - name: RCLONE_CONFIG_R2_ENDPOINT
+                  value: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+                - name: RCLONE_CONFIG_R2_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: cnpg-s3-creds
+                      key: ACCESS_KEY_ID
+                - name: RCLONE_CONFIG_R2_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: cnpg-s3-creds
+                      key: SECRET_ACCESS_KEY
+              securityContext:
+                runAsUser: 0
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: home-assistant-config
+                readOnly: true
+            - name: tmp
+              emptyDir:
+                sizeLimit: 2Gi

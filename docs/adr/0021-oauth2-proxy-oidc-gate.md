@@ -68,3 +68,28 @@ that mattered:
 - ADR 0010 is **superseded** (its rich `AssertClaims`/JSONPath authorization is lost; oauth2-proxy's
   group/email authorization is sufficient for our needs — revisit only if finer claim-based rules are
   required).
+
+## Amendment 2026-09-05 — Home Assistant: the app is the relying party, not gated
+
+`apps/home-assistant` is **not** fronted by oauth2-proxy. The Home Assistant Companion app (iOS/
+Android) authenticates once in a web view, then talks to the REST + WebSocket API with its own HA
+tokens outside that browser session — a cookie gate answers those calls with a 302 to Pocket-ID and
+the app breaks (push, widgets, location). The only way through a gate is `skip_auth_routes` on
+`/api`, `/auth`, `/mobile_app`, which protects nothing useful.
+
+Instead HA is its **own OIDC relying party**: the community integration
+[hass-oidc-auth](https://github.com/christiaangoossens/hass-oidc-auth) (stable 1.x since 2026-04,
+documented Pocket-ID support, PKCE) against Pocket-ID, **public client + PKCE** so there is no
+client secret at all. Authorization stays where ADR 0022 puts it: the Pocket-ID client is
+group-restricted (`admin`), and HA's `auth_oidc.roles` mirrors the same group. Same category of
+exception as `obsidian-mcp` (an app with real auth of its own), different mechanism.
+
+Two things this does **not** give, stated so nobody assumes them:
+
+- **No revocation from the IdP.** HA sessions are long-lived refresh tokens; removing a user from
+  the Pocket-ID group blocks the *next* login, not the current session — delete the user's tokens
+  (or the user) in HA too. Roles are re-read at login only.
+- **The native username/password provider stays enabled**, hidden by `default_redirect`, as the
+  break-glass path (reachable with `?skip_oidc_redirect=true`). The reconciler is bijective: a
+  `spec.json` mistake prunes the client and would otherwise lock HA. No password is stored in the
+  repo or in SOPS — it is reset on demand from inside the pod (`apps/home-assistant/README.md`).

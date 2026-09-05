@@ -10,4 +10,5 @@ resources:
   - agora
   - agora-onecli
   - agora-runs
+  - home-assistant
   - terminal

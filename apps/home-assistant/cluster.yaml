@@ -1,0 +1,64 @@
+# HA recorder store, CNPG-managed (ADR 0012): state history + long-term statistics. Postgres
+# instead of the default SQLite so the history gets the same object-store backups, WAL archiving,
+# scheduled backup and restore drill as every other stateful app here — and so /config stays a
+# small, tar-able tree (config-backup.yaml).
+#
+# Fresh cluster (initdb), unlike the migrated ones (pocket-id, onecli) that bootstrap from recovery.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: ha-pg
+  annotations:
+    cnpg.io/skipEmptyWalArchiveCheck: enabled
+spec:
+  instances: 1
+
+  # Automations depend on it (recorder down = HA still runs, but history/statistics stall and the
+  # startup is noisy). Bounded like every other single-node cluster here.
+  priorityClassName: bretagne-critical
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  monitoring:
+    enablePodMonitor: true
+
+  storage:
+    size: 2Gi
+    storageClass: local-path
+
+  bootstrap:
+    initdb:
+      database: homeassistant
+      owner: homeassistant
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/home-assistant
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId:
+          name: cnpg-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: cnpg-s3-creds
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: snappy
+    retentionPolicy: "3d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: ha-pg-daily
+spec:
+  # Six fields, seconds first (robfig/cron) — a 5-field expression silently runs hourly.
+  # 04:00:00 daily, staggered off pocket-id (03:00) and onecli (03:30).
+  schedule: "0 0 4 * * *"
+  immediate: true
+  cluster:
+    name: ha-pg
+  backupOwnerReference: self

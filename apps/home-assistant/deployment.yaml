@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: home-assistant
+spec:
+  replicas: 1
+  # Single instance only: one /config, one recorder writer, and the coordinator's serial-over-TCP
+  # socket accepts ONE client — a RollingUpdate would deadlock on all three.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: home-assistant
+  template:
+    metadata:
+      labels:
+        app: home-assistant
+    spec:
+      automountServiceAccountToken: false
+      # Lights/automations must survive node memory pressure: same tier as the IdP.
+      priorityClassName: bretagne-critical
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Same image as the app (python + pip + the exact interpreter the deps must match).
+        # Runs as root like the app — the /config PVC is root-owned, so no chown dance needed.
+        - name: provision
+          image: ghcr.io/home-assistant/home-assistant:2026.9.1
+          command: ["python3", "/etc/home-assistant/provision.py"]
+          env:
+            # hass-oidc-auth: bump BOTH together (tag + sha256 of
+            # https://github.com/christiaangoossens/hass-oidc-auth/archive/refs/tags/v<ver>.tar.gz).
+            # provision.py refuses a mismatch, so a version-only bump fails closed.
+            - name: OIDC_VERSION
+              value: "1.2.1"
+            - name: OIDC_SHA256
+              value: "14ee70f00395f145d9280238a88f54af96f086746233578153c6e2d593a1ea64"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: seed
+              mountPath: /etc/home-assistant
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+        # Native sidecar (restartPolicy: Always): completes first-run onboarding via localhost the
+        # moment HA answers, then idles at ~1MB. See onboard.py in configmap.yaml for why.
+        - name: onboard
+          image: ghcr.io/home-assistant/home-assistant:2026.9.1
+          restartPolicy: Always
+          command: ["python3", "/etc/home-assistant/onboard.py"]
+          env:
+            - name: OWNER_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: home-assistant-oidc
+                  key: owner_username
+            - name: OWNER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: home-assistant-oidc
+                  key: owner_name
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: seed
+              mountPath: /etc/home-assistant
+              readOnly: true
+      containers:
+        - name: home-assistant
+          image: ghcr.io/home-assistant/home-assistant:2026.9.1
+          ports:
+            - containerPort: 8123
+          env:
+            # Pre-installed custom-component requirements (provision.py), ahead of site-packages.
+            - name: PYTHONPATH
+              value: /config/deps
+            - name: HA_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ha-pg-app
+                  key: uri
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: home-assistant-oidc
+                  key: client_id
+          securityContext:
+            # Root: the official image is s6-overlay-as-root only (namespace.yaml). Everything
+            # else is locked: no new privileges, no capabilities, read-only rootfs (writes go to
+            # /config, /run, /tmp).
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+          # /manifest.json is a static, unauthenticated file served once the HTTP server is up.
+          startupProbe:
+            httpGet:
+              path: /manifest.json
+              port: 8123
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /manifest.json
+              port: 8123
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /manifest.json
+              port: 8123
+            periodSeconds: 30
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: run
+              mountPath: /run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: home-assistant-config
+        - name: seed
+          configMap:
+            name: home-assistant-config
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi

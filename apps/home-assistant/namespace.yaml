@@ -1,0 +1,14 @@
+# Home Assistant (phase 1: HA + ZHA over the SLZB-06p10 network coordinator, recorder on CNPG,
+# login via Pocket-ID through hass-oidc-auth). See README.md in this directory.
+#
+# PSS 'baseline', not 'restricted': the official image is root-only (s6-overlay /init, no PUID/PGID
+# support), the same sanctioned escape hatch as agora-onecli. Every other hardening still applies
+# (drop ALL caps, no privilege escalation, read-only rootfs, seccomp RuntimeDefault, no SA token).
+# TODO: restricted — the day upstream ships a non-root image.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: home-assistant
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: baseline
