@@ -272,6 +272,11 @@ data:
         try:
             steps = call("/api/onboarding")
             break
+        except urllib.error.HTTPError as e:
+            if e.code == 404:                 # HA only registers the onboarding API while
+                log("already onboarded (onboarding API not registered); nothing to do")
+                idle()                        # onboarding is unfinished: 404 == done
+            time.sleep(2)
         except Exception:
             time.sleep(2)
     if steps is None:
