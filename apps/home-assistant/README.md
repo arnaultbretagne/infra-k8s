@@ -23,8 +23,8 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
 
 ## Why these choices (short)
 
-- **ZHA, not Zigbee2MQTT + Mosquitto.** The SLZB-06p10 is a Silicon Labs EFR32MG21 (EZSP), the radio
-  family ZHA is built around. One workload instead of three to harden/police/back up, one UI, one
+- **ZHA, not Zigbee2MQTT + Mosquitto.** The SLZB-06p10 is a Texas Instruments CC2674P10 (Z-Stack,
+  radio type **ZNP** in ZHA — not EZSP, an earlier note here was wrong). One workload instead of three to harden/police/back up, one UI, one
   backup surface. Switch to Z2M only for a device ZHA lacks, or if an MQTT bus is wanted anyway.
 - **No oauth2-proxy.** The Companion app cannot cross a cookie gate; HA is its own relying party
   (ADR 0021, amendment 2026-09-05). Authorization is still Pocket-ID group `admin` (spec.json) and
@@ -58,8 +58,8 @@ found its requirements already in the image; `onboard` created the owner and rev
 4. Log in at `https://ha.bretagne.dev` → straight to Pocket-ID (passkey) → lands on the owner
    account (`automatic_user_linking`, same username). Finish the location/timezone/unit settings in
    the UI. Verify a **non-`admin`** Pocket-ID user is refused.
-5. **ZHA:** Settings → Devices → Add integration → Zigbee → *Enter manually* → radio type **EZSP**,
-   path `socket://10.10.40.10:6638`, baud `115200`. The coordinator accepts one client: never point
+5. **ZHA:** Settings → Devices → Add integration → Zigbee → *Enter manually* → radio type **ZNP**
+   (Texas Instruments Z-Stack), path `socket://10.10.40.10:6638`, baud `115200`, no flow control. The coordinator accepts one client: never point
    a second ZHA/Z2M at it.
 6. **Companion app:** device-code login. Add server `https://ha.bretagne.dev`, choose Pocket-ID, the
    app shows a code; open `https://ha.bretagne.dev/auth/oidc/welcome` in any browser, sign in, enter
