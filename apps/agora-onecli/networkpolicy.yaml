@@ -25,6 +25,24 @@ spec:
       ports:
         - { protocol: TCP, port: 10254 }
         - { protocol: TCP, port: 10255 }
+    # The rewritten engine's Broker (namespace `agora-system`, app `broker`) — same role, same two
+    # ports: the control API to compile grants, the gateway for the relay's own upstream leg. Both
+    # brokers are allowed while the two implementations coexist; the `agora` entry above goes when
+    # the retired stack does.
+    #
+    # Found live: without this the packet is DROPPED, not refused, so the Broker's OneCLI call hung
+    # instead of failing — and a hung owner read froze the control plane's tick with the work row
+    # still claimed. A deny that hangs is much worse to diagnose than one that answers.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agora-system
+          podSelector:
+            matchLabels:
+              app: broker
+      ports:
+        - { protocol: TCP, port: 10254 }
+        - { protocol: TCP, port: 10255 }
     # The oauth2-proxy gate — same-namespace, dashboard/API port only (never the gateway port,
     # human operators never need it).
     - from:
