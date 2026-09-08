@@ -13,6 +13,11 @@ spec:
       activeDeadlineSeconds: 600
       backoffLimit: 0
       template:
+        metadata:
+          labels:
+            # Named so the network policy can find it: the namespace is default-deny, and a drill
+            # that cannot reach R2 fails on the wrong thing.
+            agora.dev/job: restore-drill
         spec:
           restartPolicy: Never
           securityContext:
