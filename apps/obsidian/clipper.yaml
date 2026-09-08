@@ -24,7 +24,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: clipper
-          image: ghcr.io/arnaultbretagne/obsidian-clipper:0.2.0
+          image: ghcr.io/arnaultbretagne/obsidian-clipper:0.4.0
           ports:
             - containerPort: 3000
           securityContext:
