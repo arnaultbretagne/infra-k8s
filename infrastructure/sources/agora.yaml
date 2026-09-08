@@ -1,0 +1,18 @@
+# The product's own repository. Public, so no credentials: Flux reads it over https like the other
+# upstream sources here.
+#
+# It is a source rather than a copy on purpose. `deploy/overlays/live` pins the running image
+# digests and pulls in `contracts/catalogue` (the reviewed harness definitions, model catalogues and
+# capability mappings) and `contracts/k8s` (the RBAC and NetworkPolicies the product's own design
+# requires). Copying any of that into this repository would fork a reviewed contract; referencing it
+# means "what is deployed" and "what was reviewed" cannot drift apart silently.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: agora
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/arnaultbretagne/agora
+  ref:
+    branch: main

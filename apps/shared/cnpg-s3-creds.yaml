@@ -45,7 +45,7 @@ spec:
       kind: Secret
       metadata:
         name: cnpg-s3-creds
-        namespace: agora
+        namespace: home-assistant
         annotations:
           fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
       type: Opaque
@@ -53,7 +53,7 @@ spec:
       kind: Secret
       metadata:
         name: cnpg-s3-creds
-        namespace: home-assistant
+        namespace: agora-system
         annotations:
           fluxcd.controlplane.io/copyFrom: "flux-system/cnpg-s3-creds"
       type: Opaque

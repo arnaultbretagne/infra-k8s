@@ -1,0 +1,22 @@
+# The rewritten engine's workloads, from the product's own repository.
+#
+# `dependsOn: apps` is load-bearing rather than tidy: apps/agora-system creates the namespace, every
+# credential and the east-west policy. Without it the Deployments land in a namespace that does not
+# exist, or start with no database URL and crash-loop while looking like a broken image.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agora
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  dependsOn:
+    - name: apps
+  path: ./deploy/overlays/live
+  prune: true
+  wait: true
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: agora

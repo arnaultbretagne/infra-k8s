@@ -9,3 +9,4 @@ resources:
   - infrastructure-gateway.yaml
   - observability.yaml
   - apps.yaml
+  - agora.yaml

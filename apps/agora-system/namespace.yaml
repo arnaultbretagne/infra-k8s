@@ -1,0 +1,20 @@
+# The rewritten engine's own namespace — the control plane, its two owners, the operator surface
+# and the product database. Its siblings are `agora-runs` (the harness Pods, untrusted compute) and
+# `agora-onecli` (the credential gateway, a third-party product we host).
+#
+# `baseline`, not `restricted`, for one reason and with one TODO: `restricted` rejects ANY root
+# container, init ones included, and CNPG's local-path/fsGroup chown initContainer is root — the
+# same wall apps/agora-onecli hit and documented (docs/hosting-an-app.md §12). Every workload Pod
+# here already satisfies `restricted` on its own (runAsNonRoot, no privilege escalation, ALL caps
+# dropped, read-only root filesystem); only the database's bootstrap does not.
+# TODO: restricted, once the CNPG chown path no longer needs root on local-path.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-system
+  labels:
+    agora.dev/app: control
+    platform.bretagne.dev/profile: trusted-control
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

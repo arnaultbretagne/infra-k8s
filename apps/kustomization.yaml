@@ -6,8 +6,10 @@ resources:
   - stremio
   - code-server
   - obsidian
-  # `agent` (the channels-era hub) was decommissioned 2026-08-07 — replaced by `agora`.
-  - agora
+  # `agent` (the channels-era hub) was decommissioned 2026-08-07 — replaced by `agora`, and `agora`
+  # itself was decommissioned 2026-09-08 — replaced by the rewritten engine in `agora-system`, whose
+  # workloads come from the product's own repository (clusters/bretagne/agora.yaml).
+  - agora-system
   - agora-onecli
   - agora-runs
   - home-assistant

@@ -1,0 +1,346 @@
+# East-west policy for the control-plane namespace (docs/hosting-an-app.md §7, ADR 0006/0020).
+#
+# This namespace had NO policy at all until this file: every Pod in the cluster could reach the
+# control plane's API, and that API grants full product authority to whoever sets `x-forwarded-email`
+# — the OIDC gate in front of it was the only thing standing between a header and the product, and a
+# gate with no wall beside it is a suggestion. The harness namespace (`agora-runs`) has been
+# default-deny since S6; this is the other half.
+#
+# CiliumNetworkPolicy rather than the plain API, consistently, because two rules here cannot be
+# written without it: `toEntities: [kube-apiserver]` (runtime-control and the Broker both read the
+# Kubernetes API) and `fromEntities: [host]` for kubelet probes. Mixing frameworks in one namespace
+# is how a rule ends up silently not applying.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: agora-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+# The operator surface. Reachable only through the gate; talks only to the product API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: web
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: web
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: control-plane-api
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: web
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # → id.bretagne.dev (OIDC discovery and token). The public name resolves to this node, then
+    # kube-proxy DNATs to Traefik — both paths have to be allowed for one logical hop.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+---
+# The product API. `web` is its only client inside the cluster; everything it calls, it calls as an
+# owner request or an ACP connection.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: control-plane-api
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: control-plane-api
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            app: web
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: runtime-control
+      toPorts:
+        - ports: [{ port: "8090", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: broker
+      toPorts:
+        - ports: [{ port: "8091", protocol: TCP }]
+    # The harness Pod's bridge: a prompt is an ACP connection the API opens itself. The other half
+    # of this path is the product's own contracts/k8s/40-…-networkpolicy.yaml, in agora-runs.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: runtime-controlled
+      toPorts:
+        - ports: [{ port: "8765", protocol: TCP }]
+---
+# The reconciliation worker. Same egress as the API — it runs the verbs — but nothing may reach it
+# except the kubelet and Prometheus: it serves no product traffic at all.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: control-plane-worker
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: control-plane-worker
+  ingress:
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8081", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "8081", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: runtime-control
+      toPorts:
+        - ports: [{ port: "8090", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: broker
+      toPorts:
+        - ports: [{ port: "8091", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: runtime-controlled
+      toPorts:
+        - ports: [{ port: "8765", protocol: TCP }]
+---
+# The Kubernetes owner. It is the only component with a cluster identity, and the harness Pods poll
+# it directly for their launch gate and custody work.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: runtime-control
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: runtime-control
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8090", protocol: TCP }]
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [control-plane-api, control-plane-worker]
+      toPorts:
+        - ports: [{ port: "8090", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: runtime-controlled
+      toPorts:
+        - ports: [{ port: "8090", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toEntities: [kube-apiserver]
+---
+# The credential owner and the egress relay. It holds the OneCLI control key; the harness Pods reach
+# only its relay port, never its control API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: broker
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: broker
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8091", protocol: TCP }]
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [control-plane-api, control-plane-worker]
+      toPorts:
+        - ports: [{ port: "8091", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-runs
+            agora.dev/app: runtime-controlled
+      toPorts:
+        - ports: [{ port: "8444", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    # OneCLI: the control API and the TLS-intercepting gateway, both in agora-onecli. The other half
+    # of this path is that namespace's own ingress policy, which names this Broker explicitly.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-onecli
+            app: onecli
+      toPorts:
+        - ports: [{ port: "10254", protocol: TCP }, { port: "10255", protocol: TCP }]
+    # Pod lookup: the relay resolves a connecting Pod's identity from its source IP.
+    - toEntities: [kube-apiserver]
+---
+# The database. The default-deny above applies to it too, so without this the cluster would be
+# unreachable by its own clients — and by the CNPG operator that manages it.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agora-pg
+  namespace: agora-system
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: agora-pg
+  ingress:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: app
+              operator: In
+              values: [control-plane-api, control-plane-worker, runtime-control, broker]
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: cloudnative-pg
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }, { port: "5432", protocol: TCP }]
+    # Instances of this same cluster (replicas, and the operator's own probes through them).
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }, { port: "8000", protocol: TCP }]
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # Barman → R2: WAL archiving and base backups leave the cluster over TLS.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: agora-pg
+    - toEntities: [kube-apiserver]
