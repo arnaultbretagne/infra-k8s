@@ -10,3 +10,4 @@ resources:
   - cert-manager.yaml
   - grafana.yaml
   - prometheus-community.yaml
+  - agora.yaml

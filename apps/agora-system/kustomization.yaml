@@ -1,0 +1,27 @@
+# The environment half of the rewritten engine: the namespace and its bounds, every credential it
+# needs, the public door, and the east-west policy. The workloads themselves — control plane, the
+# two owners, the operator surface, the database, and the reviewed catalogue they read — come from
+# the product's own repository, deployed by the `agora` Flux Kustomization
+# (clusters/bretagne/agora.yaml). One source per thing, and the catalogue is not copied here: it is
+# a reviewed product contract, and a second copy is a second answer.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agora-system
+resources:
+  - namespace.yaml
+  - limits.yaml
+  - agora-owner-pg.secrets.yaml
+  - agora-cp-login-pg.secrets.yaml
+  - agora-rc-login-pg.secrets.yaml
+  - agora-payload-login-pg.secrets.yaml
+  - agora-database.secrets.yaml
+  - agora-bridge-auth.secrets.yaml
+  - agora-broker.secrets.yaml
+  - agora-onecli.secrets.yaml
+  - agora-operator.secrets.yaml
+  - ghcr-pull.secrets.yaml
+  - oauth2-proxy.secrets.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml
+  - restore-test.yaml

@@ -1,12 +1,14 @@
-# The OIDC gate (ADR 0021) — the new system's own public door, replacing apps/agent/oauth2-proxy.yaml
-# at cutover. Same single-operator-hub posture. Unlike the OLD one (relies solely on the Pocket-ID
-# client's own group restriction), this sets ALLOWED_GROUPS explicitly too — belt-and-suspenders,
-# matching the stronger convention docs/hosting-an-app.md recommends and code-server/onecli already use.
+# The OIDC gate — the product's public door. Everything behind it; no unauthenticated path in.
+#
+# It is what makes the control plane's `x-forwarded-email` header trustworthy: the API grants full
+# product authority to whoever that header names, so the ONLY thing that may set it is this proxy,
+# and the only way to reach `web` is through it (networkpolicy.yaml is the other half of that
+# sentence — without it this door has a wall beside it).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: oauth2-proxy
-  namespace: agora
+  namespace: agora-system
 spec:
   replicas: 1
   selector:
@@ -39,7 +41,7 @@ spec:
             - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: https://id.bretagne.dev }
             - { name: OAUTH2_PROXY_REDIRECT_URL, value: https://agora.bretagne.dev/oidc/callback }
             - { name: OAUTH2_PROXY_PROXY_PREFIX, value: /oidc }
-            - { name: OAUTH2_PROXY_UPSTREAMS, value: http://agora-web.agora.svc.cluster.local:8080 }
+            - { name: OAUTH2_PROXY_UPSTREAMS, value: http://web.agora-system.svc.cluster.local:8080 }
             - { name: OAUTH2_PROXY_SCOPE, value: openid email profile groups }
             - { name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM, value: groups }
             - { name: OAUTH2_PROXY_ALLOWED_GROUPS, value: admin }
@@ -70,9 +72,10 @@ apiVersion: v1
 kind: Service
 metadata:
   name: oauth2-proxy
-  namespace: agora
+  namespace: agora-system
 spec:
   selector:
     app: oauth2-proxy
   ports:
-    - { port: 4180, targetPort: 4180 }
+    - port: 4180
+      targetPort: 4180
