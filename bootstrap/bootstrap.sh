@@ -505,28 +505,51 @@ log "Phase 4b — netguard connectivity watchdog"
 
 # Bound to k0scontroller's lifecycle (BindsTo + WantedBy): starts/stops WITH
 # k0s, so it can never be forgotten. If Cilium's datapath takes the host
-# network down for >3 min, netguard masks+stops k0s and restores the host
+# network down for >10 min, netguard disables+stops k0s and restores the host
 # firewall (reboot only if that's not enough) — so SSH always comes back.
+# Physical link loss (carrier down) does not count: no eBPF program can drop
+# a carrier, and a switch or router rebooting must not tear the cluster down.
 cat > /usr/local/bin/netguard <<'NGEOF'
 #!/usr/bin/env bash
-# netguard — connectivity watchdog for the single-NIC k0s/Cilium VPS.
+# netguard — connectivity watchdog for the single-NIC k0s/Cilium host.
 #
 # Runs ONLY while k0scontroller is active (systemd BindsTo + WantedBy), so it
 # can never be "forgotten": you cannot bring Cilium up without the guard up.
 #
 # It probes external reachability. If the host loses ALL external connectivity
-# for >GRACE seconds, it reverts the only thing that takes over the host
-# datapath (k0s/Cilium) so SSH always comes back:
-#     mask + stop k0scontroller  ->  restore host nftables  ->  reboot if still dead.
-# mask survives a reboot, so the broken stack never auto-restarts into a loop.
+# for >GRACE seconds WHILE THE LINK IS UP, it reverts the only thing that takes
+# over the host datapath (k0s/Cilium) so SSH always comes back:
+#     disable + stop k0scontroller  ->  restore host nftables  ->  reboot if still dead.
+# disable survives a reboot, so the broken stack never auto-restarts into a loop.
+#
+# Carrier down (cable, switch or router rebooting) is a physical fault that no
+# eBPF program can cause: it pauses the clock instead of counting toward GRACE.
 set -u
 
-GRACE=${NETGUARD_GRACE:-180}        # sustained total loss before acting (3 min)
+GRACE=${NETGUARD_GRACE:-600}        # sustained total loss, link up, before acting (10 min)
 INTERVAL=${NETGUARD_INTERVAL:-15}   # probe cadence (s)
 TAG=netguard
 
 iface() { ip route show default 2>/dev/null | awk '/default/{print $5; exit}'; }
 gw()    { ip route show default 2>/dev/null | awk '/default/{print $3; exit}'; }
+
+# The default-route NIC, remembered: dhcpcd deletes the default route the
+# moment the carrier is lost, so during the very outage we care about iface()
+# is empty. The revert unit inherits it through NETGUARD_IFACE.
+LAST_IF=${NETGUARD_IFACE:-}
+remember_iface() {
+  local IF; IF=$(iface)
+  [ -n "$IF" ] && [ -e "/sys/class/net/$IF" ] && LAST_IF=$IF
+  return 0
+}
+
+# True when the physical link is down on that NIC (a VLAN sub-interface mirrors
+# its parent's carrier). Unknown — no NIC remembered yet, interface admin-down —
+# reads as up, so the watchdog stays conservative.
+carrier_down() {
+  remember_iface
+  [ -n "$LAST_IF" ] && [ "$(cat "/sys/class/net/$LAST_IF/carrier" 2>/dev/null)" = "0" ]
+}
 
 # Reachable if ANY of: default gateway, two public IPs, or a public TCP:443.
 # In a Cilium datapath takeover ALL of these die together; in normal operation
@@ -540,8 +563,11 @@ probe_ok() {
   return 1
 }
 
+REARM='systemctl unmask k0scontroller && systemctl enable --now k0scontroller'
+
 revert() {
-  local IF; IF=$(iface)
+  remember_iface
+  local IF=$LAST_IF
   logger -t "$TAG" "REVERT: sustained network loss — disable+stop k0scontroller, restore host firewall"
   systemctl disable k0scontroller >/dev/null 2>&1 || true    # EFFECTIVE anti-loop: mask can't mask a /etc unit; disable kills boot auto-start
   systemctl mask k0scontroller >/dev/null 2>&1 || true       # best-effort extra (blocks manual start where mask applies)
@@ -553,33 +579,51 @@ revert() {
   nft -f /etc/nftables.conf >/dev/null 2>&1 || true
   sleep 25
   if probe_ok; then
-    logger -t "$TAG" "RECOVERED without reboot. k0s is MASKED — fix the config, then: systemctl unmask k0scontroller"
+    logger -t "$TAG" "RECOVERED without reboot. k0s is DISABLED — fix the config, then: $REARM"
     exit 0
   fi
-  logger -t "$TAG" "still unreachable after stop — rebooting (k0s masked => clean boot)"
+  if carrier_down; then
+    logger -t "$TAG" "still unreachable but the link is DOWN on $IF — a reboot cannot fix a cable, not rebooting. k0s is DISABLED — once the link is back: $REARM"
+    exit 0
+  fi
+  logger -t "$TAG" "still unreachable after stop — rebooting (k0s disabled => clean boot). To re-arm afterwards: $REARM"
   systemctl reboot
 }
 
 case "${1:-watch}" in
   selftest)
-    echo "iface=$(iface) gw=$(gw) grace=${GRACE}s interval=${INTERVAL}s"
+    remember_iface
+    echo "iface=${LAST_IF:-?} gw=$(gw) grace=${GRACE}s interval=${INTERVAL}s"
+    if carrier_down; then echo "link: DOWN"; else echo "link: up"; fi
     if probe_ok; then echo "probe: REACHABLE"; else echo "probe: DOWN"; fi
     ;;
   revert)
     revert
     ;;
   watch)
-    logger -t "$TAG" "watchdog up (grace=${GRACE}s interval=${INTERVAL}s iface=$(iface) gw=$(gw))"
+    remember_iface
+    logger -t "$TAG" "watchdog up (grace=${GRACE}s interval=${INTERVAL}s iface=${LAST_IF:-?} gw=$(gw))"
     last_ok=$(date +%s)
+    link_down=0
     while true; do
       if probe_ok; then
         last_ok=$(date +%s)
+        [ "$link_down" = 1 ] && logger -t "$TAG" "link back on $LAST_IF, reachable again"
+        link_down=0
+      elif carrier_down; then
+        # Physical link gone: nothing k0s/Cilium can cause, and a switch or
+        # router rebooting must not tear the cluster down. Pause the clock;
+        # it restarts once the link is back.
+        last_ok=$(date +%s)
+        [ "$link_down" = 0 ] && logger -t "$TAG" "link DOWN on $LAST_IF — not counting toward grace"
+        link_down=1
       else
         now=$(date +%s)
         if [ $(( now - last_ok )) -ge "$GRACE" ]; then
           # launch revert DETACHED, so BindsTo stopping us (when k0s stops) can't abort it
-          systemd-run --unit=netguard-revert --collect /usr/local/bin/netguard revert >/dev/null 2>&1 \
-            || /usr/local/bin/netguard revert
+          systemd-run --unit=netguard-revert --collect --setenv=NETGUARD_IFACE="$LAST_IF" \
+              /usr/local/bin/netguard revert >/dev/null 2>&1 \
+            || NETGUARD_IFACE="$LAST_IF" /usr/local/bin/netguard revert
           exit 0
         fi
       fi
@@ -613,7 +657,7 @@ NGSVC
 systemctl daemon-reload
 systemctl enable --now netguard.service 2>/dev/null
 systemctl is-active --quiet netguard.service || fail "netguard failed to start"
-ok "netguard active — auto-arms whenever k0s runs (3-min grace)"
+ok "netguard active — auto-arms whenever k0s runs (10-min grace, link-down excluded)"
 
 # ─── Phase 5: CNI bootstrap (chicken-and-egg) ────────────────────────
 log "Phase 5 — Cilium CNI (pre-Flux)"
