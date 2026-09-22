@@ -99,3 +99,19 @@ spec:
     staticConfig:
       static:
         - https://vault.bretagne.dev
+---
+# Agent Sandbox's independent infrastructure controller.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: agent-sandbox
+  namespace: observability
+spec:
+  namespaceSelector:
+    matchNames: [agent-sandbox-system]
+  selector:
+    matchLabels:
+      app: agent-sandbox-controller
+  endpoints:
+    - port: metrics
+      interval: 60s

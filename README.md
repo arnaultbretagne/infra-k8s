@@ -144,3 +144,10 @@ flux get kustomizations               # All layers Ready
 k0s kubectl get svc -n traefik        # EXTERNAL-IP assigned (by Cilium LB)
 curl -v https://id.bretagne.dev       # Pocket-ID responds with valid TLS
 ```
+
+## Agent infrastructure
+
+[Agent Sandbox](infrastructure/agent-sandbox/README.md) owns runtime provisioning;
+[Agent Vault](infrastructure/agent-vault/README.md) owns credentials and the proxy.
+Both have independent Flux installations. Agent Vault starts with private operator
+access; its runbook covers owner bootstrap and backups before connecting consumers.
