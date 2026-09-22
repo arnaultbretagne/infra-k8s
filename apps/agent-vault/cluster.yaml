@@ -5,6 +5,7 @@ metadata:
   namespace: agent-vault
 spec:
   instances: 1
+  priorityClassName: bretagne-critical
   resources:
     requests:
       cpu: 100m
