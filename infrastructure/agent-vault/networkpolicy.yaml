@@ -18,6 +18,7 @@ spec:
     matchLabels:
       app: agent-vault
   ingress:
+  # kubelet probes
   - fromEntities:
     - host
     toPorts:
@@ -25,6 +26,15 @@ spec:
       - port: '14321'
         protocol: TCP
       - port: '14322'
+        protocol: TCP
+  # The oauth2-proxy gate — same-namespace, management UI/API port only (never the MITM proxy
+  # port: human operators never need it, and it must stay in-cluster).
+  - fromEndpoints:
+    - matchLabels:
+        app: oauth2-proxy
+    toPorts:
+    - ports:
+      - port: '14321'
         protocol: TCP
   egress:
   - toEndpoints:
@@ -49,6 +59,68 @@ spec:
     toPorts:
     - ports:
       - port: '5432'
+        protocol: TCP
+---
+# The oauth2-proxy gate itself — mirrors apps/agora-onecli's own (docs/hosting-an-app.md §7/§10.3).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+  namespace: agent-vault
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+  # Traefik serves agent-vault.bretagne.dev -> proxy :4180
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: traefik
+    toPorts:
+    - ports:
+      - port: '4180'
+        protocol: TCP
+  # kubelet probes
+  - fromEntities:
+    - host
+    toPorts:
+    - ports:
+      - port: '4180'
+        protocol: TCP
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s:k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: '53'
+        protocol: UDP
+      - port: '53'
+        protocol: TCP
+  # -> upstream Agent Vault management UI/API
+  - toEndpoints:
+    - matchLabels:
+        app: agent-vault
+    toPorts:
+    - ports:
+      - port: '14321'
+        protocol: TCP
+  # -> id.bretagne.dev (OIDC discovery/token). The public IP resolves to the node, then
+  # kube-proxy DNATs to the Traefik pod — allow both paths (agora-onecli's own pattern).
+  - toEntities:
+    - world
+    - host
+    toPorts:
+    - ports:
+      - port: '443'
+        protocol: TCP
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: traefik
+    toPorts:
+    - ports:
+      - port: '8443'
         protocol: TCP
 ---
 apiVersion: cilium.io/v2

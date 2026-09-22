@@ -6,23 +6,31 @@ not the Infisical platform or its Agent Proxy. Independently reconciled by Flux 
 
 ## Access and first start
 
-Only ClusterIP services are created; ingress is restricted to the host/operator.
+The management UI/API is published at **https://agent-vault.bretagne.dev** behind an
+oauth2-proxy gate (Pocket-ID client `agent-vault`, `ALLOWED_GROUPS=admin` — ADR 0021/0022,
+same pattern as OneCLI's dashboard). Upstream's own guidance for operator access is
+"keep private, or front with TLS + auth (SSO reverse proxy)"; this is the latter. The
+MITM proxy port (14322) is **not** published: it is in-cluster only, for agent runtimes.
 No application namespace has access yet. This protects first-owner registration.
 
 ```sh
-kubectl -n agent-vault rollout status deployment/agent-vault
-kubectl -n agent-vault port-forward service/agent-vault-api 14321:14321
+kubectl -n agent-vault rollout status deployment/agent-vault deployment/oauth2-proxy
 ```
 
-Open `http://localhost:14321`, create the owner account, then configure the vaults,
-credentials and agent permissions. The owner password is separate from the
-server's encryption password. Keep registration invite-only before adding consumers.
+Open `https://agent-vault.bretagne.dev`, sign in with Pocket-ID (admin group), create
+the owner account, then configure the vaults, credentials and agent permissions. The
+owner password is separate from the server's encryption password, and both are separate
+from the Pocket-ID login. Keep registration invite-only before adding consumers.
 No credentials from OneCLI are copied and the existing service remains operational.
 
-| Interface | Internal endpoint |
+`AGENT_VAULT_ADDR` is set to the public URL: invite links, discovery responses and the
+MITM certificate SANs derive from it (unset, upstream falls back to the bind address).
+
+| Interface | Endpoint |
 | --- | --- |
-| Management API / UI | `http://agent-vault-api.agent-vault.svc.cluster.local:14321` |
-| Forward proxy | `http://agent-vault-proxy.agent-vault.svc.cluster.local:14322` |
+| Management API / UI (operators) | `https://agent-vault.bretagne.dev` (OIDC gate) |
+| Management API (in-cluster) | `http://agent-vault-api.agent-vault.svc.cluster.local:14321` |
+| Forward proxy (in-cluster only) | `http://agent-vault-proxy.agent-vault.svc.cluster.local:14322` |
 | Proxy CA | API path `/v1/mitm/ca.pem` |
 
 Before connecting Agora/runtimes, add explicit consumer network rules on both
@@ -32,8 +40,8 @@ well as the proxy. Never give runtimes an owner session. Proxy/session lifecycle
 credential selection and provider policies belong to Agent Vault, not Agora.
 Only public HTTPS upstreams are reachable; private ranges are disabled in the
 application and cluster/host egress is not allowed by the proxy's network policy.
-Internal HTTP transport assumes the cluster network is trusted; these services
-must not be exposed outside it without TLS.
+Internal HTTP transport assumes the cluster network is trusted; the in-cluster
+services are plain HTTP and only the OIDC-gated HTTPS route above is public.
 
 ## Persistence and recovery
 

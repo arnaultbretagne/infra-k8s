@@ -8,5 +8,8 @@ resources:
 - master.secrets.yaml
 - deployment.yaml
 - services.yaml
+- oauth2-proxy.secrets.yaml
+- oauth2-proxy.yaml
+- httproute.yaml
 - networkpolicy.yaml
 - restore-test.yaml
