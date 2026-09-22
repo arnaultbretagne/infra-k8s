@@ -1,8 +1,9 @@
 # Agent Vault
 
 Standalone [Infisical Agent Vault](https://github.com/Infisical/agent-vault/tree/v0.39.3),
-not the Infisical platform or its Agent Proxy. Independently reconciled by Flux as
-`agent-vault`. Version 0.39.3, multi-architecture image pinned by digest.
+not the Infisical platform or its Agent Proxy. A config-only app (docs/hosting-an-app.md
+§1), reconciled with the rest of the `apps` layer. Version 0.39.3, multi-architecture
+image pinned by digest.
 
 ## Access and first start
 
@@ -49,7 +50,7 @@ CNPG owns `agent-vault-pg` (PostgreSQL 17, 1 GiB local-path). Credentials, accou
 sessions, the wrapped encryption key and the proxy CA live in PostgreSQL.
 `/data` and `/tmp` are disposable; there is no application PVC.
 
-The independent ResourceSet copies the existing S3 credentials. WAL archiving and
+The shared ResourceSet (`apps/shared/cnpg-s3-creds.yaml`) copies the S3 credentials. WAL archiving and
 a daily 03:45 UTC backup use `s3://bretagne-pg-backups/agent-vault`, with three days'
 retention. The daily 05:15 UTC restore job restores into an isolated temporary
 PostgreSQL and requires the encrypted master key and CA records to exist. It does
@@ -71,9 +72,9 @@ fresh backup server name/prefix for the recovered installation's outgoing archiv
 ## Operations
 
 ```sh
-flux get kustomization agent-vault
+flux get kustomization apps
 kubectl -n agent-vault get clusters,backups,scheduledbackups,pods
-kubectl -n flux-system get resourceset agent-vault-s3-creds
+kubectl -n flux-system get resourceset cnpg-s3-creds
 kubectl -n agent-vault create job --from=cronjob/agent-vault-pg-restore-test agent-vault-restore-check
 kubectl -n agent-vault logs job/agent-vault-restore-check
 kubectl -n agent-vault delete job agent-vault-restore-check

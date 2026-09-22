@@ -12,5 +12,6 @@ resources:
   - agora-system
   - agora-onecli
   - agora-runs
+  - agent-vault
   - home-assistant
   - terminal

@@ -11,4 +11,3 @@ resources:
   - apps.yaml
   - agora.yaml
   - agent-sandbox.yaml
-  - agent-vault.yaml
