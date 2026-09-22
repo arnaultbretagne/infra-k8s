@@ -80,6 +80,7 @@ spec:
         # platform's public façade now.
         - https://agora.bretagne.dev
         - https://terminal.bretagne.dev
+        - https://agent-vault.bretagne.dev
 ---
 # vault.bretagne.dev has no handler for bare GET / (404 "Cannot GET /" is its
 # healthy steady-state, verified live 2026-07-05) -> separate Probe so it doesn't

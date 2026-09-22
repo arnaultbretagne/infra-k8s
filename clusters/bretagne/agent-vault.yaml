@@ -9,6 +9,8 @@ spec:
   dependsOn:
   - name: infrastructure-controllers
   - name: infrastructure-shared-secrets
+  # The HTTPRoute attaches to bretagne-gateway's https-agent-vault listener.
+  - name: infrastructure-gateway
   path: ./infrastructure/agent-vault
   prune: true
   wait: true

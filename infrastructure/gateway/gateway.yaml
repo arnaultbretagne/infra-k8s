@@ -122,6 +122,21 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Agent Vault's management UI/API (infrastructure/agent-vault) — the credential vault for
+    # agent runtimes. Pocket-ID SSO gated (ALLOWED_GROUPS=admin), same pattern as https-onecli —
+    # never left reachable without the OIDC gate. `vault.bretagne.dev` is already the Obsidian MCP.
+    - name: https-agent-vault
+      port: 8443
+      protocol: HTTPS
+      hostname: agent-vault.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
     # Home Assistant (apps/home-assistant). No oauth2-proxy on this listener: HA is its own OIDC
     # relying party (hass-oidc-auth -> Pocket-ID) because the Companion app cannot cross a cookie
     # gate (ADR 0021, amendment 2026-09-05).

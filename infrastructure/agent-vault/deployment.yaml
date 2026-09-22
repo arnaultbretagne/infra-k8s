@@ -49,6 +49,15 @@ spec:
           value: require
         - name: AGENT_VAULT_TELEMETRY
           value: 'false'
+        # The externally-reachable base URL: invite links, discovery responses and MITM cert SANs
+        # are derived from it. Unset, upstream falls back to http://0.0.0.0:14321 (the bind
+        # address), which is what every invite link would have carried.
+        - name: AGENT_VAULT_ADDR
+          value: https://agent-vault.bretagne.dev
+        # Honour X-Forwarded-For from the in-cluster hops (Traefik -> oauth2-proxy) so the auth
+        # rate limiter and request logs see the operator's address, not the gate's pod IP.
+        - name: AGENT_VAULT_TRUSTED_PROXIES
+          value: 10.244.0.0/16
         - name: AGENT_VAULT_ALLOW_PRIVATE_RANGES
           value: 'false'
         - name: DB_MAX_OPEN_CONNS
