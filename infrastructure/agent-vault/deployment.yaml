@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-vault
+  namespace: agent-vault
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agent-vault
+  template:
+    metadata:
+      labels:
+        app: agent-vault
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: agent-vault
+        image: infisical/agent-vault:0.39.3@sha256:22d52239e5896717e499a47782bc2a1c9290d09db3bc2ece4008f37ab8654a92
+        args:
+        - server
+        - --host
+        - 0.0.0.0
+        - --port
+        - '14321'
+        - --mitm-port
+        - '14322'
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: agent-vault-pg-app
+              key: uri
+        - name: AGENT_VAULT_MASTER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agent-vault-master
+              key: AGENT_VAULT_MASTER_PASSWORD
+        - name: PGSSLMODE
+          value: require
+        - name: AGENT_VAULT_TELEMETRY
+          value: 'false'
+        - name: AGENT_VAULT_ALLOW_PRIVATE_RANGES
+          value: 'false'
+        - name: DB_MAX_OPEN_CONNS
+          value: '5'
+        - name: DB_MAX_IDLE_CONNS
+          value: '2'
+        ports:
+        - name: api
+          containerPort: 14321
+        - name: proxy
+          containerPort: 14322
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - wget -qO- http://127.0.0.1:14321/health >/dev/null; nc -w 2 127.0.0.1
+              14322 </dev/null
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 60
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - wget -qO- http://127.0.0.1:14321/health >/dev/null; nc -w 2 127.0.0.1
+              14322 </dev/null
+          timeoutSeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: api
+          periodSeconds: 20
+          failureThreshold: 3
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: data
+        emptyDir:
+          sizeLimit: 64Mi
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
