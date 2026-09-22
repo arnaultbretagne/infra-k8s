@@ -147,7 +147,8 @@ curl -v https://id.bretagne.dev       # Pocket-ID responds with valid TLS
 
 ## Agent infrastructure
 
-[Agent Sandbox](infrastructure/agent-sandbox/README.md) owns runtime provisioning;
-[Agent Vault](infrastructure/agent-vault/README.md) owns credentials and the proxy.
-Both have independent Flux installations. Agent Vault starts with private operator
-access; its runbook covers owner bootstrap and backups before connecting consumers.
+[Agent Sandbox](infrastructure/agent-sandbox/README.md) owns runtime provisioning —
+a controller with CRDs, so it sits in `infrastructure/` with its own Flux installation.
+[Agent Vault](apps/agent-vault/README.md) owns credentials and the proxy; it is a
+config-only app and reconciles with the `apps` layer. Its runbook covers owner
+bootstrap, the SSO-gated UI and backups before connecting consumers.
