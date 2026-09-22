@@ -12,7 +12,11 @@ spec:
   # The HTTPRoute attaches to bretagne-gateway's https-agent-vault listener.
   - name: infrastructure-gateway
   path: ./infrastructure/agent-vault
-  prune: true
+  # TEMPORARY, for the move into the `apps` layer only. This Kustomization is about to be deleted;
+  # with prune left on, removing it would garbage-collect the namespace, the CNPG Cluster and its
+  # PVC. Pruning off first lets the `apps` layer adopt the live objects instead of recreating an
+  # empty database. The follow-up commit deletes this file; nothing reinstates prune here.
+  prune: false
   wait: true
   timeout: 10m
   sourceRef:
