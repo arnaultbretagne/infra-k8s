@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-test
+  labels:
+    platform.bretagne.dev/profile: public-app
+    pod-security.kubernetes.io/enforce: restricted
