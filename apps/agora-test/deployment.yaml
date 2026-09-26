@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: nginx
-          image: ghcr.io/arnaultbretagne/agora-ui-showcase@sha256:f15d3d1338a950b3efe65d5a48cf2f04fb882dfbb3b70299db1bd6ebf4037bf6 # spike/ui-showcase 7db022e
+          image: ghcr.io/arnaultbretagne/agora-ui-showcase@sha256:4ae82b942ee53a5af906a866058fd74961ee5df4ff48a3dac525eca5540a9382 # spike/ui-showcase 34c138e
           ports:
             - name: http
               containerPort: 8080
