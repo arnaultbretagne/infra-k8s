@@ -1,0 +1,57 @@
+# nginx-unprivileged (uid 101, port 8080) serving the static build. Read-only root filesystem:
+# nginx only writes its pid and temp files, which the image points at /tmp.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: showcase
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: showcase
+  template:
+    metadata:
+      labels:
+        app: showcase
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: bretagne-low
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx
+          image: ghcr.io/arnaultbretagne/agora-ui-showcase@sha256:f15d3d1338a950b3efe65d5a48cf2f04fb882dfbb3b70299db1bd6ebf4037bf6 # spike/ui-showcase 7db022e
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 10
+            periodSeconds: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 16Mi }

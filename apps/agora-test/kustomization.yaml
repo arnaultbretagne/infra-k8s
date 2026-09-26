@@ -1,0 +1,15 @@
+# agora-test.bretagne.dev — the UI showcase of the Agora redesign: a static page that renders every
+# assistant-ui component of the contract (assistant-ui.md) over an in-browser fake server.
+# Source: arnaultbretagne/agora, branch spike/ui-showcase, showcase/. No data, no outbound call,
+# no backend: nginx serves a Vite build. Public on purpose — it is a design review surface.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agora-test
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - ghcr-pull.secrets.yaml
+  - deployment.yaml
+  - service.yaml
+  - httproute.yaml
+  - networkpolicy.yaml

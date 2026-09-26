@@ -107,6 +107,20 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # The redesign's UI showcase: a static page with an in-browser fake server, no data behind it.
+    # Public on purpose (a design review surface), unlike https-agora.
+    - name: https-agora-test
+      port: 8443
+      protocol: HTTPS
+      hostname: agora-test.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
     # P11 (agora refactoring): OneCLI's own admin dashboard — the credential-gateway vault
     # (Claude Max / ChatGPT tokens, CA, route policy). Pocket-ID SSO gated (ALLOWED_GROUPS=admin),
     # same pattern as https-code — deliberately never left reachable without the OIDC gate.

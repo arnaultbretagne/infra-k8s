@@ -12,6 +12,8 @@ resources:
   - agora-system
   - agora-onecli
   - agora-runs
+  # The UI showcase of the redesign (agora-test.bretagne.dev), public, static, no backend.
+  - agora-test
   - agent-vault
   - home-assistant
   - terminal
