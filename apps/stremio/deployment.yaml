@@ -89,12 +89,20 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            # AIOStreams loads custom templates from this directory at startup.
+            # The generated ConfigMap hash rolls the pod when a template changes.
+            - name: templates
+              mountPath: /app/data/templates
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: data
           emptyDir:
             sizeLimit: 2Gi
+        - name: templates
+          configMap:
+            name: aiostreams-templates
         - name: tmp
           emptyDir:
             sizeLimit: 128Mi

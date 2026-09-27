@@ -1,0 +1,278 @@
+{
+  "metadata": {
+    "id": "arnault.knaben-stfr-top3-torbox-v226",
+    "name": "Knaben + TorBox — STFR prioritaires — Top 3",
+    "author": "Arnault",
+    "source": "external",
+    "version": "1.2.0",
+    "category": "Debrid",
+    "description": "Knaben seul, TorBox. Jusqu’à 3 vidéos avec sous-titres FR intégrés signalés ; si aucun candidat admissible ne les signale, repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p, VO si connue puis seeds décroissants. Fonctionne sans clé TMDB. AIOStreams 2.26 ne distingue pas les pistes forced des pistes complètes.",
+    "services": [
+      "torbox"
+    ],
+    "serviceRequired": true,
+    "setToSaveInstallMenu": true,
+    "inputs": [
+      {
+        "id": "notice",
+        "type": "alert",
+        "intent": "info",
+        "name": "Sous-titres FR prioritaires avec repli",
+        "description": "Remplace les addons et filtres du profil par Knaben seul, avec votre clé TorBox. STFR signalés prioritaires ; sinon résultats marqués STFR non confirmés. Aucun complément sans FR si un ou deux candidats FR restent. Les packs de saison sont autorisés. AIOStreams 2.26 ne distingue pas les sous-titres forced des pistes complètes."
+      }
+    ]
+  },
+  "config": {
+    "addonName": "Knaben · STFR",
+    "addonDescription": "Trois résultats maximum : STFR intégrés signalés prioritaires, sinon repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p.",
+    "presets": [
+      {
+        "type": "knaben",
+        "instanceId": "knaben-stfr",
+        "enabled": true,
+        "options": {
+          "name": "Knaben",
+          "timeout": 30000,
+          "services": [
+            "torbox"
+          ],
+          "mediaTypes": [],
+          "useMultipleInstances": false
+        }
+      }
+    ],
+    "formatter": {
+      "id": "custom",
+      "definition": {
+        "name": "{service.shortName} {service.cached::istrue[\"⚡\"||\"⏳\"]} · {stream.resolution} · {stream.subtitles::~French[\"STFR signalés\"||\"STFR non confirmés\"]}",
+        "description": "🎧 {stream.languages::join(' / ')}\n💬 ST intégrés signalés : {stream.subtitles::join(' / ')}\n👥 {stream.seeders} seeds · {stream.size::bytes}\n{stream.filename}"
+      }
+    },
+    "sortCriteria": {
+      "global": [
+        {
+          "key": "seeders",
+          "direction": "desc"
+        }
+      ]
+    },
+    "requiredResolutions": [
+      "2160p",
+      "1080p"
+    ],
+    "requiredStreamTypes": [
+      "debrid"
+    ],
+    "excludedQualities": [
+      "CAM",
+      "TS",
+      "TC",
+      "SCR"
+    ],
+    "excludedVisualTags": [
+      "AI"
+    ],
+    "excludedRegexPatterns": [
+      "/(^|[^a-z0-9])(upscal(?:e|ed|ing)?|ai[ ._-]*enhanced|ai[ ._-]*upscal(?:e|ed|ing)?|waifu2x|real[ ._-]*esrgan)([^a-z0-9]|$)/i"
+    ],
+    "excludedStreamExpressions": [
+      {
+        "expression": "/* Anime 1080p */ isAnime ? resolution(streams, '2160p') : []",
+        "enabled": true
+      },
+      {
+        "expression": "/* STFR prioritaires ; repli si aucun candidat admissible ne les signale */ count(subtitle(streams, 'French')) > 0 ? negate(subtitle(streams, 'French'), streams) : []",
+        "enabled": true
+      },
+      {
+        "expression": "/* Cache prioritaire dans le groupe FR ou de repli */ count(cached(streams)) > 0 ? negate(cached(streams), streams) : []",
+        "enabled": true
+      },
+      {
+        "expression": "/* 4K sinon 1080p */ count(resolution(streams, '2160p')) > 0 ? resolution(streams, '1080p') : []",
+        "enabled": true
+      },
+      {
+        "expression": "/* VO quand elle est identifiee dans le groupe retenu */ originalLanguage != '' and count(language(streams, originalLanguage)) > 0 ? negate(language(streams, originalLanguage), streams) : []",
+        "enabled": true
+      },
+      {
+        "expression": "/* Trois resultats maximum apres les filtres */ slice(streams, 3)",
+        "enabled": true
+      }
+    ],
+    "requiredStreamExpressions": [],
+    "includedStreamExpressions": [],
+    "preferredStreamExpressions": [],
+    "rankedStreamExpressions": [],
+    "resultLimits": {},
+    "deduplicator": {
+      "enabled": true,
+      "keys": [
+        "infoHash"
+      ],
+      "multiGroupBehaviour": "conservative",
+      "cached": "single_result",
+      "uncached": "single_result",
+      "p2p": "single_result",
+      "excludeAddons": [],
+      "libraryBehaviour": "ignore"
+    },
+    "excludeCached": false,
+    "excludeUncached": false,
+    "excludeSeasonPacks": false,
+    "excludeCachedMode": "or",
+    "excludeUncachedMode": "or",
+    "size": {},
+    "bitrate": {
+      "useMetadataRuntime": false
+    },
+    "randomiseResults": false,
+    "groups": {
+      "enabled": false,
+      "groupings": []
+    },
+    "dynamicAddonFetching": {
+      "enabled": false
+    },
+    "enableSeadex": false,
+    "autoPlay": {
+      "enabled": false
+    },
+    "preloadStreams": {
+      "enabled": false
+    },
+    "precacheNextEpisode": false,
+    "alwaysPrecache": false,
+    "precacheSelector": "false",
+    "serviceWrap": {
+      "enabled": false
+    },
+    "nzbFailover": {
+      "enabled": false
+    },
+    "digitalReleaseFilter": {
+      "enabled": false
+    },
+    "titleMatching": {
+      "enabled": false,
+      "mode": "exact",
+      "similarityThreshold": 0.8,
+      "requestTypes": [
+        "movie",
+        "series"
+      ],
+      "addons": []
+    },
+    "yearMatching": {
+      "enabled": false,
+      "tolerance": 1,
+      "strict": false,
+      "requestTypes": [
+        "movie",
+        "series"
+      ],
+      "addons": []
+    },
+    "seasonEpisodeMatching": {
+      "enabled": true,
+      "strict": false,
+      "requestTypes": [
+        "movie",
+        "series"
+      ],
+      "addons": []
+    },
+    "statistics": {
+      "enabled": false
+    },
+    "hideErrors": false,
+    "hideErrorsForResources": [],
+    "catalogModifications": [],
+    "mergedCatalogs": [],
+    "excludedResolutions": [],
+    "includedResolutions": [],
+    "preferredResolutions": [],
+    "includedQualities": [],
+    "requiredQualities": [],
+    "preferredQualities": [],
+    "excludedLanguages": [],
+    "includedLanguages": [],
+    "requiredLanguages": [],
+    "preferredLanguages": [],
+    "includedVisualTags": [],
+    "requiredVisualTags": [],
+    "preferredVisualTags": [],
+    "excludedAudioTags": [],
+    "includedAudioTags": [],
+    "requiredAudioTags": [],
+    "preferredAudioTags": [],
+    "excludedAudioChannels": [],
+    "includedAudioChannels": [],
+    "requiredAudioChannels": [],
+    "preferredAudioChannels": [],
+    "excludedStreamTypes": [],
+    "includedStreamTypes": [],
+    "preferredStreamTypes": [],
+    "excludedEncodes": [],
+    "includedEncodes": [],
+    "requiredEncodes": [],
+    "preferredEncodes": [],
+    "includedRegexPatterns": [],
+    "requiredRegexPatterns": [],
+    "preferredRegexPatterns": [],
+    "excludedReleaseGroups": [],
+    "includedReleaseGroups": [],
+    "requiredReleaseGroups": [],
+    "preferredReleaseGroups": [],
+    "excludedKeywords": [],
+    "includedKeywords": [],
+    "requiredKeywords": [],
+    "preferredKeywords": [],
+    "rankedRegexPatterns": [],
+    "regexOverrides": [],
+    "selOverrides": [],
+    "syncedPreferredRegexUrls": [],
+    "syncedExcludedRegexUrls": [],
+    "syncedIncludedRegexUrls": [],
+    "syncedRequiredRegexUrls": [],
+    "syncedRankedRegexUrls": [],
+    "syncedPreferredStreamExpressionUrls": [],
+    "syncedExcludedStreamExpressionUrls": [],
+    "syncedIncludedStreamExpressionUrls": [],
+    "syncedRequiredStreamExpressionUrls": [],
+    "syncedRankedStreamExpressionUrls": [],
+    "excludeCachedFromAddons": [],
+    "excludeCachedFromServices": [],
+    "excludeCachedFromStreamTypes": [],
+    "excludeUncachedFromAddons": [],
+    "excludeUncachedFromServices": [],
+    "excludeUncachedFromStreamTypes": [],
+    "seederRangeTypes": [],
+    "ageRangeTypes": [],
+    "excludeSeederRange": [
+      0,
+      1000
+    ],
+    "includeSeederRange": [
+      0,
+      1000
+    ],
+    "requiredSeederRange": [
+      0,
+      1000
+    ],
+    "excludeAgeRange": [
+      0,
+      155520
+    ],
+    "includeAgeRange": [
+      0,
+      155520
+    ],
+    "requiredAgeRange": [
+      0,
+      155520
+    ]
+  }
+}
