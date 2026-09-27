@@ -1,8 +1,12 @@
 # Default-deny. A sandbox is reached only by the sandbox back-end on the bridge port, and by the
 # kubelet's readiness probe. It reaches nothing: the mock agent needs no network, and claude-code
-# gets DNS plus api.anthropic.com only — without a credential its prompts fail with a 401, which is
+# gets DNS plus Anthropic's API only — without a credential its prompts fail with a 401, which is
 # the lab's point (the harness's credentials are out of this contract). CiliumNetworkPolicy
-# throughout, as in agora-system: `fromEntities: [host]` and FQDN rules have no plain equivalent.
+# throughout, as in agora-system: `fromEntities: [host]` has no plain equivalent.
+#
+# No FQDN rule: inside a Kata VM, answers from Cilium's DNS proxy never reach the guest (lookups
+# time out after 20-26 s; plain DNS answers in ~0.2 s — measured 2026-09-27). The API is allowed by
+# Anthropic's published address range instead (api.anthropic.com = 160.79.104.0/23).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -48,10 +52,6 @@ spec:
             k8s:k8s-app: kube-dns
       toPorts:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-          rules:
-            dns:
-              - matchName: api.anthropic.com
-    - toFQDNs:
-        - matchName: api.anthropic.com
+    - toCIDR: [160.79.104.0/23]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]
