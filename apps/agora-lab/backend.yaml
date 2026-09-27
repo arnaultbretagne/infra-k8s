@@ -48,7 +48,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:682e85f7415bf060948eeb28edde515fbf6ce75465cc7a7c10637d086fc6322c # spike/sandbox-backend e840799
+          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:8e497d8f23f897368e165d052263dccaf14f901170c122bdff91073abd125af8 # spike/sandbox-backend 841bc3f
           ports:
             - name: http
               containerPort: 8080
