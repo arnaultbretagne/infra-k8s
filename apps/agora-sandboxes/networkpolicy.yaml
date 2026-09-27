@@ -38,7 +38,7 @@ spec:
         - ports: [{ port: "8080", protocol: TCP }]
 ---
 # The one way out of every sandbox: pushing its anchor to the back-end's receiver when the Pod ends
-# (sandbox-image.md, "À la fin du Pod"). DNS is plain, without Cilium's DNS proxy (see below).
+# (docs/backend.md, "La fin du Pod et l'anchor"). DNS is plain, without Cilium's DNS proxy (see below).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

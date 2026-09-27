@@ -1,6 +1,6 @@
 # The lab of Agora's sandbox back-end (agora-lab.bretagne.dev): the back-end that drives the claims of
-# agora-sandboxes, and a bare page to exercise every case of its contract (sandbox-backend.md on
-# arnaultbretagne/agora design/agora-foundations). Same role as agora-system: an Agora control plane.
+# agora-sandboxes, and a bare page to exercise every case of its contract (docs/backend.md on
+# arnaultbretagne/agora feat/sandbox-backend). Same role as agora-system: an Agora control plane.
 apiVersion: v1
 kind: Namespace
 metadata:

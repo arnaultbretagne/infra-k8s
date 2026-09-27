@@ -1,4 +1,4 @@
-# What the sandbox back-end may do here (agent-sandbox.md): create claims and re-arm their deadline,
+# What the sandbox back-end may do here (docs/backend.md on feat/sandbox-backend): create claims and re-arm their deadline,
 # read the catalogue and what the claims point to. No `delete` on anything: Agent Sandbox alone
 # destroys, at the deadline.
 apiVersion: rbac.authorization.k8s.io/v1
