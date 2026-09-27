@@ -13,19 +13,22 @@ spec:
     matchLabels:
       app: aiostreams
   ingress:
-    # Traefik serves stremio.bretagne.dev -> app :3000 (public paths: manifest/streams/API)
+    # TEMPORARY (see head-shim.yaml): Traefik / oauth2-proxy now reach the
+    # nginx HEAD->GET shim on :8080 (Service targetPort), which proxies to the
+    # app on localhost:3000. Revert these two to "3000" when decommissioned.
+    # Traefik serves stremio.bretagne.dev -> shim :8080 (public paths: manifest/streams/API)
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: traefik
       toPorts:
-        - ports: [{ port: "3000", protocol: TCP }]
-    # oauth2-proxy (same ns) -> app :3000 (the gated /stremio/configure path, ADR 0021)
+        - ports: [{ port: "8080", protocol: TCP }]
+    # oauth2-proxy (same ns) -> shim :8080 (the gated /stremio/configure path, ADR 0021)
     - fromEndpoints:
         - matchLabels:
             app: oauth2-proxy
       toPorts:
-        - ports: [{ port: "3000", protocol: TCP }]
-    # kubelet health probes -> app :3000
+        - ports: [{ port: "8080", protocol: TCP }]
+    # kubelet health probes -> app :3000 (direct container port, unchanged)
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
@@ -149,12 +152,12 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-    # -> upstream aiostreams (authenticated /stremio/configure)
+    # -> upstream aiostreams via the HEAD->GET shim (TEMPORARY: 8080, see head-shim.yaml)
     - toEndpoints:
         - matchLabels:
             app: aiostreams
       toPorts:
-        - ports: [{ port: "3000", protocol: TCP }]
+        - ports: [{ port: "8080", protocol: TCP }]
     # -> id.bretagne.dev (OIDC discovery/token) via public IP -> node -> Traefik
     - toEntities: [world, host]
       toPorts:

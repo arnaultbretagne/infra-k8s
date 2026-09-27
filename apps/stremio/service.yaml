@@ -6,6 +6,9 @@ spec:
   selector:
     app: aiostreams
   ports:
+    # TEMPORARY (see head-shim.yaml): traffic enters via the nginx HEAD->GET
+    # shim on 8080, which proxies to the app on localhost:3000. Revert to
+    # targetPort 3000 when the shim is decommissioned.
     - port: 3000
-      targetPort: 3000
+      targetPort: 8080
       protocol: TCP
