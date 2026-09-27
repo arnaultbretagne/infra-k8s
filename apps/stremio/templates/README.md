@@ -12,12 +12,14 @@ publishing the same template three times with suffixed IDs. Add an explicit file
 mount for each new JSON. The generated name and rollout are necessary because
 `subPath` mounts do not receive in-place ConfigMap updates.
 
-`knaben-stfr-top3-torbox-v2.26.json` is version 1.2.0 of the tested Knaben/TorBox
-template: up to three results with reported embedded French subtitles, falling
+`knaben-stfr-top5-torbox-v2.26.json` is version 1.3.0 of the tested Knaben/TorBox
+template: up to five results with reported embedded French subtitles, falling
 back to candidates without a subtitle requirement only when none qualify.
-It prioritises cache, chooses 4K or 1080p (1080p for anime), and sorts retained
-seeder counts descending. Season packs are allowed. The template contains no
-credentials and asks for the user's TorBox key when selected.
+It prioritises cache, chooses 4K or 1080p (1080p for anime), and orders the
+retained candidates by source quality first (`BluRay REMUX`, `BluRay`,
+`WEB-DL`, `WEBRip`, unknown last) then seeder counts descending.
+Season packs are allowed. The template contains no credentials and asks for
+the user's TorBox key when selected.
 
 Publishing a template here does not apply it to existing user profiles. This
 change does not include the separately investigated AIOStreams 2.26 cropped

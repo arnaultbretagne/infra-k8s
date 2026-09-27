@@ -17,4 +17,4 @@ resources:
 configMapGenerator:
   - name: aiostreams-templates
     files:
-      - templates/knaben-stfr-top3-torbox-v2.26.json
+      - templates/knaben-stfr-top5-torbox-v2.26.json
