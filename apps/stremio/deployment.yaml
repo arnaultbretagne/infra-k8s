@@ -126,8 +126,8 @@ spec:
             # the ConfigMap's ..data and timestamp paths as duplicate templates.
             # The generated ConfigMap hash rolls the pod when a template changes.
             - name: templates
-              mountPath: /app/data/templates/knaben-stfr-top3-torbox-v2.26.json
-              subPath: knaben-stfr-top3-torbox-v2.26.json
+              mountPath: /app/data/templates/knaben-stfr-top5-torbox-v2.26.json
+              subPath: knaben-stfr-top5-torbox-v2.26.json
               readOnly: true
             - name: tmp
               mountPath: /tmp

@@ -1,12 +1,12 @@
 {
   "metadata": {
     "id": "arnault.knaben-stfr-top3-torbox-v226",
-    "name": "Knaben + TorBox — STFR prioritaires — Top 3",
+    "name": "Knaben + TorBox — STFR prioritaires — Top 5",
     "author": "Arnault",
     "source": "external",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "category": "Debrid",
-    "description": "Knaben seul, TorBox. Jusqu’à 3 vidéos avec sous-titres FR intégrés signalés ; si aucun candidat admissible ne les signale, repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p, VO si connue puis seeds décroissants. Fonctionne sans clé TMDB. AIOStreams 2.26 ne distingue pas les pistes forced des pistes complètes.",
+    "description": "Knaben seul, TorBox. Jusqu’à 5 vidéos avec sous-titres FR intégrés signalés ; si aucun candidat admissible ne les signale, repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p, VO si connue. Classement par qualité d’abord (REMUX, BluRay, WEB-DL, WEBRip) puis seeds décroissants. Fonctionne sans clé TMDB. AIOStreams 2.26 ne distingue pas les pistes forced des pistes complètes.",
     "services": [
       "torbox"
     ],
@@ -24,7 +24,7 @@
   },
   "config": {
     "addonName": "Knaben · STFR",
-    "addonDescription": "Trois résultats maximum : STFR intégrés signalés prioritaires, sinon repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p.",
+    "addonDescription": "Cinq résultats maximum : STFR intégrés signalés prioritaires, sinon repli sans exigence de sous-titres. Cache prioritaire, 4K sinon 1080p, animes en 1080p. Qualité d’abord (REMUX, BluRay, WEB-DL, WEBRip) puis seeds décroissants.",
     "presets": [
       {
         "type": "knaben",
@@ -50,6 +50,10 @@
     },
     "sortCriteria": {
       "global": [
+        {
+          "key": "quality",
+          "direction": "desc"
+        },
         {
           "key": "seeders",
           "direction": "desc"
@@ -97,7 +101,7 @@
         "enabled": true
       },
       {
-        "expression": "/* Trois resultats maximum apres les filtres */ slice(streams, 3)",
+        "expression": "/* Cinq resultats maximum apres les filtres */ slice(streams, 5)",
         "enabled": true
       }
     ],
@@ -195,7 +199,12 @@
     "preferredResolutions": [],
     "includedQualities": [],
     "requiredQualities": [],
-    "preferredQualities": [],
+    "preferredQualities": [
+      "BluRay REMUX",
+      "BluRay",
+      "WEB-DL",
+      "WEBRip"
+    ],
     "excludedLanguages": [],
     "includedLanguages": [],
     "requiredLanguages": [],
