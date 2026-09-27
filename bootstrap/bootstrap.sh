@@ -467,8 +467,12 @@ else
   modprobe vhost_vsock
   modprobe vhost_net
   mkdir -p /etc/kata-containers
+  # The guest image runs chrony with Ubuntu's NTS pools: every VM would keep opening TCP 4460 to
+  # ntp.ubuntu.com and flood the sandboxes' default-deny policies with drops. Masked; the guest
+  # clock comes from kvm-clock, which follows the host.
   sed -e 's/^default_memory = 2048$/default_memory = 1024/' \
       -e 's/^disable_guest_seccomp = true$/disable_guest_seccomp = false/' \
+      -e 's/^kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1"$/kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1 systemd.mask=chrony.service"/' \
       /opt/kata/share/defaults/kata-containers/runtime-rs/configuration-clh-runtime-rs.toml \
       > /etc/kata-containers/configuration.toml
   cat > /etc/k0s/containerd.d/kata.toml <<'EOF'
