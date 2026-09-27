@@ -1,5 +1,5 @@
-# Default-deny. A sandbox is reached only by the sandbox back-end on the bridge port, and by the
-# kubelet's readiness probe. It reaches only the back-end's anchor receiver; claude-code also gets
+# Default-deny. A sandbox is reached only by Agora (the lab) on the bridge port, and by the
+# kubelet's readiness probe. It reaches only Agora's anchor receiver; claude-code also gets
 # Anthropic's API — without a credential its prompts fail with a 401, which is
 # the lab's point (the harness's credentials are out of this contract). CiliumNetworkPolicy
 # throughout, as in agora-system: `fromEntities: [host]` has no plain equivalent.
@@ -30,15 +30,15 @@ spec:
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: agora-lab
-            app: backend
+            app: lab
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
     - fromEntities: [host] # kubelet readiness probe
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
 ---
-# The one way out of every sandbox: pushing its anchor to the back-end's receiver when the Pod ends
-# (docs/backend.md, "La fin du Pod et l'anchor"). DNS is plain, without Cilium's DNS proxy (see below).
+# The one way out of every sandbox: pushing its anchor to Agora's receiver when the Pod ends
+# (docs/executions.md, "La fin du Pod et l'anchor"). DNS is plain, without Cilium's DNS proxy (see below).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -57,7 +57,7 @@ spec:
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: agora-lab
-            app: backend
+            app: lab
       toPorts:
         - ports: [{ port: "8081", protocol: TCP }]
 ---

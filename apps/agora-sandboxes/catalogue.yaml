@@ -1,15 +1,15 @@
-# The catalogue of Agora's sandboxes (docs/backend.md): one template and one warm pool per image
+# The catalogue of Agora's sandboxes (docs/executions.md): one template and one warm pool per image
 # digest, named after it. Changing an image is a NEW template and pool, never an edit in place —
 # a pool can still hand out sandboxes prepared from the old template.
 #
-# Images: arnaultbretagne/agora, branch feat/sandbox-backend, harnesses/<harness>/Dockerfile (CI
-# sandbox-backend, commit 2ce0d36).
+# Images: arnaultbretagne/agora, branch feat/executions, harnesses/<harness>/Dockerfile (CI
+# executions, commit 03d65c8).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: mock-699ffea5771a
+  name: mock-83d890c0566a
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:699ffea5771afcf16ddd969080b3ea30761db051fc8064bfde7208d6462e6736
+          image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:83d890c0566a34d8c9ad8225953443b6f0583d38f75467d7198fb7783b2122a2
           ports:
             - name: bridge
               containerPort: 8080
@@ -52,7 +52,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://backend.agora-lab.svc.cluster.local:8081/anchors
+              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
           # Ready means ACP is servable: the adapter lives and answered initialize.
@@ -93,19 +93,19 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: mock-699ffea5771a
+  name: mock-83d890c0566a
   labels:
     agora.bretagne.dev/harness: mock
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: mock-699ffea5771a
+    name: mock-83d890c0566a
 ---
 # claude-code 2.1.261 + claude-agent-acp 0.75.1, WITHOUT credentials (out of this contract).
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-178fb07fddd0
+  name: claude-code-9c76f1f64446
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -133,7 +133,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:178fb07fddd0cb3ed6be1f17c111ca90e5b08281b6a0c79e4a30b1218d618318
+          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:9c76f1f64446dc144b088d594548d7e95025695a30133f80cd15bb8fa76b6ffb
           ports:
             - name: bridge
               containerPort: 8080
@@ -148,7 +148,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://backend.agora-lab.svc.cluster.local:8081/anchors
+              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
           # Ready means ACP is servable: the adapter lives and answered initialize.
@@ -189,10 +189,10 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-178fb07fddd0
+  name: claude-code-9c76f1f64446
   labels:
     agora.bretagne.dev/harness: claude-code
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-178fb07fddd0
+    name: claude-code-9c76f1f64446
