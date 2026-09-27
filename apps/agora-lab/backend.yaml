@@ -1,11 +1,36 @@
-# The sandbox back-end (sandbox-backend.md). Its ServiceAccount drives claims in agora-sandboxes
-# (apps/agora-sandboxes/rbac.yaml) and nothing else; it signs bridge tokens with the private key and
-# keeps anchors on its own volume — the ONLY state it owns: everything about living sandboxes is on
-# their claims. One replica, Recreate: two back-ends would fight over the same bridges.
+# The sandbox back-end (sandbox-backend.md). Its ServiceAccount creates and re-arms claims in
+# agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
+# bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
+# ONLY state it owns: everything about living sandboxes is on their claims. One replica, Recreate:
+# two back-ends would fight over the same bridges.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: backend
+---
+# TokenReview: who is pushing an anchor (the Pod a projected token is bound to). Nothing else
+# cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agora-lab-token-review
+rules:
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agora-lab-token-review
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agora-lab-token-review
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: agora-lab
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -48,15 +73,17 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:63f542eedcd17d5dc45f6ea8ff0bd101ca7731a9bd384698d1022274134867c1 # spike/sandbox-backend 84df105
+          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:735928edeb6b9df359eac8d54715f4c09a13a909dde5bcda581c78afddb479e8 # spike/sandbox-backend 926845c
           ports:
             - name: http
               containerPort: 8080
+            - name: anchors
+              containerPort: 8081
           env:
             - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
             - { name: ANCHOR_DIR, value: /data/anchors }
-            - { name: MAX_ACTIVE, value: "4" }
+            - { name: MAX_ACTIVE, value: "6" }
             - { name: LAB, value: "true" }
             # The API server's CA, for the global fetch of the Kubernetes client.
             - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
@@ -101,3 +128,6 @@ spec:
     - name: http
       port: 8080
       targetPort: http
+    - name: anchors
+      port: 8081
+      targetPort: anchors

@@ -1,15 +1,15 @@
-# The catalogue of Agora's sandboxes (agent-sandbox.md, "Le catalogue"): one template and one warm
-# pool per image digest, named after it. Changing an image is a NEW template and pool, never an edit
-# in place — a pool can still hand out sandboxes prepared from the old template.
+# The catalogue of Agora's sandboxes (agent-sandbox.md): one template and one warm pool per image
+# digest, named after it. Changing an image is a NEW template and pool, never an edit in place —
+# a pool can still hand out sandboxes prepared from the old template.
 #
 # Images: arnaultbretagne/agora, branch spike/sandbox-backend, sandbox/images/Dockerfile (CI
-# sandbox-backend, commit e840799).
+# sandbox-backend, commit 926845c).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: mock-383a9cc51e4a
+  name: mock-556cbcb8ee97
 spec:
   networkPolicyManagement: Unmanaged
   podTemplate:
@@ -22,7 +22,8 @@ spec:
       restartPolicy: Never
       automountServiceAccountToken: false
       enableServiceLinks: false
-      terminationGracePeriodSeconds: 5
+      # The grace period is for one thing: the bridge stops the adapter and pushes the anchor.
+      terminationGracePeriodSeconds: 30
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
@@ -34,7 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:383a9cc51e4a5da39866209c55b6ecf42e607094cb24307789971b74f0c618c7
+          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:556cbcb8ee978681278d0bf9e3e876c4cf92fc6a7a03bc8029bc0d0c0ee062d6
           ports:
             - name: bridge
               containerPort: 8080
@@ -48,6 +49,10 @@ spec:
                 configMapKeyRef:
                   name: agora-bridge-key
                   key: public.pem
+            - name: AGORA_ANCHOR_URL
+              value: http://backend.agora-lab.svc.cluster.local:8081/anchors
+            - name: AGORA_TOKEN_FILE
+              value: /var/run/agora/token
           # Ready means ACP is servable: the adapter lives and answered initialize.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }
@@ -64,28 +69,38 @@ spec:
           volumeMounts:
             - { name: home, mountPath: /home/harness }
             - { name: tmp, mountPath: /tmp }
+            - { name: agora-token, mountPath: /var/run/agora, readOnly: true }
       volumes:
         - name: home
           emptyDir: { sizeLimit: 2Gi }
         - name: tmp
           emptyDir: { sizeLimit: 256Mi }
+        # The Pod's identity when it pushes its anchor: minted and rotated by the kubelet, bound to
+        # this Pod, only valid for the back-end's audience — useless against the API server.
+        - name: agora-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: agora-anchors
+                  expirationSeconds: 600
+                  path: token
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: mock-383a9cc51e4a
+  name: mock-556cbcb8ee97
   labels:
     agora.bretagne.dev/harness: mock
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: mock-383a9cc51e4a
+    name: mock-556cbcb8ee97
 ---
 # claude-code 2.1.261 + claude-agent-acp 0.75.1, WITHOUT credentials (out of this contract).
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-799b4497d28c
+  name: claude-code-6b27047c7826
 spec:
   networkPolicyManagement: Unmanaged
   podTemplate:
@@ -98,7 +113,8 @@ spec:
       restartPolicy: Never
       automountServiceAccountToken: false
       enableServiceLinks: false
-      terminationGracePeriodSeconds: 5
+      # The grace period is for one thing: the bridge stops the adapter and pushes the anchor.
+      terminationGracePeriodSeconds: 30
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
@@ -110,7 +126,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:799b4497d28c590ba538df59f252cd87df15d7f9c9f198f8188a13dd4289c5fb
+          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:6b27047c7826c684e2e6cacfcf0f3ea96eb3c61b610068b2b90845315681a30b
           ports:
             - name: bridge
               containerPort: 8080
@@ -124,6 +140,10 @@ spec:
                 configMapKeyRef:
                   name: agora-bridge-key
                   key: public.pem
+            - name: AGORA_ANCHOR_URL
+              value: http://backend.agora-lab.svc.cluster.local:8081/anchors
+            - name: AGORA_TOKEN_FILE
+              value: /var/run/agora/token
           # Ready means ACP is servable: the adapter lives and answered initialize.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }
@@ -140,19 +160,29 @@ spec:
           volumeMounts:
             - { name: home, mountPath: /home/harness }
             - { name: tmp, mountPath: /tmp }
+            - { name: agora-token, mountPath: /var/run/agora, readOnly: true }
       volumes:
         - name: home
           emptyDir: { sizeLimit: 2Gi }
         - name: tmp
           emptyDir: { sizeLimit: 256Mi }
+        # The Pod's identity when it pushes its anchor: minted and rotated by the kubelet, bound to
+        # this Pod, only valid for the back-end's audience — useless against the API server.
+        - name: agora-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: agora-anchors
+                  expirationSeconds: 600
+                  path: token
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-799b4497d28c
+  name: claude-code-6b27047c7826
   labels:
     agora.bretagne.dev/harness: claude-code
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-799b4497d28c
+    name: claude-code-6b27047c7826
