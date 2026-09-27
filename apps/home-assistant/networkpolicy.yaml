@@ -1,8 +1,9 @@
 # Default-deny + allow-list (ADR 0020).
 #
-# HA reaches exactly four things: DNS, its own Postgres, the Zigbee coordinator, and HTTPS out
-# (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.home-assistant.io for the one-time
-# custom-component deps install, HA's own integrations). Nothing intra-cluster beyond CNPG.
+# HA reaches exactly five things: DNS, its own Postgres, the Zigbee coordinator, SSDP multicast
+# (discovery), and HTTPS out (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.
+# home-assistant.io for the one-time custom-component deps install, HA's own integrations).
+# Nothing intra-cluster beyond CNPG.
 #
 # The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638).
 # Pod egress leaves g4 masqueraded as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must
@@ -49,6 +50,14 @@ spec:
         - 10.10.40.10/32
       toPorts:
         - ports: [{ port: "6638", protocol: TCP }]
+    # -> SSDP/UPnP discovery (default_config's ssdp integration): UDP 1900 to the SSDP
+    #    multicast group and the local broadcast, nothing else. Without this rule the
+    #    periodic discovery bursts feed NetworkPolicyDrops forever (hubble POLICY_DENIED).
+    - toCIDR:
+        - 239.255.255.250/32
+        - 255.255.255.255/32
+      toPorts:
+        - ports: [{ port: "1900", protocol: UDP }]
     # -> id.bretagne.dev (OIDC discovery, token, JWKS) + PyPI/wheels (init) + HA integrations.
     #    The public IP resolves to the home line; kube-proxy/host may DNAT it to the Traefik pod
     #    — same three-way allow as the oauth2-proxy CNPs.
