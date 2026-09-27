@@ -13,3 +13,7 @@ resources:
   - httproute.yaml
   - networkpolicy.yaml
   - limitrange.yaml
+configMapGenerator:
+  - name: aiostreams-templates
+    files:
+      - templates/knaben-stfr-top3-torbox-v2.26.json
