@@ -73,6 +73,13 @@
       "pkceEnabled": false
     },
     {
+      "_comment": "The lab of Agora's sandbox back-end (apps/agora-lab), gated via oauth2-proxy: it can start VMs, so operators only. Secret bootstrapped the same way as 'onecli'.",
+      "name": "agora-lab",
+      "callbackURLs": ["https://agora-lab.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
+    },
+    {
       "name": "openai_auth",
       "callbackURLs": [
         "https://chatgpt.com/connector/oauth/b1u3srH76huV",

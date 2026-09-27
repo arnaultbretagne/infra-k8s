@@ -1,0 +1,14 @@
+# A pool is not a concurrency limit (claims come on top of the warm stock), so the namespace is
+# bounded here; the back-end also caps its active sandboxes (MAX_ACTIVE). Kata's RuntimeClass overhead
+# (100m / 256Mi per Pod) counts against these requests.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandbox-bounds
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "4"
+    requests.memory: 10Gi
+    limits.cpu: "12"
+    limits.memory: 14Gi

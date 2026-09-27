@@ -1,0 +1,79 @@
+# Default-deny plus the flows of the lab: Traefik → oauth2-proxy → back-end; the back-end reaches the
+# Kubernetes API (claims) and the sandboxes' bridge port, nothing else. The other half of the bridge
+# flow is apps/agora-sandboxes/networkpolicy.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backend
+spec:
+  endpointSelector:
+    matchLabels:
+      app: backend
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEntities: [kube-apiserver]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-sandboxes
+            app.kubernetes.io/part-of: agora-sandboxes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: backend
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy
+    # DNATs to Traefik — both paths, as for agent-vault's gate.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

@@ -1,0 +1,158 @@
+# The catalogue of Agora's sandboxes (agent-sandbox.md, "Le catalogue"): one template and one warm
+# pool per image digest, named after it. Changing an image is a NEW template and pool, never an edit
+# in place — a pool can still hand out sandboxes prepared from the old template.
+#
+# Images: arnaultbretagne/agora, branch spike/sandbox-backend, sandbox/images/Dockerfile (CI
+# sandbox-backend, commit e840799).
+---
+# The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: mock-383a9cc51e4a
+spec:
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: agora-sandboxes
+        agora.bretagne.dev/harness: mock
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 5
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:383a9cc51e4a5da39866209c55b6ecf42e607094cb24307789971b74f0c618c7
+          ports:
+            - name: bridge
+              containerPort: 8080
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: BRIDGE_PUBLIC_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: agora-bridge-key
+                  key: public.pem
+          # Ready means ACP is servable: the adapter lives and answered initialize.
+          readinessProbe:
+            httpGet: { path: /healthz, port: bridge }
+            periodSeconds: 2
+            failureThreshold: 1
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: home, mountPath: /home/harness }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: home
+          emptyDir: { sizeLimit: 2Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: mock-383a9cc51e4a
+  labels:
+    agora.bretagne.dev/harness: mock
+spec:
+  replicas: 2
+  sandboxTemplateRef:
+    name: mock-383a9cc51e4a
+---
+# claude-code 2.1.261 + claude-agent-acp 0.75.1, WITHOUT credentials (out of this contract).
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: claude-code-799b4497d28c
+spec:
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: agora-sandboxes
+        agora.bretagne.dev/harness: claude-code
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 5
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:799b4497d28c590ba538df59f252cd87df15d7f9c9f198f8188a13dd4289c5fb
+          ports:
+            - name: bridge
+              containerPort: 8080
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: BRIDGE_PUBLIC_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: agora-bridge-key
+                  key: public.pem
+          # Ready means ACP is servable: the adapter lives and answered initialize.
+          readinessProbe:
+            httpGet: { path: /healthz, port: bridge }
+            periodSeconds: 2
+            failureThreshold: 1
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: home, mountPath: /home/harness }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: home
+          emptyDir: { sizeLimit: 2Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: claude-code-799b4497d28c
+  labels:
+    agora.bretagne.dev/harness: claude-code
+spec:
+  replicas: 1
+  sandboxTemplateRef:
+    name: claude-code-799b4497d28c

@@ -1,0 +1,12 @@
+# The PUBLIC half of the back-end's Ed25519 signing key (sandbox-image.md, "Qui peut parler au
+# bridge"). Not a secret: a sandbox verifies tokens with it and never holds anything that could mint
+# one. The private half is apps/agora-lab/signing-key.secrets.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-bridge-key
+data:
+  public.pem: |
+    -----BEGIN PUBLIC KEY-----
+    MCowBQYDK2VwAyEAY+/5nx6DAlLrZgqKwvLWvsNDmASGIu1/S/GqVAbY8Tg=
+    -----END PUBLIC KEY-----

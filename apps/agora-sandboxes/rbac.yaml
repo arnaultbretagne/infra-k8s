@@ -1,0 +1,33 @@
+# What the sandbox back-end may do here (agent-sandbox.md, "Les droits d'Agora"): drive claims, read
+# the catalogue and what the claims point to. `delete` on pods exists only for the lab's
+# "Pod supprimé seul" case (sandbox-backend.md, "Le banc").
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agora-sandbox-backend
+rules:
+  - apiGroups: [extensions.agents.x-k8s.io]
+    resources: [sandboxclaims]
+    verbs: [get, list, watch, create, patch, delete]
+  - apiGroups: [extensions.agents.x-k8s.io]
+    resources: [sandboxwarmpools, sandboxtemplates]
+    verbs: [get, list, watch]
+  - apiGroups: [agents.x-k8s.io]
+    resources: [sandboxes]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agora-sandbox-backend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agora-sandbox-backend
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: agora-lab

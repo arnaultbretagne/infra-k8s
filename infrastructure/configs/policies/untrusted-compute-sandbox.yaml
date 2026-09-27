@@ -1,7 +1,8 @@
 # ADR 0027 §4 — untrusted-compute pods must be sandboxed. CNPG-managed pods exempt
 # (trusted upstream software; future preview db-clones). The binding selects ONLY namespaces
-# carrying the untrusted-compute profile label: today that is `preview` + `agora-runs`
-# (infra-k8s ADR 0028 — run namespaces are labelled from birth, no "label later" debt).
+# carrying the untrusted-compute profile label: today that is `preview`, `agora-runs` and
+# `agora-sandboxes` (infra-k8s ADR 0028 — run namespaces are labelled from birth, no "label later"
+# debt). Two runtimes qualify as a sandbox: `sandboxed` (gVisor) and `kata` (one VM per Pod).
 #
 # `agent-runs` carried the label too until the channels-era system was decommissioned
 # (2026-08-07); `agora-runs` inherited both the label and this binding unchanged.
@@ -20,9 +21,10 @@ spec:
   validations:
     - expression: >-
         (has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels)
-        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'sandboxed')
+        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName in ['sandboxed', 'kata'])
       message: >-
-        Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (ADR 0027).
+        Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (gVisor) or kata
+        (VM) (ADR 0027).
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

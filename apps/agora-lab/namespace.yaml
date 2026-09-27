@@ -1,0 +1,12 @@
+# The lab of Agora's sandbox back-end (agora-lab.bretagne.dev): the back-end that drives the claims of
+# agora-sandboxes, and a bare page to exercise every case of its contract (sandbox-backend.md on
+# arnaultbretagne/agora design/agora-foundations). Same role as agora-system: an Agora control plane.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-lab
+  labels:
+    platform.bretagne.dev/profile: trusted-control
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
