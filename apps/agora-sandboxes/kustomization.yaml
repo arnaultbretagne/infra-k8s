@@ -1,5 +1,5 @@
-# Agora's sandboxes (docs/backend.md on arnaultbretagne/agora feat/sandbox-backend). Driven by the
-# sandbox back-end in agora-lab.
+# Agora's sandboxes (docs/executions.md on arnaultbretagne/agora feat/executions). Driven by
+# Agora's executions, mounted today by the lab in agora-lab.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: agora-sandboxes

@@ -1,4 +1,5 @@
-# The sandbox back-end (docs/backend.md on arnaultbretagne/agora feat/sandbox-backend). Its ServiceAccount creates and re-arms claims in
+# The lab (apps/lab on arnaultbretagne/agora feat/executions): Agora's executions
+# (docs/executions.md) mounted with the page that exercises them. Its ServiceAccount creates and re-arms claims in
 # agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
 # bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
 # ONLY state it owns: everything about living sandboxes is on their claims. One replica, Recreate:
@@ -6,7 +7,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: backend
+  name: lab
 ---
 # TokenReview: who is pushing an anchor (the Pod a projected token is bound to). Nothing else
 # cluster-wide.
@@ -29,7 +30,7 @@ roleRef:
   name: agora-lab-token-review
 subjects:
   - kind: ServiceAccount
-    name: backend
+    name: lab
     namespace: agora-lab
 ---
 apiVersion: v1
@@ -46,7 +47,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: lab
 spec:
   replicas: 1
   revisionHistoryLimit: 2
@@ -54,13 +55,13 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: backend
+      app: lab
   template:
     metadata:
       labels:
-        app: backend
+        app: lab
     spec:
-      serviceAccountName: backend
+      serviceAccountName: lab
       priorityClassName: bretagne-low
       imagePullSecrets:
         - name: ghcr-pull
@@ -72,8 +73,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: backend
-          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:b15a9e95b06f59cbd95ba6d9131892fb9540c02a16d4be6797babeded56e86ca # feat/sandbox-backend 2ce0d36
+        - name: lab
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:273322a2e757fc9439f2b677eb06a35002d58658b8120bc0e413844ef03f2296 # feat/executions 03d65c8
           ports:
             - name: http
               containerPort: 8080
@@ -120,10 +121,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend
+  name: lab
 spec:
   selector:
-    app: backend
+    app: lab
   ports:
     - name: http
       port: 8080

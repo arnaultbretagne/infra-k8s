@@ -1,4 +1,4 @@
-# Default-deny plus the flows of the lab: Traefik → oauth2-proxy → back-end; the back-end reaches the
+# Default-deny plus the flows of the lab: Traefik → oauth2-proxy → lab; the lab reaches the
 # Kubernetes API (claims) and the sandboxes' bridge port, nothing else. The other half of the bridge
 # flow is apps/agora-sandboxes/networkpolicy.yaml.
 apiVersion: cilium.io/v2
@@ -15,11 +15,11 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: backend
+  name: lab
 spec:
   endpointSelector:
     matchLabels:
-      app: backend
+      app: lab
   ingress:
     - fromEndpoints:
         - matchLabels:
@@ -78,7 +78,7 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            app: backend
+            app: lab
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
     # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy
