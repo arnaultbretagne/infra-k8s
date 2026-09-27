@@ -1,6 +1,6 @@
-# What the sandbox back-end may do here (agent-sandbox.md, "Les droits d'Agora"): drive claims, read
-# the catalogue and what the claims point to. `delete` on pods exists only for the lab's
-# "Pod supprimé seul" case (sandbox-backend.md, "Le banc").
+# What the sandbox back-end may do here (agent-sandbox.md): create claims and re-arm their deadline,
+# read the catalogue and what the claims point to. No `delete` on anything: Agent Sandbox alone
+# destroys, at the deadline.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -8,7 +8,7 @@ metadata:
 rules:
   - apiGroups: [extensions.agents.x-k8s.io]
     resources: [sandboxclaims]
-    verbs: [get, list, watch, create, patch, delete]
+    verbs: [get, list, watch, create, patch]
   - apiGroups: [extensions.agents.x-k8s.io]
     resources: [sandboxwarmpools, sandboxtemplates]
     verbs: [get, list, watch]
@@ -17,7 +17,7 @@ rules:
     verbs: [get, list, watch]
   - apiGroups: [""]
     resources: [pods]
-    verbs: [get, list, watch, delete]
+    verbs: [get, list, watch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

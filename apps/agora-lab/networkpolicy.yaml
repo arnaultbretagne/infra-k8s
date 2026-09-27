@@ -26,9 +26,16 @@ spec:
             app: oauth2-proxy
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    - fromEntities: [host] # kubelet probes
+    - fromEntities: [host] # kubelet probes, and the lab's scripted cases run from the node
       toPorts:
-        - ports: [{ port: "8080", protocol: TCP }]
+        - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
+    # The anchor receiver: the sandboxes push there when their Pod ends, and reach nothing else.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-sandboxes
+            app.kubernetes.io/part-of: agora-sandboxes
+      toPorts:
+        - ports: [{ port: "8081", protocol: TCP }]
   egress:
     # kubernetes.default.svc has to resolve before the API server can be reached.
     - toEndpoints:
