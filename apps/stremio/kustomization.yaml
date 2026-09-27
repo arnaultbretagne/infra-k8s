@@ -9,6 +9,7 @@ resources:
   - restore-test.yaml
   - deployment.yaml
   - service.yaml
+  - head-shim.yaml
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml

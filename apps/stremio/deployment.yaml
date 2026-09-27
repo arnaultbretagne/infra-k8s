@@ -21,6 +21,39 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
+        # =====================================================================
+        # TEMPORARY sidecar (see head-shim.yaml for full context + removal
+        # steps): nginx translates HEAD->GET on /api/v1/debrid/playback/ so
+        # Stremio's HEAD probe (fatal on non-2xx) succeeds. Remove once
+        # upstream AIOStreams handles HEAD (issue Viren070/AIOStreams#1009).
+        # =====================================================================
+        - name: head-shim
+          image: nginx:1.29.8-alpine
+          command: ["nginx", "-c", "/etc/nginx-head-shim/nginx.conf", "-g", "daemon off;"]
+          ports:
+            - containerPort: 8080
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: head-shim-conf
+              mountPath: /etc/nginx-head-shim
+              readOnly: true
+            - name: head-shim-tmp
+              mountPath: /tmp
+            - name: head-shim-cache
+              mountPath: /var/cache/nginx
         - name: aiostreams
           image: viren070/aiostreams:v2.26.0
           ports:
@@ -99,6 +132,15 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
+        - name: head-shim-conf
+          configMap:
+            name: aiostreams-head-shim
+        - name: head-shim-tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: head-shim-cache
+          emptyDir:
+            sizeLimit: 32Mi
         - name: data
           emptyDir:
             sizeLimit: 2Gi
