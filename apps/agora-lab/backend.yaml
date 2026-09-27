@@ -1,0 +1,103 @@
+# The sandbox back-end (sandbox-backend.md). Its ServiceAccount drives claims in agora-sandboxes
+# (apps/agora-sandboxes/rbac.yaml) and nothing else; it signs bridge tokens with the private key and
+# keeps anchors on its own volume — the ONLY state it owns: everything about living sandboxes is on
+# their claims. One replica, Recreate: two back-ends would fight over the same bridges.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anchors
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend
+      priorityClassName: bretagne-low
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/arnaultbretagne/agora-sandbox-backend@sha256:682e85f7415bf060948eeb28edde515fbf6ce75465cc7a7c10637d086fc6322c # spike/sandbox-backend e840799
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
+            - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
+            - { name: ANCHOR_DIR, value: /data/anchors }
+            - { name: MAX_ACTIVE, value: "4" }
+            - { name: LAB, value: "true" }
+            # The API server's CA, for the global fetch of the Kubernetes client.
+            - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            failureThreshold: 20
+            periodSeconds: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 20m, memory: 96Mi }
+            limits: { memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: anchors, mountPath: /data }
+            - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
+      volumes:
+        - name: anchors
+          persistentVolumeClaim:
+            claimName: anchors
+        - name: signing
+          secret:
+            secretName: signing-key
+            defaultMode: 0440
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -1,0 +1,57 @@
+# Default-deny. A sandbox is reached only by the sandbox back-end on the bridge port, and by the
+# kubelet's readiness probe. It reaches nothing: the mock agent needs no network, and claude-code
+# gets DNS plus api.anthropic.com only — without a credential its prompts fail with a 401, which is
+# the lab's point (the harness's credentials are out of this contract). CiliumNetworkPolicy
+# throughout, as in agora-system: `fromEntities: [host]` and FQDN rules have no plain equivalent.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: bridge
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: agora-sandboxes
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-lab
+            app: backend
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEntities: [host] # kubelet readiness probe
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: claude-code-egress
+spec:
+  endpointSelector:
+    matchLabels:
+      agora.bretagne.dev/harness: claude-code
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+          rules:
+            dns:
+              - matchName: api.anthropic.com
+    - toFQDNs:
+        - matchName: api.anthropic.com
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

@@ -1,0 +1,16 @@
+# agora-lab.bretagne.dev — the lab of Agora's sandbox back-end: the back-end itself (claims in
+# agora-sandboxes, bridge relay, anchors) and a bare page that exercises every case of its contract.
+# Source: arnaultbretagne/agora, branch spike/sandbox-backend, sandbox/. Operators only (OIDC, admin).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agora-lab
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - ghcr-pull.secrets.yaml
+  - signing-key.secrets.yaml
+  - oauth2-proxy.secrets.yaml
+  - backend.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml

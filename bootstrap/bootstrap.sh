@@ -22,6 +22,8 @@ HELM_VERSION="v3.20.2"
 FLUX_VERSION="2.8.3"
 SOPS_VERSION="3.9.4"
 RUNSC_VERSION="release-20260622.0"
+KATA_VERSION="4.2.0"
+KATA_SHA256="b828904fa3f1e49ddd7dc799c72cb1503cd1e772d354c3987c8d4189b2a623a8"
 TTYD_VERSION="1.7.7"
 OAUTH2_PROXY_VERSION="7.7.1"
 
@@ -137,6 +139,8 @@ SOPS_ASSET="sops-v${SOPS_VERSION}.linux.${DEB_ARCH}"
 SOPS_RELEASE_URL="https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}"
 GVISOR_RELEASE_URL="https://storage.googleapis.com/gvisor/releases/release/${RUNSC_VERSION#release-}/${GVISOR_ARCH}"
 TTYD_RELEASE_URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}"
+KATA_ASSET="kata-static-${KATA_VERSION}-${DEB_ARCH}.tar.zst"
+KATA_RELEASE_URL="https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}"
 OAUTH2_PROXY_ASSET="oauth2-proxy-v${OAUTH2_PROXY_VERSION}.linux-${DEB_ARCH}.tar.gz"
 OAUTH2_PROXY_RELEASE_URL="https://github.com/oauth2-proxy/oauth2-proxy/releases/download/v${OAUTH2_PROXY_VERSION}"
 
@@ -155,6 +159,7 @@ download_endpoints=(
   "$GVISOR_RELEASE_URL/containerd-shim-runsc-v1.sha512"
   "$TTYD_RELEASE_URL/ttyd.${GVISOR_ARCH}"
   "$TTYD_RELEASE_URL/SHA256SUMS"
+  "$KATA_RELEASE_URL/$KATA_ASSET"
   "$OAUTH2_PROXY_RELEASE_URL/$OAUTH2_PROXY_ASSET"
   "$OAUTH2_PROXY_RELEASE_URL/$OAUTH2_PROXY_ASSET-sha256sum.txt"
 )
@@ -439,6 +444,44 @@ version = 2
   runtime_path = "/usr/local/bin/containerd-shim-runsc-v1"
 EOF
 ok "containerd runsc drop-in written (k0s reloads containerd automatically)"
+
+# Kata Containers (Cloud Hypervisor, runtime-rs) — the VM runtime of Agora's sandboxes
+# (RuntimeClass `kata`, apps/agora-sandboxes). Measured on this host on 2026-09-22
+# (docs/agent-sandbox-evaluation.md). Needs KVM; the checksum pins the amd64 release asset.
+if [ "$DEB_ARCH" != amd64 ] || [ ! -e /dev/kvm ]; then
+  warn "Kata skipped: needs amd64 with /dev/kvm (RuntimeClass kata will not schedule here)"
+else
+  if [ -x /opt/kata/runtime-rs/bin/containerd-shim-kata-v2 ] && grep -qx "$KATA_VERSION" /opt/kata/VERSION 2>/dev/null; then
+    ok "Kata ${KATA_VERSION} already installed"
+  else
+    apt-get install -y -qq --no-install-recommends zstd
+    kata_tmp=$(mktemp -d)
+    curl -fsSLo "$kata_tmp/$KATA_ASSET" "$KATA_RELEASE_URL/$KATA_ASSET"
+    echo "$KATA_SHA256  $kata_tmp/$KATA_ASSET" | sha256sum -c -
+    tar --zstd -xf "$kata_tmp/$KATA_ASSET" -C /
+    rm -rf "$kata_tmp"
+    ok "Kata ${KATA_VERSION} installed in /opt/kata"
+  fi
+  # vhost-vsock carries the agent channel into each VM, vhost-net its network.
+  printf 'vhost_vsock\nvhost_net\n' > /etc/modules-load.d/kata.conf
+  modprobe vhost_vsock
+  modprobe vhost_net
+  mkdir -p /etc/kata-containers
+  sed -e 's/^default_memory = 2048$/default_memory = 1024/' \
+      -e 's/^disable_guest_seccomp = true$/disable_guest_seccomp = false/' \
+      /opt/kata/share/defaults/kata-containers/runtime-rs/configuration-clh-runtime-rs.toml \
+      > /etc/kata-containers/configuration.toml
+  cat > /etc/k0s/containerd.d/kata.toml <<'EOF'
+version = 2
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
+  runtime_type = "io.containerd.kata.v2"
+  runtime_path = "/opt/kata/runtime-rs/bin/containerd-shim-kata-v2"
+  privileged_without_host_devices = true
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata.options]
+    ConfigPath = "/etc/kata-containers/configuration.toml"
+EOF
+  ok "containerd kata drop-in written, vhost modules loaded at boot"
+fi
 
 # ─── Phase 3: Secrets ────────────────────────────────────────────────
 log "Phase 3 — Secrets"
