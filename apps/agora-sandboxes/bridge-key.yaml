@@ -1,4 +1,4 @@
-# The PUBLIC half of the back-end's Ed25519 signing key (sandbox-image.md, "Qui peut parler au
+# The PUBLIC half of the back-end's Ed25519 signing key (docs/backend.md, "Les routes du
 # bridge"). Not a secret: a sandbox verifies tokens with it and never holds anything that could mint
 # one. The private half is apps/agora-lab/signing-key.secrets.yaml.
 apiVersion: v1

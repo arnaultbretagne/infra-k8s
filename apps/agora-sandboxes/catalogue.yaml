@@ -1,17 +1,19 @@
-# The catalogue of Agora's sandboxes (agent-sandbox.md): one template and one warm pool per image
+# The catalogue of Agora's sandboxes (docs/backend.md): one template and one warm pool per image
 # digest, named after it. Changing an image is a NEW template and pool, never an edit in place —
 # a pool can still hand out sandboxes prepared from the old template.
 #
-# Images: arnaultbretagne/agora, branch spike/sandbox-backend, sandbox/images/Dockerfile (CI
-# sandbox-backend, commit 926845c).
+# Images: arnaultbretagne/agora, branch feat/sandbox-backend, harnesses/<harness>/Dockerfile (CI
+# sandbox-backend, commit 2ce0d36).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: mock-556cbcb8ee97
+  name: mock-699ffea5771a
 spec:
   networkPolicyManagement: Unmanaged
+  # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
+  service: true
   podTemplate:
     metadata:
       labels:
@@ -35,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:556cbcb8ee978681278d0bf9e3e876c4cf92fc6a7a03bc8029bc0d0c0ee062d6
+          image: ghcr.io/arnaultbretagne/agora-sandbox-mock@sha256:699ffea5771afcf16ddd969080b3ea30761db051fc8064bfde7208d6462e6736
           ports:
             - name: bridge
               containerPort: 8080
@@ -88,21 +90,23 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: mock-556cbcb8ee97
+  name: mock-699ffea5771a
   labels:
     agora.bretagne.dev/harness: mock
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: mock-556cbcb8ee97
+    name: mock-699ffea5771a
 ---
 # claude-code 2.1.261 + claude-agent-acp 0.75.1, WITHOUT credentials (out of this contract).
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-6b27047c7826
+  name: claude-code-178fb07fddd0
 spec:
   networkPolicyManagement: Unmanaged
+  # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
+  service: true
   podTemplate:
     metadata:
       labels:
@@ -126,7 +130,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:6b27047c7826c684e2e6cacfcf0f3ea96eb3c61b610068b2b90845315681a30b
+          image: ghcr.io/arnaultbretagne/agora-sandbox-claude-code@sha256:178fb07fddd0cb3ed6be1f17c111ca90e5b08281b6a0c79e4a30b1218d618318
           ports:
             - name: bridge
               containerPort: 8080
@@ -179,10 +183,10 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-6b27047c7826
+  name: claude-code-178fb07fddd0
   labels:
     agora.bretagne.dev/harness: claude-code
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-6b27047c7826
+    name: claude-code-178fb07fddd0
