@@ -59,10 +59,11 @@ spec:
       # max, they never all do at once). Kube*QuotaOvercommit compares quota
       # promises vs allocatable and warns at 1.5x — permanently false-positive here.
       # Kube*Overcommit (actual pod requests vs allocatable) is kept: that one is real.
-      disabledRules:
-        kubernetes-resources:
-          - KubeCPUQuotaOvercommit
-          - KubeMemoryQuotaOvercommit
+      # The chart key is a flat alert-name map (defaultRules.disabled.<Alert>: true);
+      # anything else is silently ignored by Helm.
+      disabled:
+        KubeCPUQuotaOvercommit: true
+        KubeMemoryQuotaOvercommit: true
 
     # Single-node k0s/kine: nobody will ever do apiserver SLOs here. The chart's
     # default metricRelabelings only trims some bucket label values; this REPLACES
