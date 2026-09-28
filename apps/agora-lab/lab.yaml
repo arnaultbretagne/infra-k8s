@@ -3,7 +3,7 @@
 # agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
 # bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
 # ONLY state it owns: everything about living sandboxes is on their claims. With the token of the
-# Agent Vault agent `agora-lab` (member of the vault `default`), it mints each execution's
+# Agent Vault agent `agent-lab` (member of the vault `default`), it mints each execution's
 # proxy-only session and hands it to the bridge (docs/credentials.md). One replica, Recreate: two
 # back-ends would fight over the same bridges.
 apiVersion: v1
@@ -125,13 +125,11 @@ spec:
           secret:
             secretName: signing-key
             defaultMode: 0440
-        # The agent token is read at each mint: until the Secret exists, attaching a credential is
-        # refused with the reason, and everything else works.
+        # The token of the Agent Vault agent `agent-lab`, read at each mint (docs/credentials.md).
         - name: agent-vault
           secret:
             secretName: agent-vault
             defaultMode: 0440
-            optional: true
 ---
 apiVersion: v1
 kind: Service
