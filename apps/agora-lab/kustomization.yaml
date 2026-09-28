@@ -1,6 +1,6 @@
 # agora-lab.bretagne.dev — the lab of Agora's sandbox back-end: the back-end itself (claims in
 # agora-sandboxes, bridge relay, anchors) and a bare page that exercises every case of its contract.
-# Source: arnaultbretagne/agora, branch feat/executions, apps/lab. Operators only (OIDC, admin).
+# Source: arnaultbretagne/agora, branch feat/credentials, apps/lab. Operators only (OIDC, admin).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: agora-lab

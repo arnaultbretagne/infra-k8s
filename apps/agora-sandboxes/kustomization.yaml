@@ -8,6 +8,7 @@ resources:
   - quota.yaml
   - ghcr-pull.secrets.yaml
   - bridge-key.yaml
+  - agent-vault-ca.yaml
   - networkpolicy.yaml
   - rbac.yaml
   - catalogue.yaml

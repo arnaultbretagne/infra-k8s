@@ -1,12 +1,11 @@
 # Default-deny. A sandbox is reached only by Agora (the lab) on the bridge port, and by the
-# kubelet's readiness probe. It reaches only Agora's anchor receiver; claude-code also gets
-# Anthropic's API — without a credential its prompts fail with a 401, which is
-# the lab's point (the harness's credentials are out of this contract). CiliumNetworkPolicy
+# kubelet's readiness probe. It reaches Agora's anchor receiver and Agent Vault's MITM proxy, nothing
+# else: every request of a harness goes out through the proxy, which sets the credential
+# (docs/credentials.md on arnaultbretagne/agora). No route to the Internet. CiliumNetworkPolicy
 # throughout, as in agora-system: `fromEntities: [host]` has no plain equivalent.
 #
 # No FQDN rule: inside a Kata VM, answers from Cilium's DNS proxy never reach the guest (lookups
-# time out after 20-26 s; plain DNS answers in ~0.2 s — measured 2026-09-27). The API is allowed by
-# Anthropic's published address range instead (api.anthropic.com = 160.79.104.0/23).
+# time out after 20-26 s; plain DNS answers in ~0.2 s — measured 2026-09-27).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -61,21 +60,20 @@ spec:
       toPorts:
         - ports: [{ port: "8081", protocol: TCP }]
 ---
+# The way out of every harness (docs/credentials.md): the bridge forwards each CONNECT to Agent
+# Vault's MITM proxy with the execution's session. The other half is apps/agent-vault/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: claude-code-egress
+  name: credential-proxy
 spec:
   endpointSelector:
     matchLabels:
-      agora.bretagne.dev/harness: claude-code
+      app.kubernetes.io/part-of: agora-sandboxes
   egress:
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s:k8s-app: kube-dns
+            k8s:io.kubernetes.pod.namespace: agent-vault
+            app: agent-vault
       toPorts:
-        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-    - toCIDR: [160.79.104.0/23]
-      toPorts:
-        - ports: [{ port: "443", protocol: TCP }]
+        - ports: [{ port: "14322", protocol: TCP }]

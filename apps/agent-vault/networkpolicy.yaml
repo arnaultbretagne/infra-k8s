@@ -36,6 +36,25 @@ spec:
     - ports:
       - port: '14321'
         protocol: TCP
+  # Agora's sandboxes go out through the MITM proxy with a proxy-only session (docs/credentials.md
+  # on arnaultbretagne/agora). The other half is apps/agora-sandboxes/networkpolicy.yaml.
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: agora-sandboxes
+        app.kubernetes.io/part-of: agora-sandboxes
+    toPorts:
+    - ports:
+      - port: '14322'
+        protocol: TCP
+  # Agora's lab mints those sessions with its agent token (POST /v1/sessions).
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: agora-lab
+        app: lab
+    toPorts:
+    - ports:
+      - port: '14321'
+        protocol: TCP
   egress:
   - toEndpoints:
     - matchLabels:
