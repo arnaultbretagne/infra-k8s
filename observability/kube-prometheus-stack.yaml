@@ -54,6 +54,15 @@ spec:
         kubeSchedulerAlerting: false
         kubeSchedulerRecording: false
         kubeProxy: false
+      # Single-node 6 vCPU / 32 GB: the sum of per-namespace ResourceQuota hard
+      # ceilings is intentionally > node allocatable (each ns can burst to its own
+      # max, they never all do at once). Kube*QuotaOvercommit compares quota
+      # promises vs allocatable and warns at 1.5x — permanently false-positive here.
+      # Kube*Overcommit (actual pod requests vs allocatable) is kept: that one is real.
+      disabledRules:
+        kubernetes-resources:
+          - KubeCPUQuotaOvercommit
+          - KubeMemoryQuotaOvercommit
 
     # Single-node k0s/kine: nobody will ever do apiserver SLOs here. The chart's
     # default metricRelabelings only trims some bucket label values; this REPLACES
