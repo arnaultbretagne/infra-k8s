@@ -3,14 +3,14 @@
 # a pool can still hand out sandboxes prepared from the old template.
 #
 # Images: arnaultbretagne/agora, branch feat/credentials, harnesses/<harness>/Dockerfile (CI
-# credentials, commit b56fcee). Every harness goes out through Agent Vault's MITM proxy and trusts
-# its root certificate (docs/credentials.md).
+# credentials, commit 3ad44dc). Every harness goes out through a credential proxy — Agent Vault or
+# Agora's gateway — and trusts their roots (docs/credentials.md).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: mock-1cc07cc47db3
+  name: mock-4daf4fa05e05
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -38,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:1cc07cc47db36bc01aeffa6da043d4c8bee2c4155e25c056410f3e66beca6e58
+          image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:4daf4fa05e0540d4aff9c4f3c18c9a868ccc89fddbe3bc55a36405630f010218
           ports:
             - name: bridge
               containerPort: 8080
@@ -56,7 +56,7 @@ spec:
               value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
-            # Agent Vault's MITM root: the harness's TLS to the outside ends at its proxy.
+            # The credential proxies' roots: the harness's TLS to the outside ends at the proxy.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
           # Ready means ACP is servable: the adapter lives and answered initialize.
@@ -96,25 +96,25 @@ spec:
                   path: token
         - name: credential-proxy
           configMap:
-            name: agent-vault-ca
+            name: credential-proxy-ca
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: mock-1cc07cc47db3
+  name: mock-4daf4fa05e05
   labels:
     agora.bretagne.dev/harness: mock
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: mock-1cc07cc47db3
+    name: mock-4daf4fa05e05
 ---
 # claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agent Vault's proxy once Agora
 # attaches a session to the execution (docs/credentials.md); the image only holds a placeholder.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-a3bf1d1e2390
+  name: claude-code-e6440e39ce21
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -142,7 +142,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:a3bf1d1e2390fd142f28f7ae0fcee51bb7b6e560d8b11b614e636d4e03525190
+          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:e6440e39ce2154a2629945ddfe355c4fa2e4af230d080dcc4d1b3327a17570ae
           ports:
             - name: bridge
               containerPort: 8080
@@ -160,7 +160,7 @@ spec:
               value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
-            # Agent Vault's MITM root: the harness's TLS to the outside ends at its proxy.
+            # The credential proxies' roots: the harness's TLS to the outside ends at the proxy.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
           # Ready means ACP is servable: the adapter lives and answered initialize.
@@ -200,15 +200,15 @@ spec:
                   path: token
         - name: credential-proxy
           configMap:
-            name: agent-vault-ca
+            name: credential-proxy-ca
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-a3bf1d1e2390
+  name: claude-code-e6440e39ce21
   labels:
     agora.bretagne.dev/harness: claude-code
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-a3bf1d1e2390
+    name: claude-code-e6440e39ce21

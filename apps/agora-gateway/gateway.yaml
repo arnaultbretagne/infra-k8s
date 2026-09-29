@@ -1,0 +1,199 @@
+# The gateway (docs/credentials.md on arnaultbretagne/agora, "La passerelle"). One replica: it keeps no
+# state, but one is enough for the lab.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+data:
+  config.yaml: |
+    # agentgateway v1.5.0, standalone. Port 3000 takes CONNECT from the sandboxes' bridges; each tunnel to
+    # :443 re-enters the internal bind, where TLS is terminated with Agora's gateway CA (the sandboxes trust
+    # it), the JWT is verified, the grants are checked, and the host's credential is set.
+    frontendPolicies:
+      accessLog:
+        add:
+          execution: jwt.sub
+          grants: jwt.jti
+    config:
+      adminAddr: 127.0.0.1:15000
+      statsAddr: "off"
+      readinessAddr: 0.0.0.0:15021
+    binds:
+      - port: 3000
+        tunnelProtocol: connect
+        listeners: []
+      - port: 443
+        mode: internal
+        listeners:
+          - protocol: HTTPS
+            tls:
+              mode: dynamicCa
+              cert: /etc/agentgateway/ca/ca-cert.pem
+              key: /etc/agentgateway/ca/ca-key.pem
+            routes:
+                # Claude: the operator's setup-token replaces the harness's placeholder.
+                - name: anthropic
+                  hostnames: [api.anthropic.com]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: no path tricks, and some grant of the JWT covers
+                        # this host, path and query, and method.
+                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/anthropic }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
+                # GitHub REST (GraphQL stays closed: no grant covers /graphql).
+                - name: github-api
+                  hostnames: [api.github.com]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: no path tricks, and some grant of the JWT covers
+                        # this host, path and query, and method.
+                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/github }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
+                # git smart HTTP: Basic x-access-token:<PAT>.
+                - name: github-git
+                  hostnames: [github.com]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: no path tricks, and some grant of the JWT covers
+                        # this host, path and query, and method.
+                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/github-basic }
+                        location: { header: { name: authorization, prefix: "Basic " } }
+---
+# Agora's public key for the grants JWT (the private half is apps/agora-lab/grants-key.secrets.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grants-jwks
+data:
+  jwks.json: |
+    {"keys":[{"crv":"Ed25519","x":"U_PyUtCN-FJeNrctkdeFPC4MkrlSyhyRr3EMTpP_icA","kty":"OKP","kid":"agora-grants-1","alg":"EdDSA","use":"sig"}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      priorityClassName: bretagne-low
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: ghcr.io/agentgateway/agentgateway:v1.5.0@sha256:bf2f339ef326d32def2aaeb44b1b4549801293c19b89e764a4228667d97d9896
+          args: ["-f", "/etc/agentgateway/config/config.yaml"]
+          ports:
+            - name: connect
+              containerPort: 3000
+            - name: readiness
+              containerPort: 15021
+          readinessProbe:
+            httpGet: { path: /healthz/ready, port: readiness }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz/ready, port: readiness }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: config, mountPath: /etc/agentgateway/config, readOnly: true }
+            - { name: jwks, mountPath: /etc/agentgateway/jwks, readOnly: true }
+            - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
+            # Watched by the gateway: rotating a credential needs no restart.
+            - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
+      volumes:
+        - name: config
+          configMap:
+            name: gateway-config
+        - name: jwks
+          configMap:
+            name: grants-jwks
+        - name: ca
+          secret:
+            secretName: gateway-ca
+            defaultMode: 0440
+        - name: credentials
+          secret:
+            secretName: upstream-credentials
+            defaultMode: 0440
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+spec:
+  selector:
+    app: gateway
+  ports:
+    - name: connect
+      port: 3000
+      targetPort: connect

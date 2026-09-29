@@ -3,7 +3,7 @@
 # agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
 # bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
 # ONLY state it owns: everything about living sandboxes is on their claims. With the token of the
-# Agent Vault agent `agora-lab` (member of the vault `default`), it mints each execution's
+# Agent Vault agent `agent-lab` (member of the vault `default`), it mints each execution's
 # proxy-only session and hands it to the bridge (docs/credentials.md). One replica, Recreate: two
 # back-ends would fight over the same bridges.
 apiVersion: v1
@@ -76,7 +76,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:2ba8be5ac0ff63d82ed423c6a6da6c4ca01647337709da3442761f42d23d2bf6 # feat/credentials b56fcee
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:0ba2759a77df6d56e86101bc89b7acec2b3d83467b5380f9e27ae5f1d3566a37 # feat/credentials 3ad44dc
           ports:
             - name: http
               containerPort: 8080
@@ -90,7 +90,10 @@ spec:
             - { name: LAB, value: "true" }
             # The API server's CA, for the global fetch of the Kubernetes client.
             - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
-            # docs/credentials.md: the lab mints sessions on the API; sandboxes reach the proxy.
+            # docs/credentials.md: the lab signs the execution's grants for Agora's gateway (the default
+            # source), or mints an Agent Vault session; sandboxes reach either through their bridge.
+            - { name: GATEWAY_PROXY, value: "gateway.agora-gateway.svc.cluster.local:3000" }
+            - { name: GRANTS_KEY_FILE, value: /etc/agora/grants/private.pem }
             - { name: AGENT_VAULT_API, value: "http://agent-vault-api.agent-vault.svc.cluster.local:14321" }
             - { name: AGENT_VAULT_PROXY, value: "agent-vault-proxy.agent-vault.svc.cluster.local:14322" }
             - { name: AGENT_VAULT_NAME, value: default }
@@ -116,6 +119,7 @@ spec:
           volumeMounts:
             - { name: anchors, mountPath: /data }
             - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
+            - { name: grants, mountPath: /etc/agora/grants, readOnly: true }
             - { name: agent-vault, mountPath: /etc/agora/agent-vault, readOnly: true }
       volumes:
         - name: anchors
@@ -125,13 +129,16 @@ spec:
           secret:
             secretName: signing-key
             defaultMode: 0440
-        # The agent token is read at each mint: until the Secret exists, attaching a credential is
-        # refused with the reason, and everything else works.
+        # Signs each execution's grants for the gateway (its public half: apps/agora-gateway).
+        - name: grants
+          secret:
+            secretName: grants-key
+            defaultMode: 0440
+        # The token of the Agent Vault agent `agent-lab`, read at each mint (docs/credentials.md).
         - name: agent-vault
           secret:
             secretName: agent-vault
             defaultMode: 0440
-            optional: true
 ---
 apiVersion: v1
 kind: Service

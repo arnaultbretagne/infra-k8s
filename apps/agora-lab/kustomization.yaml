@@ -9,6 +9,8 @@ resources:
   - limitrange.yaml
   - ghcr-pull.secrets.yaml
   - signing-key.secrets.yaml
+  - agent-vault.secrets.yaml
+  - grants-key.secrets.yaml
   - oauth2-proxy.secrets.yaml
   - lab.yaml
   - oauth2-proxy.yaml
