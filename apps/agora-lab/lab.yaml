@@ -2,10 +2,9 @@
 # (docs/executions.md) mounted with the page that exercises them. Its ServiceAccount creates and re-arms claims in
 # agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
 # bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
-# ONLY state it owns: everything about living sandboxes is on their claims. With the token of the
-# Agent Vault agent `agent-lab` (member of the vault `default`), it mints each execution's
-# proxy-only session and hands it to the bridge (docs/credentials.md). One replica, Recreate: two
-# back-ends would fight over the same bridges.
+# ONLY state it owns: everything about living sandboxes is on their claims. It signs each
+# execution's grants for Agora's gateway and hands the token to the bridge (docs/credentials.md,
+# ADR 0001). One replica, Recreate: two back-ends would fight over the same bridges.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -76,7 +75,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:0ba2759a77df6d56e86101bc89b7acec2b3d83467b5380f9e27ae5f1d3566a37 # feat/credentials 3ad44dc
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:3b73f61da5fd1a21720737d3bf452692660395a6610b8b21345dcef8763ef1ae # feat/credentials 609940e
           ports:
             - name: http
               containerPort: 8080
@@ -90,14 +89,10 @@ spec:
             - { name: LAB, value: "true" }
             # The API server's CA, for the global fetch of the Kubernetes client.
             - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
-            # docs/credentials.md: the lab signs the execution's grants for Agora's gateway (the default
-            # source), or mints an Agent Vault session; sandboxes reach either through their bridge.
+            # docs/credentials.md: the lab signs the execution's grants for Agora's gateway, which
+            # sandboxes reach through their bridge.
             - { name: GATEWAY_PROXY, value: "gateway.agora-gateway.svc.cluster.local:3000" }
             - { name: GRANTS_KEY_FILE, value: /etc/agora/grants/private.pem }
-            - { name: AGENT_VAULT_API, value: "http://agent-vault-api.agent-vault.svc.cluster.local:14321" }
-            - { name: AGENT_VAULT_PROXY, value: "agent-vault-proxy.agent-vault.svc.cluster.local:14322" }
-            - { name: AGENT_VAULT_NAME, value: default }
-            - { name: AGENT_VAULT_TOKEN_FILE, value: /etc/agora/agent-vault/token }
           startupProbe:
             httpGet: { path: /healthz, port: http }
             failureThreshold: 20
@@ -120,7 +115,6 @@ spec:
             - { name: anchors, mountPath: /data }
             - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
             - { name: grants, mountPath: /etc/agora/grants, readOnly: true }
-            - { name: agent-vault, mountPath: /etc/agora/agent-vault, readOnly: true }
       volumes:
         - name: anchors
           persistentVolumeClaim:
@@ -133,11 +127,6 @@ spec:
         - name: grants
           secret:
             secretName: grants-key
-            defaultMode: 0440
-        # The token of the Agent Vault agent `agent-lab`, read at each mint (docs/credentials.md).
-        - name: agent-vault
-          secret:
-            secretName: agent-vault
             defaultMode: 0440
 ---
 apiVersion: v1

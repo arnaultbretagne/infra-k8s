@@ -1,5 +1,5 @@
 # Default-deny plus the flows of the lab: Traefik → oauth2-proxy → lab; the lab reaches the
-# Kubernetes API (claims), the sandboxes' bridge port and Agent Vault's API, nothing else. The other half of the bridge
+# Kubernetes API (claims) and the sandboxes' bridge port, nothing else. The other half of the bridge
 # flow is apps/agora-sandboxes/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -51,13 +51,6 @@ spec:
             app.kubernetes.io/part-of: agora-sandboxes
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    # Agent Vault's API: minting an execution's proxy session (docs/credentials.md).
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agent-vault
-            app: agent-vault
-      toPorts:
-        - ports: [{ port: "14321", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
