@@ -2,15 +2,15 @@
 # digest, named after it. Changing an image is a NEW template and pool, never an edit in place —
 # a pool can still hand out sandboxes prepared from the old template.
 #
-# Images: arnaultbretagne/agora, branch feat/credentials, harnesses/<harness>/Dockerfile (CI
-# credentials, commit 3ad44dc). Every harness goes out through Agora's gateway and trusts its root
+# Images: arnaultbretagne/agora, branch feat/thin-bridge, harnesses/<harness>/Dockerfile (CI
+# thin bridge, commit 7afc4d7). Every harness goes out through Agora's gateway and trusts its root
 # (docs/credentials.md, ADR 0001).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: mock-4daf4fa05e05
+  name: mock-1a1cc63caf03
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -38,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:4daf4fa05e0540d4aff9c4f3c18c9a868ccc89fddbe3bc55a36405630f010218
+          image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:1a1cc63caf036cd609c6cbcdf67224a573bbc713444654fd7d7447e9bc71de9f
           ports:
             - name: bridge
               containerPort: 8080
@@ -59,7 +59,7 @@ spec:
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
-          # Ready means ACP is servable: the adapter lives and answered initialize.
+          # Ready means the adapter runs; Agora initializes it after allocation.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }
             periodSeconds: 2
@@ -101,20 +101,20 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: mock-4daf4fa05e05
+  name: mock-1a1cc63caf03
   labels:
     agora.bretagne.dev/harness: mock
 spec:
   replicas: 2
   sandboxTemplateRef:
-    name: mock-4daf4fa05e05
+    name: mock-1a1cc63caf03
 ---
 # claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agora's gateway once Agora
 # attaches the execution's grants (docs/credentials.md); the image only holds a placeholder.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-e6440e39ce21
+  name: claude-code-5f3bb480d8cd
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -142,7 +142,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:e6440e39ce2154a2629945ddfe355c4fa2e4af230d080dcc4d1b3327a17570ae
+          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:5f3bb480d8cd1dccfe9ab6561b8a46d8cf5bad90574bccef2e379124e311b81c
           ports:
             - name: bridge
               containerPort: 8080
@@ -163,7 +163,7 @@ spec:
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
-          # Ready means ACP is servable: the adapter lives and answered initialize.
+          # Ready means the adapter runs; Agora initializes it after allocation.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }
             periodSeconds: 2
@@ -205,10 +205,10 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-e6440e39ce21
+  name: claude-code-5f3bb480d8cd
   labels:
     agora.bretagne.dev/harness: claude-code
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-e6440e39ce21
+    name: claude-code-5f3bb480d8cd
