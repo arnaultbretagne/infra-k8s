@@ -3,8 +3,8 @@
 # a pool can still hand out sandboxes prepared from the old template.
 #
 # Images: arnaultbretagne/agora, branch feat/credentials, harnesses/<harness>/Dockerfile (CI
-# credentials, commit 3ad44dc). Every harness goes out through a credential proxy — Agent Vault or
-# Agora's gateway — and trusts their roots (docs/credentials.md).
+# credentials, commit 3ad44dc). Every harness goes out through Agora's gateway and trusts its root
+# (docs/credentials.md, ADR 0001).
 ---
 # The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
@@ -56,7 +56,7 @@ spec:
               value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
-            # The credential proxies' roots: the harness's TLS to the outside ends at the proxy.
+            # The gateway's root: the harness's TLS to the outside ends at the gateway.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
           # Ready means ACP is servable: the adapter lives and answered initialize.
@@ -109,8 +109,8 @@ spec:
   sandboxTemplateRef:
     name: mock-4daf4fa05e05
 ---
-# claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agent Vault's proxy once Agora
-# attaches a session to the execution (docs/credentials.md); the image only holds a placeholder.
+# claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agora's gateway once Agora
+# attaches the execution's grants (docs/credentials.md); the image only holds a placeholder.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -160,7 +160,7 @@ spec:
               value: http://lab.agora-lab.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
-            # The credential proxies' roots: the harness's TLS to the outside ends at the proxy.
+            # The gateway's root: the harness's TLS to the outside ends at the gateway.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
           # Ready means ACP is servable: the adapter lives and answered initialize.
