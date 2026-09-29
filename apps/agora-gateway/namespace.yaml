@@ -1,0 +1,12 @@
+# Agora's credential gateway (docs/credentials.md on arnaultbretagne/agora, "La passerelle"): the only
+# way out of Agora's sandboxes. It holds the upstream credentials; an execution holds only a short JWT,
+# signed by Agora, listing its grants.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora-gateway
+  labels:
+    platform.bretagne.dev/profile: trusted-control
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

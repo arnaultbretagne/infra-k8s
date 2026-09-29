@@ -18,6 +18,8 @@ resources:
   # (agora-lab.bretagne.dev, OIDC-gated).
   - agora-sandboxes
   - agora-lab
+  # Their credential gateway: the sandboxes' only way out (agentgateway, grants signed by the lab).
+  - agora-gateway
   - agent-vault
   - home-assistant
   - terminal

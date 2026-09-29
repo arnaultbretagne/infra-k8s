@@ -1,0 +1,42 @@
+# Default-deny. The gateway takes CONNECT from Agora's sandboxes only, and goes out to the Internet on
+# 443 only: every upstream it serves is HTTPS (docs/credentials.md on arnaultbretagne/agora). The other
+# half is apps/agora-sandboxes/networkpolicy.yaml (credential-gateway).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gateway
+spec:
+  endpointSelector:
+    matchLabels:
+      app: gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-sandboxes
+            app.kubernetes.io/part-of: agora-sandboxes
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "15021", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

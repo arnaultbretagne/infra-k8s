@@ -1,5 +1,5 @@
 # Default-deny. A sandbox is reached only by Agora (the lab) on the bridge port, and by the
-# kubelet's readiness probe. It reaches Agora's anchor receiver and Agent Vault's MITM proxy, nothing
+# kubelet's readiness probe. It reaches Agora's anchor receiver and the credential proxies, nothing
 # else: every request of a harness goes out through the proxy, which sets the credential
 # (docs/credentials.md on arnaultbretagne/agora). No route to the Internet. CiliumNetworkPolicy
 # throughout, as in agora-system: `fromEntities: [host]` has no plain equivalent.
@@ -60,8 +60,10 @@ spec:
       toPorts:
         - ports: [{ port: "8081", protocol: TCP }]
 ---
-# The way out of every harness (docs/credentials.md): the bridge forwards each CONNECT to Agent
-# Vault's MITM proxy with the execution's session. The other half is apps/agent-vault/networkpolicy.yaml.
+# The way out of every harness (docs/credentials.md): the bridge forwards each CONNECT to the
+# credential proxy attached to the execution — Agent Vault's MITM proxy with a session, or Agora's
+# gateway with the execution's grants. The other halves are apps/agent-vault/networkpolicy.yaml and
+# apps/agora-gateway/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -77,3 +79,9 @@ spec:
             app: agent-vault
       toPorts:
         - ports: [{ port: "14322", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-gateway
+            app: gateway
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
