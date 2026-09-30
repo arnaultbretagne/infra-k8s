@@ -1,4 +1,4 @@
-# The lab (apps/lab on arnaultbretagne/agora feat/credentials): Agora's executions
+# The lab (apps/lab on arnaultbretagne/agora feat/thin-bridge): Agora's executions
 # (docs/executions.md) mounted with the page that exercises them. Its ServiceAccount creates and re-arms claims in
 # agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
 # bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
@@ -75,7 +75,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:3b73f61da5fd1a21720737d3bf452692660395a6610b8b21345dcef8763ef1ae # feat/credentials 609940e
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:e92da6dd52ba807f6d6ddf9a68a3a01c9f5ea635b420dd6c0153b8f3cb83e1e2 # feat/thin-bridge 7afc4d7
           ports:
             - name: http
               containerPort: 8080
