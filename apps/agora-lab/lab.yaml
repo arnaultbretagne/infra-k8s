@@ -76,6 +76,7 @@ spec:
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
             - { name: MAX_ACTIVE, value: "6" }
             - { name: LAB, value: "true" }
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
             # The API server's CA, for the global fetch of the Kubernetes client.
             - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
             # docs/credentials.md: the lab signs the execution's grants for Agora's gateway, which
@@ -96,9 +97,11 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 30
+          # The log keeps the Workstreams it follows in memory: a long run of large answers needs
+          # room, and Node's heap is sized to the container's limit.
           resources:
-            requests: { cpu: 20m, memory: 96Mi }
-            limits: { memory: 384Mi }
+            requests: { cpu: 20m, memory: 128Mi }
+            limits: { memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
