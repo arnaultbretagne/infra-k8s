@@ -216,3 +216,112 @@ spec:
   replicas: 1
   sandboxTemplateRef:
     name: claude-code-5f3bb480d8cd
+---
+# opencode 1.18.34 and its own ACP server, on z.ai's Coding Plan (glm-5.3). Image from
+# arnaultbretagne/agora feat/harness-opencode, commit 31456b0: the image declares its native directory
+# (its SQLite database) and that the bridge restarts it onto an anchor. Its key is set by the gateway
+# on the grants Agora hands the bridge; the image only holds a placeholder (ZHIPU_API_KEY).
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: opencode-5b7b61826a5f
+spec:
+  networkPolicyManagement: Unmanaged
+  # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
+  service: true
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: agora-sandboxes
+        agora.bretagne.dev/harness: opencode
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # The grace period is for one thing: the bridge stops the adapter and pushes the anchor.
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: ghcr.io/arnaultbretagne/agora-harness-opencode@sha256:5b7b61826a5ff9ff27092ecebb8e137efafc7880db97f0782eced09ed871be9a
+          ports:
+            - name: bridge
+              containerPort: 8080
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: BRIDGE_PUBLIC_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: agora-bridge-key
+                  key: public.pem
+            - name: AGORA_ANCHOR_URL
+              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
+            - name: AGORA_TOKEN_FILE
+              value: /var/run/agora/token
+            # The gateway's root: the harness's TLS to the outside ends at the gateway.
+            - name: NODE_EXTRA_CA_CERTS
+              value: /etc/agora/credential-proxy/ca.pem
+          # Ready means the adapter runs; Agora initializes it after allocation.
+          readinessProbe:
+            httpGet: { path: /healthz, port: bridge }
+            periodSeconds: 2
+            failureThreshold: 1
+          # An idle sandbox uses ~1m CPU (measured 2026-09-27). The request only reserves scheduling
+          # room on a 6-core node: at 250m (+100m Kata overhead) a cold sandbox could not be scheduled
+          # while stopped ones waited for their deadline. A turn may still burst up to the limit.
+          resources:
+            requests: { cpu: 50m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: home, mountPath: /home/harness }
+            - { name: tmp, mountPath: /tmp }
+            - { name: agora-token, mountPath: /var/run/agora, readOnly: true }
+            - { name: credential-proxy, mountPath: /etc/agora/credential-proxy, readOnly: true }
+      volumes:
+        - name: home
+          emptyDir: { sizeLimit: 2Gi }
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+        # The Pod's identity when it pushes its anchor: minted and rotated by the kubelet, bound to
+        # this Pod, only valid for the back-end's audience — useless against the API server.
+        - name: agora-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: agora-anchors
+                  expirationSeconds: 600
+                  path: token
+        - name: credential-proxy
+          configMap:
+            name: credential-proxy-ca
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: opencode-5b7b61826a5f
+  labels:
+    agora.bretagne.dev/harness: opencode
+  annotations:
+    # The base profiles (docs/specs/credentials.md): z.ai, the only service opencode reaches.
+    agora.bretagne.dev/base-profiles: zai
+spec:
+  replicas: 1
+  sandboxTemplateRef:
+    name: opencode-5b7b61826a5f
