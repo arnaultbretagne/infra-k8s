@@ -7,8 +7,8 @@ resources:
   - code-server
   - obsidian
   # `agent` (the channels-era hub) was decommissioned 2026-08-07 — replaced by `agora`, and `agora`
-  # itself was decommissioned 2026-09-08 — replaced by the rewritten engine in `agora-system`, whose
-  # workloads come from the product's own repository (clusters/bretagne/agora.yaml).
+  # itself was decommissioned 2026-09-08 — replaced by the rewritten engine in `agora-system`, itself
+  # retired 2026-10: `agora-system` now holds Agora's database, `agora-pg`, for the lab's log.
   - agora-system
   - agora-onecli
   - agora-runs

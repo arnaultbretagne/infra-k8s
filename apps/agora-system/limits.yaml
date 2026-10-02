@@ -5,8 +5,8 @@
 # from the quota — a quota naming a resource forces EVERY container to declare it, and the database
 # legitimately sets a CPU ceiling the workloads do not.
 #
-# Sized against what the namespace declares today (six Pods: API ×2, worker, runtime-control,
-# broker, web, plus the database) with room for a rollout to run old and new Pods side by side.
+# Sized for what the namespace declares today — the database, its migration Job and the restore
+# drill — with the room the retired engine left.
 apiVersion: v1
 kind: LimitRange
 metadata:
