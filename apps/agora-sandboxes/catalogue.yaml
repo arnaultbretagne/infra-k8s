@@ -109,8 +109,8 @@ spec:
   sandboxTemplateRef:
     name: mock-1a1cc63caf03
 ---
-# claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agora's gateway once Agora
-# attaches the execution's grants (docs/credentials.md); the image only holds a placeholder.
+# claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agora's gateway on the
+# grants Agora hands the bridge (docs/architecture/credentials.md); the image only holds a placeholder.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -208,6 +208,10 @@ metadata:
   name: claude-code-5f3bb480d8cd
   labels:
     agora.bretagne.dev/harness: claude-code
+  annotations:
+    # The base profiles (docs/specs/credentials.md): Agora hands each warm Pod a token for them, so
+    # the SDK reaches Anthropic from the start. The mock declares none.
+    agora.bretagne.dev/base-profiles: anthropic
 spec:
   replicas: 1
   sandboxTemplateRef:
