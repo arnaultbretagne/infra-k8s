@@ -1,0 +1,42 @@
+# The log's schema on `agora`, applied by its owner (packages/log/scripts/migrate.ts, from the lab's
+# image). Idempotent; named after the schema it applies, so a new schema is a new Job. The owner's
+# password reaches node-postgres through PGUSER/PGPASSWORD: the URL names no credential.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agora-log-migrate-001
+  namespace: agora-system
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        agora.dev/job: log-migration
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:e473bd783f4522c5f690eba912fa08f6127208626bfa331e91625ff2305fe3a0 # feat/log 5b7f0e5
+          command: [node, /app/packages/log/scripts/migrate.ts]
+          env:
+            - { name: LOG_MIGRATION_URL, value: "postgresql://agora-pg-rw.agora-system.svc.cluster.local:5432/agora" }
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: agora-owner-pg, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: agora-owner-pg, key: password } }
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

@@ -1,0 +1,105 @@
+# Agora's database: the cluster `agora-pg`, its database `agora` and its owner `agora_owner`, the
+# names it has carried since the rewritten engine. It moved here from the agora repository
+# (deploy/overlays/live/postgres.yaml) when that engine was retired; the instance, its volume and
+# its backup chain are the same ones.
+#
+# Never pruned: a refactor of this directory must not be able to delete the database. Removing it
+# is a deliberate `kubectl delete`.
+#
+# The log's schema creates three NOLOGIN roles — agora_writer, agora_projector, agora_anchors
+# (packages/log/sql/001.sql) — and the server connects with one login per role, declared below with
+# passwords the environment owns. Until the migration Job has run once, their `inRoles` dangle and
+# CNPG reports them as failed; that heals on its next reconcile. No login owns a table: the schema
+# belongs to `agora_owner`, used by the migration only.
+#
+# It backs up, because what it holds is unreplayable: the log is the record, and an anchor is a
+# native transcript no harness can reconstruct. `cnpg-s3-creds` is distributed into this namespace
+# by apps/shared/cnpg-s3-creds.yaml.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: agora-pg
+  namespace: agora-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+    cnpg.io/skipEmptyWalArchiveCheck: enabled
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  # The superuser applies nothing: it is the operator's connection, for a wipe or a repair by hand.
+  enableSuperuserAccess: true
+  enablePDB: true
+  primaryUpdateStrategy: unsupervised
+  monitoring:
+    enablePodMonitor: true
+  bootstrap:
+    initdb:
+      database: agora
+      owner: agora_owner
+      secret:
+        name: agora-owner-pg
+  storage:
+    size: 10Gi
+    storageClass: local-path
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: '2', memory: 1Gi }
+
+  managed:
+    roles:
+      # Applies the schema: it creates the three group roles, hence CREATEROLE.
+      - name: agora_owner
+        login: true
+        createdb: true
+        createrole: true
+        passwordSecret:
+          name: agora-owner-pg
+      - name: agora_log_writer
+        login: true
+        inRoles: [agora_writer]
+        passwordSecret:
+          name: agora-log-writer-pg
+      - name: agora_log_projector
+        login: true
+        inRoles: [agora_projector]
+        passwordSecret:
+          name: agora-log-projector-pg
+      - name: agora_log_anchors
+        login: true
+        inRoles: [agora_anchors]
+        passwordSecret:
+          name: agora-log-anchors-pg
+      # The retired engine's logins.
+      - { name: agora_cp_login, ensure: absent }
+      - { name: agora_rc_login, ensure: absent }
+      - { name: agora_payload_login, ensure: absent }
+
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/agora
+      # The same barman server as before the move: one cluster, one timeline. Never reuse this
+      # serverName for another cluster — two clusters in one barman server corrupt it for both.
+      serverName: agora-pg
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+        secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+      wal:
+        compression: snappy
+    retentionPolicy: "7d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: agora-pg-daily
+  namespace: agora-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # Six fields, seconds first (robfig/cron). 03:45, after stremio and OneCLI at 03:30, so no two
+  # base backups contend on this single node.
+  schedule: "0 45 3 * * *"
+  immediate: true
+  cluster:
+    name: agora-pg
+  backupOwnerReference: self

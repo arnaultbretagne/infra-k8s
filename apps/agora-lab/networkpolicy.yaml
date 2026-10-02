@@ -1,5 +1,5 @@
 # Default-deny plus the flows of the lab: Traefik → oauth2-proxy → lab; the lab reaches the
-# Kubernetes API (claims) and the sandboxes' bridge port, nothing else. The other half of the bridge
+# Kubernetes API (claims), the sandboxes' bridge port and its database, nothing else. The other half of the bridge
 # flow is apps/agora-sandboxes/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -51,6 +51,13 @@ spec:
             app.kubernetes.io/part-of: agora-sandboxes
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
+    # The log's database (apps/agora-system/postgres.yaml).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-system
+            cnpg.io/cluster: agora-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

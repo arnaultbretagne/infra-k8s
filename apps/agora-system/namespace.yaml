@@ -1,6 +1,5 @@
-# The rewritten engine's own namespace — the control plane, its two owners, the operator surface
-# and the product database. Its siblings are `agora-runs` (the harness Pods, untrusted compute) and
-# `agora-onecli` (the credential gateway, a third-party product we host).
+# Agora's database, `agora-pg`: the log of the lab in `agora-lab` (packages/log on
+# arnaultbretagne/agora), and its migration. The engine that ran here before is retired.
 #
 # `baseline`, not `restricted`, for one reason and with one TODO: `restricted` rejects ANY root
 # container, init ones included, and CNPG's local-path/fsGroup chown initContainer is root — the

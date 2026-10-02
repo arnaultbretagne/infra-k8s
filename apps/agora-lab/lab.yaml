@@ -1,10 +1,11 @@
-# The lab (apps/lab on arnaultbretagne/agora feat/thin-bridge): Agora's executions
-# (docs/executions.md) mounted with the page that exercises them. Its ServiceAccount creates and re-arms claims in
-# agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and reviews the Pods' projected tokens; it signs
-# bridge tokens with the private key and keeps the anchors the Pods push on its own volume — the
-# ONLY state it owns: everything about living sandboxes is on their claims. It signs each
-# execution's grants for Agora's gateway and hands the token to the bridge (docs/credentials.md,
-# ADR 0001). One replica, Recreate: two back-ends would fight over the same bridges.
+# The lab (apps/lab on arnaultbretagne/agora): Agora's execution mechanics and its log, mounted with
+# the page that plays their cases (docs/specs/executions.md, log.md, credentials.md). Its
+# ServiceAccount creates and re-arms claims in agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and
+# reviews the Pods' projected tokens; it signs bridge tokens with the private key, and each
+# execution's grants for Agora's gateway (docs/credentials.md, ADR 0001). What it remembers — the
+# log, the anchors the Pods push — is in the `agora` database (apps/agora-system), through three
+# runtime logins. One replica, Recreate: the log admits one owner, and a second Pod would wait for
+# the first to let go of the database.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -33,17 +34,6 @@ subjects:
   - kind: ServiceAccount
     name: lab
     namespace: agora-lab
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: anchors
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 1Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,7 +65,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:e92da6dd52ba807f6d6ddf9a68a3a01c9f5ea635b420dd6c0153b8f3cb83e1e2 # feat/thin-bridge 7afc4d7
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:e473bd783f4522c5f690eba912fa08f6127208626bfa331e91625ff2305fe3a0 # feat/log 5b7f0e5
           ports:
             - name: http
               containerPort: 8080
@@ -84,7 +74,6 @@ spec:
           env:
             - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
-            - { name: ANCHOR_DIR, value: /data/anchors }
             - { name: MAX_ACTIVE, value: "6" }
             - { name: LAB, value: "true" }
             # The API server's CA, for the global fetch of the Kubernetes client.
@@ -93,6 +82,10 @@ spec:
             # sandboxes reach through their bridge.
             - { name: GATEWAY_PROXY, value: "gateway.agora-gateway.svc.cluster.local:3000" }
             - { name: GRANTS_KEY_FILE, value: /etc/agora/grants/private.pem }
+          # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL.
+          envFrom:
+            - secretRef:
+                name: log
           startupProbe:
             httpGet: { path: /healthz, port: http }
             failureThreshold: 20
@@ -112,13 +105,9 @@ spec:
             capabilities:
               drop: [ALL]
           volumeMounts:
-            - { name: anchors, mountPath: /data }
             - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
             - { name: grants, mountPath: /etc/agora/grants, readOnly: true }
       volumes:
-        - name: anchors
-          persistentVolumeClaim:
-            claimName: anchors
         - name: signing
           secret:
             secretName: signing-key
