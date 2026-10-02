@@ -65,7 +65,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:9dc724425b1a14e2cd6722a49deeaacd292eb4394e5c122d87ab30348a1a037c # feat/warm-credentials 76334b4
+          image: ghcr.io/arnaultbretagne/agora-lab@sha256:130368d1008578a8b0411d878ef22d7da0478a7eb6155deeb265d29cfb9bf083 # feat/zai-profile e96543a
           ports:
             - name: http
               containerPort: 8080

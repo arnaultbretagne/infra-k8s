@@ -56,6 +56,31 @@ data:
                       key:
                         value: { file: /etc/agentgateway/credentials/anthropic }
                         location: { header: { name: authorization, prefix: "Bearer " } }
+                # z.ai (GLM): the operator's API key, as a Bearer, for its OpenAI- and Anthropic-compatible APIs alike.
+                - name: zai
+                  hostnames: [api.z.ai]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: no path tricks, and some grant of the JWT covers
+                        # this host, path and query, and method.
+                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/zai }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
                 # GitHub REST (GraphQL stays closed: no grant covers /graphql).
                 - name: github-api
                   hostnames: [api.github.com]
