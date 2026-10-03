@@ -7,6 +7,7 @@ resources:
   - namespace.yaml
   - quota.yaml
   - ghcr-pull.secrets.yaml
+  - codex-account.secrets.yaml
   - bridge-key.yaml
   - credential-proxy-ca.yaml
   - networkpolicy.yaml
