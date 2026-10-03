@@ -104,6 +104,10 @@ metadata:
   name: mock-1a1cc63caf03
   labels:
     agora.bretagne.dev/harness: mock
+  annotations:
+    # The settings each Session starts with (docs/specs/executions.md, "The API"; log.md, "Sessions"):
+    # applied by Agora once the Session opens, before the first prompt. Full access in every pool.
+    agora.bretagne.dev/session-config: mode=full-access
 spec:
   replicas: 2
   sandboxTemplateRef:
@@ -212,6 +216,8 @@ metadata:
     # The base profiles (docs/specs/credentials.md): Agora hands each warm Pod a token for them, so
     # the SDK reaches Anthropic from the start. The mock declares none.
     agora.bretagne.dev/base-profiles: anthropic
+    # No permission asked, Opus, high effort.
+    agora.bretagne.dev/session-config: mode=bypassPermissions,model=opus,effort=high
 spec:
   replicas: 1
   sandboxTemplateRef:
@@ -321,6 +327,8 @@ metadata:
   annotations:
     # The base profiles (docs/specs/credentials.md): z.ai, the only service opencode reaches.
     agora.bretagne.dev/base-profiles: zai
+    # Build (it asks no permission), GLM 5.3, high effort.
+    agora.bretagne.dev/session-config: mode=build,model=zai-coding-plan/glm-5.3,effort=high
 spec:
   replicas: 1
   sandboxTemplateRef:
@@ -438,6 +446,8 @@ metadata:
   annotations:
     # The base profiles (docs/specs/credentials.md): codex opens its Sessions against ChatGPT.
     agora.bretagne.dev/base-profiles: chatgpt
+    # Full access, GPT-6.1 Sol, high reasoning effort.
+    agora.bretagne.dev/session-config: mode=agent-full-access,model=gpt-6.1-sol,reasoning_effort=high
 spec:
   replicas: 1
   sandboxTemplateRef:
