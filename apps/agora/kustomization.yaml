@@ -14,6 +14,11 @@ resources:
   - oauth2-proxy.secrets.yaml
   - log.secrets.yaml
   - server.yaml
+  - server-image.yaml
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
+# The server's image, by digest: written by Agora's CI when it proposes a new one, with server-image.yaml.
+images:
+  - name: ghcr.io/arnaultbretagne/agora-server
+    digest: sha256:c614c90f1400270dd16c93af58ac7c6c10e20d66078579753b1d828021750cb8

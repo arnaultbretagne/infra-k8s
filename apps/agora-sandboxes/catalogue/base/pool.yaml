@@ -1,0 +1,12 @@
+# The warm pool every harness has: its name and harness label come from the harness's folder; its
+# annotations and replicas, when they differ, from its patches.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: harness
+  labels:
+    agora.bretagne.dev/harness: harness
+spec:
+  replicas: 1
+  sandboxTemplateRef:
+    name: harness

@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - harness.yaml
+# Its data into the shared template and pool: the name — the harness and its image's digest, so that
+# a new image is a new template and pool — the label and the image.
+replacements:
+  - source: { kind: ConfigMap, name: codex, fieldPath: data.name }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - metadata.name
+      - select: { kind: SandboxWarmPool }
+        fieldPaths:
+          - metadata.name
+          - spec.sandboxTemplateRef.name
+  - source: { kind: ConfigMap, name: codex, fieldPath: data.harness }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - "spec.podTemplate.metadata.labels.[agora.bretagne.dev/harness]"
+      - select: { kind: SandboxWarmPool }
+        fieldPaths:
+          - "metadata.labels.[agora.bretagne.dev/harness]"
+  - source: { kind: ConfigMap, name: codex, fieldPath: data.image }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - "spec.podTemplate.spec.containers.[name=sandbox].image"
+patches:
+  - target: { kind: SandboxWarmPool }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          # The base profiles (docs/specs/credentials.md): codex opens its Sessions against ChatGPT.
+          agora.bretagne.dev/base-profiles: chatgpt
+          # The settings each Session starts with: full access, GPT-6.1 Sol, high reasoning effort.
+          agora.bretagne.dev/session-config: mode=agent-full-access,model=gpt-6.1-sol,reasoning_effort=high
+  - target: { kind: SandboxTemplate }
+    patch: |-
+      # codex is a Rust binary: it reads its roots from SSL_CERT_FILE, not NODE_EXTRA_CA_CERTS; and the
+      # account its placeholder login names.
+      - op: add
+        path: /spec/podTemplate/spec/containers/0/env/-
+        value: { name: SSL_CERT_FILE, value: /etc/agora/credential-proxy/ca.pem }
+      - op: add
+        path: /spec/podTemplate/spec/containers/0/env/-
+        value: { name: CODEX_ACCOUNT_ID, valueFrom: { secretKeyRef: { name: codex-account, key: account_id } } }

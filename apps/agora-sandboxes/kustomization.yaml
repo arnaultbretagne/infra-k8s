@@ -12,4 +12,4 @@ resources:
   - credential-proxy-ca.yaml
   - networkpolicy.yaml
   - rbac.yaml
-  - catalogue.yaml
+  - catalogue
