@@ -9,5 +9,6 @@ resources:
   - limitrange.yaml
   - gateway-ca.secrets.yaml
   - upstream-credentials.secrets.yaml
+  - chatgpt-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml
