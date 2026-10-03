@@ -108,17 +108,19 @@ metadata:
     # The settings each Session starts with (docs/specs/executions.md, "The API"; log.md, "Sessions"):
     # applied by Agora once the Session opens, before the first prompt. Full access in every pool.
     agora.bretagne.dev/session-config: mode=full-access
+    # For the tests (the live cases, the scripted checks): the screen does not offer it.
+    agora.bretagne.dev/purpose: testing
 spec:
   replicas: 2
   sandboxTemplateRef:
     name: mock-1a1cc63caf03
 ---
-# claude-code 2.1.261 + claude-agent-acp 0.75.1. Its credential is set by Agora's gateway on the
+# claude-code 2.1.288 + claude-agent-acp 0.85.1 (its models named with their version: opus is Opus 5.5). Its credential is set by Agora's gateway on the
 # grants Agora hands the bridge (docs/architecture/credentials.md); the image only holds a placeholder.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
-  name: claude-code-5f3bb480d8cd
+  name: claude-code-54c511e1caef
 spec:
   networkPolicyManagement: Unmanaged
   # The back-end reaches the bridge through this Service (status.sandbox.serviceFQDN).
@@ -146,7 +148,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: sandbox
-          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:5f3bb480d8cd1dccfe9ab6561b8a46d8cf5bad90574bccef2e379124e311b81c
+          image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:54c511e1caef9fa5055de16b5d087bd46d07691fba2dabcabdcef038042b0c0f
           ports:
             - name: bridge
               containerPort: 8080
@@ -209,19 +211,19 @@ spec:
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
-  name: claude-code-5f3bb480d8cd
+  name: claude-code-54c511e1caef
   labels:
     agora.bretagne.dev/harness: claude-code
   annotations:
     # The base profiles (docs/specs/credentials.md): Agora hands each warm Pod a token for them, so
     # the SDK reaches Anthropic from the start. The mock declares none.
     agora.bretagne.dev/base-profiles: anthropic
-    # No permission asked, Opus, high effort.
+    # No permission asked, Opus 5.5, high effort.
     agora.bretagne.dev/session-config: mode=bypassPermissions,model=opus,effort=high
 spec:
   replicas: 1
   sandboxTemplateRef:
-    name: claude-code-5f3bb480d8cd
+    name: claude-code-54c511e1caef
 ---
 # opencode 1.18.34 and its own ACP server, on z.ai's Coding Plan (glm-5.3). Image from
 # arnaultbretagne/agora feat/harness-opencode, commit 31456b0: the image declares its native directory
