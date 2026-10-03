@@ -10,7 +10,7 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
                                                     Pocket-ID (id.bretagne.dev) OIDC, public+PKCE
                                                                     │
                                   10.10.20.10 (g4, masqueraded) ──> 10.10.40.10:6638 (SLZB-06p10, VLAN 40)
-                                                                ──> 10.10.30.110:3001 (LG webOS TV, VLAN 30)
+                                                                ──> 10.10.30.110:3001 + udp/9 (LG webOS TV, VLAN 30)
 ```
 
 | File | Role |
@@ -20,7 +20,7 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
 | `oidc-configmap.yaml` | owner username (= Pocket-ID username) and the Pocket-ID `client_id` |
 | `cluster.yaml` | `ha-pg` CNPG cluster + daily backup; `restore-test.yaml` proves it restores |
 | `config-backup.yaml` | nightly tarball of `/config` to R2 (`home-assistant-config/` prefix, 14 days) |
-| `networkpolicy.yaml` | default-deny; egress = DNS, ha-pg, `10.10.40.10:6638`, `10.10.30.110:3001`, HTTPS |
+| `networkpolicy.yaml` | default-deny; egress = DNS, ha-pg, `10.10.40.10:6638`, `10.10.30.110:3001` + UDP `9` (Wake-on-LAN), HTTPS |
 
 ## Why these choices (short)
 
@@ -100,11 +100,25 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   names is the table inside the TV's `/usr/sbin/network-input-service` (`ssh lg-tv` from g4). Apps
   and HDMI inputs are launched by id with `webostv.command` `system.launcher/launch`; list ids with
   `luna-send -n 1 luna://com.webos.applicationManager/listLaunchPoints '{}'` on the TV.
-- **Power on is not wired yet.** In standby the TV leaves the network (Quick Start+ and
-  *Turn on via Wi-Fi/LAN* are on, so it listens for Wake-on-LAN only), and a magic packet cannot
-  cross from VLAN 20. It needs a router rule VLAN 20 → `10.10.30.110` UDP `9` plus a permanent
-  neighbour entry for the TV's MAC on the router (the TV no longer answers ARP when off), then
-  `wake_on_lan` here and an automation on the `webostv.turn_on` trigger. Power off works.
+- **Power on/off.** Off is native (`media_player.turn_off` → SSAP `system/turnOff`). On is
+  Wake-on-LAN: in standby the TV leaves the network and its NIC listens for a magic packet only
+  (Quick Start+ and *Turn on via Wi-Fi/LAN* are on). webostv cannot wake it: its `turn_on` runs the
+  automations on the `webostv.turn_on` trigger, here the Git-owned `tv_salon_power_on`
+  (`configuration.yaml`, `automation gitops`), which sends the packet with `wake_on_lan`. While
+  that automation exists the media player stays available (`off`) in standby and offers turn on,
+  so `media_player.toggle` (the *Marche / Arrêt* button, the media card's power icon) does both.
+  A broadcast cannot leave VLAN 20, so the packet goes **unicast** to `10.10.30.110` UDP `9`.
+- **Router for Wake-on-LAN (not in this repo, in place since 2026-10-03):** traffic rule
+  `g4-media-wol` = `10.10.20.10` → `10.10.30.110` **UDP** `9`, accept (the `g4-media` rule is TCP
+  only), and a permanent ARP entry for the TV, because in standby it no longer answers ARP and the
+  router would drop the packet with "host unreachable". RutOS 7 has no form for it; in System →
+  Maintenance → CLI:
+  `uci set network.tv_salon=neighbor`, then `interface='lan3'`, `ipaddr='10.10.30.110'`,
+  `mac='58:fd:b1:65:fe:04'` on that section, `uci commit network`, and
+  `ip neigh replace 10.10.30.110 lladdr 58:fd:b1:65:fe:04 nud permanent dev br-lan.30` to apply it
+  now. `ip neigh show 10.10.30.110` must say `PERMANENT`, also after `ifup lan3`. Verified
+  2026-10-03: a magic packet from g4 woke the TV within a second, while 20 minutes of webostv
+  reconnects reaching the sleeping NIC had not.
 
 ## HTTP config is storage-backed (why there is no `http:` in the YAML)
 

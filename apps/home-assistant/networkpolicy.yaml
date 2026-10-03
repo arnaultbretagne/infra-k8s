@@ -6,9 +6,9 @@
 # Nothing intra-cluster beyond CNPG.
 #
 # The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638); the
-# LG webOS TV sits on VLAN 30 (10.10.30.110, SSAP WebSocket :3001). Pod egress leaves g4 masqueraded
-# as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must also allow VLAN 20 -> each of those
-# IP:port pairs — those rules are not in this repo (README.md).
+# LG webOS TV sits on VLAN 30 (10.10.30.110, SSAP WebSocket :3001, Wake-on-LAN UDP 9). Pod egress
+# leaves g4 masqueraded as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must also allow
+# VLAN 20 -> each of those IP:port pairs — those rules are not in this repo (README.md).
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -66,12 +66,15 @@ spec:
     #    wss://:3001 on a refused connection, but a silent drop here outlasts its 2 s connect timeout
     #    and the whole connect fails ("cannot connect", no prompt on the TV). The router refuses
     #    :3000 (RST), so the traffic stays TLS. The TV's SSH (:22) is never reachable from the pod.
+    #    UDP 9 carries the Wake-on-LAN magic packet, sent unicast to the TV's IP (a broadcast cannot
+    #    leave VLAN 20); the router keeps a permanent ARP entry so it reaches the sleeping NIC.
     - toCIDR:
         - 10.10.30.110/32
       toPorts:
         - ports:
             - { port: "3001", protocol: TCP }
             - { port: "3000", protocol: TCP }
+            - { port: "9", protocol: UDP }
     # -> SSDP/UPnP discovery (default_config's ssdp integration): UDP 1900 to the SSDP
     #    multicast group and the local broadcast, nothing else. Without this rule the
     #    periodic discovery bursts feed NetworkPolicyDrops forever (hubble POLICY_DENIED).

@@ -58,6 +58,30 @@ data:
     script: !include scripts.yaml
     scene: !include scenes.yaml
 
+    # The wake_on_lan.send_magic_packet action (the integration takes no YAML options).
+    wake_on_lan:
+
+    # Git-owned automations, next to the UI's automations.yaml (read-only in the UI).
+    automation gitops:
+      # Power on for the LG TV (README.md "LG TV remote"). webostv cannot wake the TV: its turn_on runs
+      # whatever listens on the webostv.turn_on trigger, and only while such an automation exists does
+      # the media player offer "turn on" and stay available (state off) in standby, so
+      # media_player.toggle is a real power button. In standby the TV is off the network and its NIC
+      # listens for a magic packet only. A broadcast cannot leave VLAN 20, so the packet goes UNICAST
+      # to the TV's IP on UDP 9: the router forwards it and holds a permanent ARP entry for the MAC.
+      - id: tv_salon_power_on
+        alias: TV du salon — allumage (Wake-on-LAN)
+        triggers:
+          - trigger: webostv.turn_on
+            entity_id: media_player.salon_tv
+        actions:
+          - action: wake_on_lan.send_magic_packet
+            data:
+              mac: "58:fd:b1:65:fe:04"
+              broadcast_address: 10.10.30.110
+              broadcast_port: 9
+        mode: single
+
     # Git-owned dashboards (read-only in the UI): each `dashboard-<slug>.yaml` key of this ConfigMap is
     # copied by provision.py to dashboards/<slug>.yaml. The slug must contain a hyphen (HA rule).
     # Dashboards made in the UI live in .storage/ and are untouched.
@@ -337,6 +361,8 @@ data:
     # like the physical remote. Key names: the table in the TV's /usr/sbin/network-input-service.
     # Apps and HDMI inputs are launched by id (webostv.command system.launcher/launch), not by title.
     # The TV entity id is the one chosen at pairing, defined once below (&tv); README.md "LG TV remote".
+    # Power: media_player.toggle turns the TV off over SSAP, or on through the Wake-on-LAN automation
+    # (configuration.yaml, `automation gitops`).
     title: Télécommande
     views:
       - title: Télé LG
@@ -345,6 +371,12 @@ data:
         cards:
           - type: media-control
             entity: &tv media_player.salon_tv
+          - type: button
+            name: Marche / Arrêt
+            icon: mdi:power
+            entity: *tv
+            show_state: true
+            tap_action: {action: perform-action, perform_action: media_player.toggle, target: {entity_id: *tv}}
           - type: grid
             title: Navigation
             columns: 3
