@@ -44,6 +44,15 @@ spec:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: '2', memory: 1Gi }
+  # A client gone without its connection's close ever reaching PostgreSQL (the lab's Pod, when it
+  # moved to `agora`) leaves its backend idle — and the advisory lock that makes a server the log's
+  # owner held, so every new server is refused — until the kernel's default keepalive, 2 h. Probed
+  # after 30 s idle, every 10 s, dropped after 3 misses: the next server starts within about a minute.
+  postgresql:
+    parameters:
+      tcp_keepalives_idle: "30"
+      tcp_keepalives_interval: "10"
+      tcp_keepalives_count: "3"
 
   managed:
     roles:
