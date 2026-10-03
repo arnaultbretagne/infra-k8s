@@ -1,8 +1,9 @@
 # Config-only provisioning (ADR 0015): stock HA image + this ConfigMap + a /config PVC.
 # `provision.py` runs as an initContainer before EVERY start and is the idempotent provisioning
 # layer: it pins the hass-oidc-auth custom component (tag + sha256), pre-installs its Python
-# requirements into /config/deps, and re-seeds configuration.yaml from here (Git is the source of
-# truth for the YAML; the UI owns .storage/, automations.yaml, scripts.yaml, scenes.yaml).
+# requirements into /config/deps, and re-seeds configuration.yaml and the dashboard-*.yaml dashboards
+# from here (Git is the source of truth for the YAML; the UI owns .storage/, automations.yaml,
+# scripts.yaml, scenes.yaml and the dashboards it creates).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -57,6 +58,18 @@ data:
     script: !include scripts.yaml
     scene: !include scenes.yaml
 
+    # Git-owned dashboards (read-only in the UI): each `dashboard-<slug>.yaml` key of this ConfigMap is
+    # copied by provision.py to dashboards/<slug>.yaml. The slug must contain a hyphen (HA rule).
+    # Dashboards made in the UI live in .storage/ and are untouched.
+    lovelace:
+      dashboards:
+        telecommande-tv:
+          mode: yaml
+          title: Télécommande
+          icon: mdi:remote-tv
+          show_in_sidebar: true
+          filename: dashboards/telecommande-tv.yaml
+
   http-config.json: |
     {
       "server_port": 8123,
@@ -80,7 +93,8 @@ data:
        image rootfs — read-only here, and lost at every restart anyway. Installed with --no-deps
        so nothing shadows the image's own pinned libraries (cryptography etc.); the manifest's deps
        are checked afterwards.
-    3. configuration.yaml re-seeded from the ConfigMap; UI-editor include files created if absent.
+    3. configuration.yaml and the dashboard-<slug>.yaml keys (-> dashboards/<slug>.yaml) re-seeded
+       from the ConfigMap; UI-editor include files created if absent.
     4. The HTTP config (reverse-proxy trust, IP ban) written as the STABLE entry of .storage/http,
        from http-config.json. HA >= 2026 keeps this config in storage: YAML is migrated once into a
        pending trial that must be promoted by an admin within 5 minutes or HA reverts + restarts —
@@ -192,6 +206,13 @@ data:
         p = os.path.join(CONFIG, name)
         if not os.path.exists(p):
             open(p, "w").close()
+    dashboards = os.path.join(CONFIG, "dashboards")
+    os.makedirs(dashboards, exist_ok=True)
+    for name in sorted(os.listdir(SEED)):
+        if name.startswith("dashboard-") and name.endswith(".yaml"):
+            shutil.copyfile(os.path.join(SEED, name),
+                            os.path.join(dashboards, name.removeprefix("dashboard-")))
+            log(f"dashboard {name.removeprefix('dashboard-')} seeded")
     log("configuration seeded")
 
     # --- 4. HTTP config -> .storage/http (stable) --------------------------------------------
@@ -308,3 +329,195 @@ data:
     except Exception as e:                                    # never take HA down with us
         log(f"FAILED: {e!r} - finish onboarding by hand NOW (README.md)")
     idle()
+
+  dashboard-telecommande-tv.yaml: |
+    # Managed by GitOps (apps/home-assistant/configmap.yaml) — copied to /config/dashboards/ at every
+    # pod start; a YAML dashboard is read-only in the UI, edit it here.
+    # Keys go through webostv.button = the TV's remote channel (pointer input socket), so each one acts
+    # like the physical remote. Key names: the table in the TV's /usr/sbin/network-input-service.
+    # Apps and HDMI inputs are launched by id (webostv.command system.launcher/launch), not by title.
+    # The entity id comes from the manual config flow: title "LG webOS TV <modelName>" (README.md).
+    title: Télécommande
+    views:
+      - title: Télé LG
+        path: tv
+        icon: mdi:remote-tv
+        cards:
+          - type: media-control
+            entity: &tv media_player.lg_webos_tv_oled65cx6la
+          - type: grid
+            title: Navigation
+            columns: 3
+            square: false
+            cards:
+              - type: button
+                name: Retour
+                icon: mdi:arrow-u-left-top
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: BACK}}
+              - type: button
+                show_name: false
+                icon: mdi:chevron-up
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: UP}}
+              - type: button
+                name: Accueil
+                icon: mdi:home
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: HOME}}
+              - type: button
+                show_name: false
+                icon: mdi:chevron-left
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: LEFT}}
+              - type: button
+                name: OK
+                icon: mdi:checkbox-blank-circle-outline
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: ENTER}}
+              - type: button
+                show_name: false
+                icon: mdi:chevron-right
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: RIGHT}}
+              - type: button
+                name: Réglages
+                icon: mdi:cog-outline
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: QMENU}}
+              - type: button
+                show_name: false
+                icon: mdi:chevron-down
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: DOWN}}
+              - type: button
+                name: Quitter
+                icon: mdi:close
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: EXIT}}
+          - type: grid
+            title: Son et chaînes
+            columns: 3
+            square: false
+            cards:
+              - type: button
+                name: Vol −
+                icon: mdi:volume-minus
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: VOLUMEDOWN}}
+              - type: button
+                name: Muet
+                icon: mdi:volume-mute
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: MUTE}}
+              - type: button
+                name: Vol +
+                icon: mdi:volume-plus
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: VOLUMEUP}}
+              - type: button
+                name: Chaîne −
+                icon: mdi:minus
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: CHANNELDOWN}}
+              - type: button
+                name: Infos
+                icon: mdi:information-outline
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: INFO}}
+              - type: button
+                name: Chaîne +
+                icon: mdi:plus
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: CHANNELUP}}
+          - type: grid
+            title: Lecture
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                show_name: false
+                icon: mdi:rewind
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: REWIND}}
+              - type: button
+                show_name: false
+                icon: mdi:play
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: PLAY}}
+              - type: button
+                show_name: false
+                icon: mdi:pause
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: PAUSE}}
+              - type: button
+                show_name: false
+                icon: mdi:fast-forward
+                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: FASTFORWARD}}
+          - type: grid
+            title: Applis
+            columns: 3
+            square: false
+            cards:
+              - type: button
+                name: Netflix
+                icon: mdi:netflix
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: netflix}}}
+              - type: button
+                name: YouTube
+                icon: mdi:youtube
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: youtube.leanback.v4}}}
+              - type: button
+                name: Prime Video
+                icon: mdi:filmstrip
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: amazon}}}
+              - type: button
+                name: Disney+
+                icon: mdi:castle
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.disney.disneyplus-prod}}}
+              - type: button
+                name: Apple TV
+                icon: mdi:apple
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.apple.appletv}}}
+              - type: button
+                name: CANAL+
+                icon: mdi:alpha-c-circle
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: canalplus}}}
+              - type: button
+                name: Play Suisse
+                icon: mdi:play-box
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: ch.srgssr.playsuisse.tv}}}
+              - type: button
+                name: blue TV
+                icon: mdi:television-play
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.swisscom.tv.bluetv}}}
+              - type: button
+                name: Stremio
+                icon: mdi:movie-open-play
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: io.strem.tv}}}
+              - type: button
+                name: Spotify
+                icon: mdi:spotify
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: spotify-beehive}}}
+              - type: button
+                name: Twitch
+                icon: mdi:twitch
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: tv.twitch.tv.starshot.lg}}}
+          - type: grid
+            title: Entrées
+            columns: 4
+            square: false
+            cards:
+              - type: button
+                name: PS5
+                icon: mdi:sony-playstation
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi1}}}
+              - type: button
+                name: HDMI 2
+                icon: mdi:video-input-hdmi
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi2}}}
+              - type: button
+                name: Switch 2
+                icon: mdi:nintendo-switch
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi3}}}
+              - type: button
+                name: TV
+                icon: mdi:television-classic
+                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
+                             data: {command: system.launcher/launch, payload: {id: com.webos.app.livetv}}}

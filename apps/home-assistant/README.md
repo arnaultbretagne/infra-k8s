@@ -10,16 +10,17 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
                                                     Pocket-ID (id.bretagne.dev) OIDC, public+PKCE
                                                                     │
                                   10.10.20.10 (g4, masqueraded) ──> 10.10.40.10:6638 (SLZB-06p10, VLAN 40)
+                                                                ──> 10.10.30.110:3001 (LG webOS TV, VLAN 30)
 ```
 
 | File | Role |
 |---|---|
 | `deployment.yaml` | HA (root image, PSS baseline, read-only rootfs) + `provision` init + `onboard` native sidecar |
-| `configmap.yaml` | `configuration.yaml` (Git-owned), `http-config.json` (reverse-proxy trust, written straight into `.storage/http` — see below), `provision.py`, `onboard.py` |
+| `configmap.yaml` | `configuration.yaml` (Git-owned), `http-config.json` (reverse-proxy trust, written straight into `.storage/http` — see below), `provision.py`, `onboard.py`, `dashboard-*.yaml` (Git-owned dashboards) |
 | `oidc-configmap.yaml` | owner username (= Pocket-ID username) and the Pocket-ID `client_id` |
 | `cluster.yaml` | `ha-pg` CNPG cluster + daily backup; `restore-test.yaml` proves it restores |
 | `config-backup.yaml` | nightly tarball of `/config` to R2 (`home-assistant-config/` prefix, 14 days) |
-| `networkpolicy.yaml` | default-deny; egress = DNS, ha-pg, `10.10.40.10:6638`, HTTPS |
+| `networkpolicy.yaml` | default-deny; egress = DNS, ha-pg, `10.10.40.10:6638`, `10.10.30.110:3001`, HTTPS |
 
 ## Why these choices (short)
 
@@ -67,6 +68,32 @@ found its requirements already in the image; `onboard` created the owner and rev
 7. Backups: `Backup` objects `completed` for `ha-pg`, `ha-pg-restore-test` `PASSED` (05:45),
    `ha-config-backup` `DONE` (04:15). Restore of `/config` = untar the latest archive onto the PVC.
 
+## LG TV remote (webostv)
+
+The TV is an LG OLED65CX6LA (webOS 5.6.2) on VLAN 30 at `10.10.30.110`, MAC
+`58:fd:b1:65:fe:04` (keep its DHCP reservation: the IP is pinned in the network policy). HA talks to
+it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss://10.10.30.110:3001`.
+
+- **Router (not in this repo):** VLAN 20 `10.10.20.10` → `10.10.30.110` TCP `3001` (in place since
+  2026-10-03). The pod has no SSDP path to VLAN 30, so the TV is never auto-discovered.
+- **Pairing (once, TV on):** Settings → Devices & services → Add integration → *LG webOS TV* → host
+  `10.10.30.110` → accept the prompt on the TV with the physical remote. The client key lands in the
+  config entry (and in the nightly `/config` backup).
+- **Entity id:** the manual flow titles the device `LG webOS TV <modelName>`, so the TV is
+  `media_player.lg_webos_tv_oled65cx6la`. The **Télécommande** dashboard (`dashboard-telecommande-tv.yaml`,
+  sidebar) points at that id, defined once at the top of the file. If HA ever names it differently,
+  rename the entity in the UI rather than editing the dashboard.
+- **Keys:** `webostv.button` sends the remote's key names over the TV's pointer input socket, so a
+  key acts like the physical remote (volume follows an ARC soundbar). The authoritative list of key
+  names is the table inside the TV's `/usr/sbin/network-input-service` (`ssh lg-tv` from g4). Apps
+  and HDMI inputs are launched by id with `webostv.command` `system.launcher/launch`; list ids with
+  `luna-send -n 1 luna://com.webos.applicationManager/listLaunchPoints '{}'` on the TV.
+- **Power on is not wired yet.** In standby the TV leaves the network (Quick Start+ and
+  *Turn on via Wi-Fi/LAN* are on, so it listens for Wake-on-LAN only), and a magic packet cannot
+  cross from VLAN 20. It needs a router rule VLAN 20 → `10.10.30.110` UDP `9` plus a permanent
+  neighbour entry for the TV's MAC on the router (the TV no longer answers ARP when off), then
+  `wake_on_lan` here and an automation on the `webostv.turn_on` trigger. Power off works.
+
 ## HTTP config is storage-backed (why there is no `http:` in the YAML)
 
 HA ≥ 2026 keeps `http` settings in `.storage/http` as a stable/pending pair. A YAML `http:` block is
@@ -110,5 +137,6 @@ Roles are read at login only. To open HA to non-operators: add a group (e.g. `ho
 - No Bluetooth (needs D-Bus + privileged). `default_config`'s DHCP discovery logs one
   `aiodhcpwatcher ... Operation not permitted` at boot (no NET_RAW) — harmless, expected.
 - Every HA restart (image bump, node reboot) drops the Zigbee link ~30 s; routers keep the mesh.
+- The LG TV cannot be switched on from HA yet (Wake-on-LAN across VLANs, see "LG TV remote").
 - Bumping `hass-oidc-auth`: change `OIDC_VERSION` **and** `OIDC_SHA256` together in
   `deployment.yaml` (sha256 of the tag archive); `provision.py` fails closed on a mismatch.

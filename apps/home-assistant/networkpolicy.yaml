@@ -1,13 +1,14 @@
 # Default-deny + allow-list (ADR 0020).
 #
-# HA reaches exactly five things: DNS, its own Postgres, the Zigbee coordinator, SSDP multicast
-# (discovery), and HTTPS out (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.
+# HA reaches exactly six things: DNS, its own Postgres, the Zigbee coordinator, the LG TV, SSDP
+# multicast (discovery), and HTTPS out (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.
 # home-assistant.io for the one-time custom-component deps install, HA's own integrations).
 # Nothing intra-cluster beyond CNPG.
 #
-# The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638).
-# Pod egress leaves g4 masqueraded as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must
-# also allow VLAN 20 -> 10.10.40.10:6638/tcp — that rule is not in this repo (README.md).
+# The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638); the
+# LG webOS TV sits on VLAN 30 (10.10.30.110, SSAP WebSocket :3001). Pod egress leaves g4 masqueraded
+# as 10.10.20.10 (Cilium vxlan + masquerade), so the ROUTER must also allow VLAN 20 -> each of those
+# IP:port pairs — those rules are not in this repo (README.md).
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -50,6 +51,12 @@ spec:
         - 10.10.40.10/32
       toPorts:
         - ports: [{ port: "6638", protocol: TCP }]
+    # -> LG webOS TV (VLAN 30), the webostv integration's SSAP WebSocket over TLS. This IP and port
+    #    only; the TV's own SSH (:22) stays reachable from g4's shell, never from the pod.
+    - toCIDR:
+        - 10.10.30.110/32
+      toPorts:
+        - ports: [{ port: "3001", protocol: TCP }]
     # -> SSDP/UPnP discovery (default_config's ssdp integration): UDP 1900 to the SSDP
     #    multicast group and the local broadcast, nothing else. Without this rule the
     #    periodic discovery bursts feed NetworkPolicyDrops forever (hubble POLICY_DENIED).
