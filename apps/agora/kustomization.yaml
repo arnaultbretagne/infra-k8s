@@ -1,0 +1,19 @@
+# agora.bretagne.dev — Agora's server: the client, the execution mechanics (claims in
+# agora-sandboxes, bridge connections) and the log on the `agora` database (apps/agora-system); with
+# TEST_ROUTES, the page that plays the specs' cases at /test/. Source: arnaultbretagne/agora,
+# apps/server and apps/web. Operators only (OIDC, admin).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agora
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - ghcr-pull.secrets.yaml
+  - signing-key.secrets.yaml
+  - grants-key.secrets.yaml
+  - oauth2-proxy.secrets.yaml
+  - log.secrets.yaml
+  - server.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml

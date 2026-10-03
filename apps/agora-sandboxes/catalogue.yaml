@@ -6,7 +6,7 @@
 # thin bridge, commit 7afc4d7). Every harness goes out through Agora's gateway and trusts its root
 # (docs/credentials.md, ADR 0001).
 ---
-# The lab's mock ACP agent: no model, deterministic behaviours, a real native transcript.
+# Agora's mock ACP agent: no model, deterministic behaviours, a real native transcript.
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:
@@ -53,7 +53,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
+              value: http://server.agora.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
@@ -157,7 +157,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
+              value: http://server.agora.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
@@ -267,7 +267,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
+              value: http://server.agora.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
@@ -376,7 +376,7 @@ spec:
                   name: agora-bridge-key
                   key: public.pem
             - name: AGORA_ANCHOR_URL
-              value: http://lab.agora-lab.svc.cluster.local:8081/anchors
+              value: http://server.agora.svc.cluster.local:8081/anchors
             - name: AGORA_TOKEN_FILE
               value: /var/run/agora/token
             # The gateway's root: the harness's TLS to the outside ends at the gateway.

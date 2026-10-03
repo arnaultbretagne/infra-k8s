@@ -1,6 +1,6 @@
-# Default-deny plus the flows of the lab: Traefik → oauth2-proxy → lab; the lab reaches the
-# Kubernetes API (claims), the sandboxes' bridge port and its database, nothing else. The other half of the bridge
-# flow is apps/agora-sandboxes/networkpolicy.yaml.
+# Default-deny plus the flows of the server: Traefik → oauth2-proxy → server; the server reaches the
+# Kubernetes API (claims), the sandboxes' bridge port and its database, nothing else. The other half
+# of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -15,18 +15,18 @@ spec:
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
-  name: lab
+  name: server
 spec:
   endpointSelector:
     matchLabels:
-      app: lab
+      app: server
   ingress:
     - fromEndpoints:
         - matchLabels:
             app: oauth2-proxy
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    - fromEntities: [host] # kubelet probes, and the lab's scripted cases run from the node
+    - fromEntities: [host] # kubelet probes, and the scripted cases run from the node
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
     # The anchor receiver: the sandboxes push there when their Pod ends, and reach nothing else.
@@ -85,7 +85,7 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            app: lab
+            app: server
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
     # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy

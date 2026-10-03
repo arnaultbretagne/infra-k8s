@@ -1,4 +1,4 @@
-# Default-deny. A sandbox is reached only by Agora (the lab) on the bridge port, and by the
+# Default-deny. A sandbox is reached only by Agora's server on the bridge port, and by the
 # kubelet's readiness probe. It reaches Agora's anchor receiver and Agora's gateway, nothing
 # else: every request of a harness goes out through the proxy, which sets the credential
 # (docs/credentials.md on arnaultbretagne/agora). No route to the Internet. CiliumNetworkPolicy
@@ -28,8 +28,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agora-lab
-            app: lab
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
     - fromEntities: [host] # kubelet readiness probe
@@ -55,8 +55,8 @@ spec:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agora-lab
-            app: lab
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
       toPorts:
         - ports: [{ port: "8081", protocol: TCP }]
 ---

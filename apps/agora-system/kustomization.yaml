@@ -1,5 +1,5 @@
 # Agora's database, `agora-pg`, and the log's schema on it (packages/log on arnaultbretagne/agora).
-# Its client is the lab, in agora-lab. The engine that ran here before — its workloads came from the
+# Its client is Agora's server, in `agora`. The engine that ran here before — its workloads came from the
 # agora repository through the `agora` Flux Kustomization — is retired, and this namespace now
 # declares the database itself.
 apiVersion: kustomize.config.k8s.io/v1beta1
