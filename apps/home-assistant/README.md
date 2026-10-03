@@ -83,10 +83,13 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
 - **Pairing (once, TV on):** Settings → Devices & services → Add integration → *LG webOS TV* → host
   `10.10.30.110` → accept the prompt on the TV with the physical remote. The client key lands in the
   config entry (and in the nightly `/config` backup).
-- **Entity id:** the manual flow titles the device `LG webOS TV <modelName>`, so the TV is
-  `media_player.lg_webos_tv_oled65cx6la`. The **Télécommande** dashboard (`dashboard-telecommande-tv.yaml`,
-  sidebar) points at that id, defined once at the top of the file. If HA ever names it differently,
-  rename the entity in the UI rather than editing the dashboard.
+- **Entity id:** the manual flow titles the device `LG webOS TV <modelName>`; the TV was named
+  *Salon TV* when paired (2026-10-03), so the media player is `media_player.salon_tv` (the screen
+  switch, disabled by default, kept `switch.lg_webos_tv_oled65cx6la_screen`). The **Télécommande**
+  dashboard (`dashboard-telecommande-tv.yaml`, sidebar) defines that id once, at the top of the file
+  (`&tv`): rename the entity, change that line. HA re-reads a YAML dashboard when its file changes,
+  so a fix can also be written to `/config/dashboards/` ahead of the merge; `provision.py` reseeds it
+  from Git at the next start.
 - **Keys:** `webostv.button` sends the remote's key names over the TV's pointer input socket, so a
   key acts like the physical remote (volume follows an ARC soundbar). The authoritative list of key
   names is the table inside the TV's `/usr/sbin/network-input-service` (`ssh lg-tv` from g4). Apps

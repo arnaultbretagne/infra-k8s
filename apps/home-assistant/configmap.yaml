@@ -336,7 +336,7 @@ data:
     # Keys go through webostv.button = the TV's remote channel (pointer input socket), so each one acts
     # like the physical remote. Key names: the table in the TV's /usr/sbin/network-input-service.
     # Apps and HDMI inputs are launched by id (webostv.command system.launcher/launch), not by title.
-    # The entity id comes from the manual config flow: title "LG webOS TV <modelName>" (README.md).
+    # The TV entity id is the one chosen at pairing, defined once below (&tv); README.md "LG TV remote".
     title: Télécommande
     views:
       - title: Télé LG
@@ -344,7 +344,7 @@ data:
         icon: mdi:remote-tv
         cards:
           - type: media-control
-            entity: &tv media_player.lg_webos_tv_oled65cx6la
+            entity: &tv media_player.salon_tv
           - type: grid
             title: Navigation
             columns: 3
