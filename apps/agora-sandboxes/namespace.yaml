@@ -1,5 +1,5 @@
 # Agora's sandboxes: one Kata VM per Pod, created from warm pools by Agent Sandbox and claimed by the
-# sandbox back-end (apps/agora-lab). Untrusted from birth (ADR 0028): the admission policy refuses any
+# sandbox back-end (apps/agora). Untrusted from birth (ADR 0028): the admission policy refuses any
 # Pod here without a sandboxing runtime, and PSA restricted applies inside the VM as well.
 apiVersion: v1
 kind: Namespace

@@ -92,9 +92,9 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # The platform's public façade. Replaced the channels-era hub's own `https-agent`
-    # (agent.bretagne.dev), removed at decommission on 2026-08-07. Same OIDC-gate posture
-    # (single-operator hub).
+    # Agora's server (apps/agora): its client, its executions and its log. Replaced the
+    # channels-era hub's own `https-agent` (agent.bretagne.dev), removed at decommission on
+    # 2026-08-07. Behind the OIDC gate (oauth2-proxy, ALLOWED_GROUPS=admin): it starts Kata VMs.
     - name: https-agora
       port: 8443
       protocol: HTTPS
@@ -113,20 +113,6 @@ spec:
       port: 8443
       protocol: HTTPS
       hostname: agora-test.bretagne.dev
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - kind: Secret
-            name: bretagne-tls
-      allowedRoutes:
-        namespaces:
-          from: All
-    # The lab of the redesign's sandbox back-end: it starts Kata VMs, so behind the OIDC gate
-    # (oauth2-proxy, ALLOWED_GROUPS=admin), unlike https-agora-test.
-    - name: https-agora-lab
-      port: 8443
-      protocol: HTTPS
-      hostname: agora-lab.bretagne.dev
       tls:
         mode: Terminate
         certificateRefs:

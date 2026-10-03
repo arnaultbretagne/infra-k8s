@@ -14,7 +14,7 @@ spec:
   egress:
     - {}
 ---
-# The database: its clients are the lab (agora-lab) and the log's migration; then the CNPG operator,
+# The database: its clients are Agora's server (agora) and the log's migration; then the CNPG operator,
 # its own instances, the kubelet and Prometheus.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -28,8 +28,8 @@ spec:
   ingress:
     - fromEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: agora-lab
-            app: lab
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
         - matchLabels:
             agora.dev/job: log-migration
       toPorts:

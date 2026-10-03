@@ -8,17 +8,17 @@ resources:
   - obsidian
   # `agent` (the channels-era hub) was decommissioned 2026-08-07 — replaced by `agora`, and `agora`
   # itself was decommissioned 2026-09-08 — replaced by the rewritten engine in `agora-system`, itself
-  # retired 2026-10: `agora-system` now holds Agora's database, `agora-pg`, for the lab's log.
+  # retired 2026-10: `agora-system` now holds Agora's database, `agora-pg`, for the server's log.
   - agora-system
   - agora-onecli
   - agora-runs
   # The UI showcase of the redesign (agora-test.bretagne.dev), public, static, no backend.
   - agora-test
-  # The redesign's sandbox back-end: Kata sandboxes (Agent Sandbox claims) and its lab
-  # (agora-lab.bretagne.dev, OIDC-gated).
+  # Agora: its sandboxes (Kata, Agent Sandbox claims) and its server (agora.bretagne.dev,
+  # OIDC-gated).
   - agora-sandboxes
-  - agora-lab
-  # Their credential gateway: the sandboxes' only way out (agentgateway, grants signed by the lab).
+  - agora
+  # Their credential gateway: the sandboxes' only way out (agentgateway, grants signed by the server).
   - agora-gateway
   - agent-vault
   - home-assistant

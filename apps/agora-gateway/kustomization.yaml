@@ -1,6 +1,6 @@
 # Agora's credential gateway (docs/credentials.md on arnaultbretagne/agora, branch feat/credentials,
 # "La passerelle"): agentgateway, standalone. Sandboxes reach it through their bridge; it verifies the
-# execution's grants (a JWT signed by Agora, apps/agora-lab) and sets the upstream credential.
+# execution's grants (a JWT signed by Agora, apps/agora) and sets the upstream credential.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: agora-gateway

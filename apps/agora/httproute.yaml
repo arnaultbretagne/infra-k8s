@@ -1,14 +1,14 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: lab
+  name: server
 spec:
   parentRefs:
     - name: bretagne-gateway
       namespace: traefik
-      sectionName: https-agora-lab
+      sectionName: https-agora
   hostnames:
-    - agora-lab.bretagne.dev
+    - agora.bretagne.dev
   rules:
     - filters:
         - type: ResponseHeaderModifier

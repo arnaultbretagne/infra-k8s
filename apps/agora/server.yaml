@@ -1,5 +1,6 @@
-# The lab (apps/lab on arnaultbretagne/agora): Agora's execution mechanics and its log, mounted with
-# the page that plays their cases (docs/specs/executions.md, log.md, credentials.md). Its
+# Agora's server (apps/server on arnaultbretagne/agora): the client, the execution mechanics and the
+# log, on agora.bretagne.dev (docs/specs/executions.md, log.md, credentials.md, assistant-ui.md).
+# TEST_ROUTES adds the routes and the page that play the specs' cases (/api/test/…, /test/). Its
 # ServiceAccount creates and re-arms claims in agora-sandboxes (apps/agora-sandboxes/rbac.yaml) and
 # reviews the Pods' projected tokens; it signs bridge tokens with the private key, and each
 # execution's grants for Agora's gateway (docs/credentials.md, ADR 0001). What it remembers — the
@@ -9,14 +10,14 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: lab
+  name: server
 ---
 # TokenReview: who is pushing an anchor (the Pod a projected token is bound to). Nothing else
 # cluster-wide.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: agora-lab-token-review
+  name: agora-server-token-review
 rules:
   - apiGroups: [authentication.k8s.io]
     resources: [tokenreviews]
@@ -25,20 +26,20 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: agora-lab-token-review
+  name: agora-server-token-review
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: agora-lab-token-review
+  name: agora-server-token-review
 subjects:
   - kind: ServiceAccount
-    name: lab
-    namespace: agora-lab
+    name: server
+    namespace: agora
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: lab
+  name: server
 spec:
   replicas: 1
   revisionHistoryLimit: 2
@@ -46,13 +47,13 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: lab
+      app: server
   template:
     metadata:
       labels:
-        app: lab
+        app: server
     spec:
-      serviceAccountName: lab
+      serviceAccountName: server
       priorityClassName: bretagne-low
       imagePullSecrets:
         - name: ghcr-pull
@@ -64,8 +65,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: lab
-          image: ghcr.io/arnaultbretagne/agora-lab@sha256:251558cc031936acfb9138b198b1cd3f6cff4215ccbe0c1dcd85444b47ba84ad # feat/chatgpt-profile 4b26f3c
+        - name: server
+          image: ghcr.io/arnaultbretagne/agora-server@sha256:fc14e88de7e393625917c2b0bcc39396c977de284daee90fa9cf8987c443b6d0 # feat/web 829d685
           ports:
             - name: http
               containerPort: 8080
@@ -75,11 +76,11 @@ spec:
             - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
             - { name: MAX_ACTIVE, value: "6" }
-            - { name: LAB, value: "true" }
+            - { name: TEST_ROUTES, value: "true" }
             - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
             # The API server's CA, for the global fetch of the Kubernetes client.
             - { name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt }
-            # docs/credentials.md: the lab signs the execution's grants for Agora's gateway, which
+            # docs/credentials.md: the server signs the execution's grants for Agora's gateway, which
             # sandboxes reach through their bridge.
             - { name: GATEWAY_PROXY, value: "gateway.agora-gateway.svc.cluster.local:3000" }
             - { name: GRANTS_KEY_FILE, value: /etc/agora/grants/private.pem }
@@ -124,10 +125,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: lab
+  name: server
 spec:
   selector:
-    app: lab
+    app: server
   ports:
     - name: http
       port: 8080

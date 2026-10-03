@@ -1,4 +1,4 @@
-# Agora's database, `agora-pg`: the log of the lab in `agora-lab` (packages/log on
+# Agora's database, `agora-pg`: the log of Agora's server in `agora` (packages/log on
 # arnaultbretagne/agora), and its migration. The engine that ran here before is retired.
 #
 # `baseline`, not `restricted`, for one reason and with one TODO: `restricted` rejects ANY root

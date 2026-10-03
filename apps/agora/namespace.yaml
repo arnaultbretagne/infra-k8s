@@ -1,0 +1,11 @@
+# Agora's server (agora.bretagne.dev): the client, and the back-end that drives the claims of
+# agora-sandboxes and keeps the log. Same role as agora-system: an Agora control plane.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agora
+  labels:
+    platform.bretagne.dev/profile: trusted-control
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

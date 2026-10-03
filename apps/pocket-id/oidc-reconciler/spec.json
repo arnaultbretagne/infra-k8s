@@ -66,16 +66,9 @@
       "pkceEnabled": false
     },
     {
-      "_comment": "P11 (agora refactoring): the new system's own public façade, agora.bretagne.dev — replaces the 'agent' client at cutover. Own client (not a reuse of 'agent') so both can run side by side during the shadow period, same ADR 0022 blast-radius-per-app principle. Secret bootstrapped the same way as 'onecli'.",
+      "_comment": "Agora's server (apps/agora, agora.bretagne.dev), gated via oauth2-proxy: it starts Kata VMs, so operators only. Secret bootstrapped the same way as 'onecli' (rotated 2026-10-03, when the server moved here from agora-lab).",
       "name": "agora",
       "callbackURLs": ["https://agora.bretagne.dev/oidc/callback"],
-      "allowedGroups": ["admin"],
-      "pkceEnabled": false
-    },
-    {
-      "_comment": "The lab of Agora's sandbox back-end (apps/agora-lab), gated via oauth2-proxy: it can start VMs, so operators only. Secret bootstrapped the same way as 'onecli'.",
-      "name": "agora-lab",
-      "callbackURLs": ["https://agora-lab.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin"],
       "pkceEnabled": false
     },

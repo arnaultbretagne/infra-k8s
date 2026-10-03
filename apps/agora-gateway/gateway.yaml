@@ -161,7 +161,7 @@ data:
                         value: { file: /etc/agentgateway/credentials/github-basic }
                         location: { header: { name: authorization, prefix: "Basic " } }
 ---
-# Agora's public key for the grants JWT (the private half is apps/agora-lab/grants-key.secrets.yaml).
+# Agora's public key for the grants JWT (the private half is apps/agora/grants-key.secrets.yaml).
 apiVersion: v1
 kind: ConfigMap
 metadata:
