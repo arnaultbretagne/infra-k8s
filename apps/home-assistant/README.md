@@ -80,6 +80,11 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   back to `wss://:3001` only on a refusal; a silent drop outlasts its 2 s connect timeout and the
   flow fails with "cannot connect" and no prompt on the TV. So the network policy lets `:3000` out,
   and the router answers it with a reset. Keep the router refusing `:3000` (plain text).
+- **The router's "host unreachable" must come back too.** When the TV is off, each reconnect to
+  `:3001` is answered by an ICMP destination-unreachable from the VLAN 30 gateway `10.10.30.1`, not
+  from the TV. Cilium only ties an ICMP error to the connection when the peer itself sends it, so
+  the network policy admits ICMP type 3 from `10.10.30.1`; without it, NetworkPolicyDrops fires
+  every time the TV is in standby.
 - **Pairing (once, TV on):** Settings → Devices & services → Add integration → *LG webOS TV* → host
   `10.10.30.110` → accept the prompt on the TV with the physical remote. The client key lands in the
   config entry (and in the nightly `/config` backup).
