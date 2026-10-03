@@ -81,6 +81,35 @@ data:
                       key:
                         value: { file: /etc/agentgateway/credentials/zai }
                         location: { header: { name: authorization, prefix: "Bearer " } }
+                # ChatGPT, for codex: the cluster's own session (chatgpt-refresher.yaml keeps it alive). The
+                # sandbox's auth.json is a placeholder; its account id is dropped, the token alone names
+                # the account.
+                - name: chatgpt
+                  hostnames: [chatgpt.com]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: no path tricks, and some grant of the JWT covers
+                        # this host, path and query, and method.
+                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      remove: [chatgpt-account-id]
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/chatgpt/access_token }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
                 # GitHub REST (GraphQL stays closed: no grant covers /graphql).
                 - name: github-api
                   hostnames: [api.github.com]
@@ -195,6 +224,8 @@ spec:
             - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
             # Watched by the gateway: rotating a credential needs no restart.
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
+            # The ChatGPT session's access token, rewritten by chatgpt-refresher: watched the same way.
+            - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
       volumes:
         - name: config
           configMap:
@@ -210,6 +241,14 @@ spec:
           secret:
             secretName: upstream-credentials
             defaultMode: 0440
+        # Created by hand, outside git (chatgpt-refresher.yaml): optional, so the gateway starts without it.
+        - name: chatgpt
+          secret:
+            secretName: chatgpt-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
 ---
 apiVersion: v1
 kind: Service

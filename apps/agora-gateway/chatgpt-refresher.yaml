@@ -1,0 +1,159 @@
+# Keeps the cluster's ChatGPT session alive, for codex through the gateway (profile `chatgpt`,
+# docs/specs/credentials.md on arnaultbretagne/agora). The session is the cluster's own codex login
+# (device code), never the operator's: its refresh token rotates and may be spent only once. It lives in
+# the Secret `chatgpt-session`, created by hand and kept out of git — this job rewrites it, Flux would
+# put it back. Keys: `auth.json` (codex's own file) and `access_token` (what the gateway sets).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chatgpt-refresher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chatgpt-refresher
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [chatgpt-session]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chatgpt-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chatgpt-refresher
+subjects:
+  - kind: ServiceAccount
+    name: chatgpt-refresher
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatgpt-refresher
+data:
+  refresh.mjs: |
+    // The access token lives 10 days (codex refreshes at 8). Once a day: when it expires within
+    // REFRESH_BELOW_DAYS, trade the refresh token at auth.openai.com for a new set, as codex does, and
+    // write both keys back at once. Logs dates and error codes, never a token.
+    import { readFileSync } from 'node:fs'
+
+    const NAME = 'chatgpt-session'
+    const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann' // codex's own OAuth client (codex-rs/login, CLIENT_ID)
+    const SA = '/var/run/secrets/kubernetes.io/serviceaccount'
+    const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
+    const url = `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}/api/v1/namespaces/${namespace}/secrets/${NAME}`
+    const below = Number(process.env.REFRESH_BELOW_DAYS ?? 5) * 86_400_000
+    const iso = (ms) => new Date(ms).toISOString()
+    const b64 = (text) => Buffer.from(text).toString('base64')
+    const expiry = (jwt) => JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString('utf8')).exp * 1000
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    async function kube(method, body) {
+      const response = await fetch(url, {
+        method,
+        headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, accept: 'application/json', 'content-type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (method === 'GET' && !response.ok) throw new Error(`reading ${NAME}: ${response.status}`)
+      return response
+    }
+
+    const secret = await (await kube('GET')).json()
+    const auth = JSON.parse(Buffer.from(secret.data['auth.json'], 'base64').toString('utf8'))
+    const until = expiry(auth.tokens.access_token)
+    if (until - Date.now() > below) {
+      console.log(`access token valid until ${iso(until)}: nothing to do`)
+      process.exit(0)
+    }
+
+    const answer = await fetch('https://auth.openai.com/oauth/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ client_id: CLIENT_ID, grant_type: 'refresh_token', refresh_token: auth.tokens.refresh_token }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!answer.ok) {
+      const detail = await answer.json().catch(() => ({}))
+      const code = typeof detail.error === 'object' ? detail.error?.code : detail.error
+      console.error(`refresh refused: ${answer.status} ${String(code ?? '')} — the session must be logged in again`)
+      process.exit(1)
+    }
+    const fresh = await answer.json()
+    auth.tokens.access_token = fresh.access_token
+    if (fresh.id_token) auth.tokens.id_token = fresh.id_token
+    if (fresh.refresh_token) auth.tokens.refresh_token = fresh.refresh_token
+    auth.last_refresh = iso(Date.now())
+
+    // The old refresh token is spent now: the new set must be written, whatever it takes.
+    for (let attempt = 1; ; attempt++) {
+      const current = attempt === 1 ? secret : await (await kube('GET')).json()
+      const data = { ...current.data, 'auth.json': b64(JSON.stringify(auth, null, 2)), access_token: b64(auth.tokens.access_token) }
+      const put = await kube('PUT', { ...current, data })
+      if (put.ok) break
+      if (attempt === 6) {
+        console.error(`refreshed but not written (${put.status}): the session is lost, log in again`)
+        process.exit(2)
+      }
+      await sleep(2000 * attempt)
+    }
+    console.log(`refreshed: access token valid until ${iso(expiry(auth.tokens.access_token))}`)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: chatgpt-refresher
+spec:
+  schedule: "17 4 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # No retry by a new Pod: a refresh that went through but was not written would be retried with a
+      # spent refresh token. The script retries the write itself.
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: chatgpt-refresher
+        spec:
+          serviceAccountName: chatgpt-refresher
+          restartPolicy: Never
+          priorityClassName: bretagne-low
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresher
+              image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+              command: ["node", "/app/refresh.mjs"]
+              env:
+                # The API server's CA, on top of the public roots auth.openai.com needs.
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: REFRESH_BELOW_DAYS
+                  value: "5"
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: script, mountPath: /app, readOnly: true }
+          volumes:
+            - name: script
+              configMap:
+                name: chatgpt-refresher
