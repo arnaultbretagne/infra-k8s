@@ -76,6 +76,10 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
 
 - **Router (not in this repo):** VLAN 20 `10.10.20.10` → `10.10.30.110` TCP `3001` (in place since
   2026-10-03). The pod has no SSDP path to VLAN 30, so the TV is never auto-discovered.
+- **Port 3000 must be refused, not dropped.** aiowebostv tries plain `ws://:3000` first and falls
+  back to `wss://:3001` only on a refusal; a silent drop outlasts its 2 s connect timeout and the
+  flow fails with "cannot connect" and no prompt on the TV. So the network policy lets `:3000` out,
+  and the router answers it with a reset. Keep the router refusing `:3000` (plain text).
 - **Pairing (once, TV on):** Settings → Devices & services → Add integration → *LG webOS TV* → host
   `10.10.30.110` → accept the prompt on the TV with the physical remote. The client key lands in the
   config entry (and in the nightly `/config` backup).
