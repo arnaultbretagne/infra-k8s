@@ -1,0 +1,16 @@
+# claude-code's harness: its credential is set by Agora's gateway on the grants Agora hands the bridge
+# (docs/architecture/credentials.md); the image only holds a placeholder. `name`, `image`, `versions`,
+# `source` and `inputs` are written by Agora's CI when it proposes a new image.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-code
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  harness: claude-code
+  name: claude-code-54c511e1caef
+  image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:54c511e1caef9fa5055de16b5d087bd46d07691fba2dabcabdcef038042b0c0f
+  versions: claude-code 2.1.288, claude-agent-acp 0.85.1
+  source: arnaultbretagne/agora feat/harness-settings 58df9e6
+  inputs: ""

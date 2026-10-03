@@ -1,0 +1,17 @@
+# Agora's mock ACP agent: no model, deterministic behaviours, a real native transcript. Kept for
+# the tests (the live cases, the scripted checks): the screen does not offer it.
+# `name`, `image`, `versions`, `source` and `inputs` are written by Agora's CI when it proposes a new
+# image (arnaultbretagne/agora, .github/workflows/ci.yml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  harness: mock
+  name: mock-1a1cc63caf03
+  image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:1a1cc63caf036cd609c6cbcdf67224a573bbc713444654fd7d7447e9bc71de9f
+  versions: agora-mock-agent
+  source: arnaultbretagne/agora feat/thin-bridge 7afc4d7
+  inputs: ""

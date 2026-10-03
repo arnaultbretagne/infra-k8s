@@ -1,0 +1,18 @@
+# codex and codex-acp, on the operator's ChatGPT subscription. Its session is set by the gateway
+# (route chatgpt, kept alive by apps/agora-gateway/chatgpt-refresher.yaml); the image writes a
+# placeholder login, which must name the account codex selects (codex-account.secrets.yaml).
+# `name`, `image`, `versions`, `source` and `inputs` are written by Agora's CI when it proposes a new
+# image (arnaultbretagne/agora, .github/workflows/ci.yml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: codex
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  harness: codex
+  name: codex-0eae81a379d7
+  image: ghcr.io/arnaultbretagne/agora-harness-codex@sha256:0eae81a379d76ba3f73c6e865c626fda91caded960ea4c4929570575616ccef9
+  versions: codex 0.159.3, codex-acp 2.1.1
+  source: arnaultbretagne/agora feat/harness-codex ddac202
+  inputs: ""

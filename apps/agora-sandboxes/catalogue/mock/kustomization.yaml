@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+  - harness.yaml
+# Its data into the shared template and pool: the name — the harness and its image's digest, so that
+# a new image is a new template and pool — the label and the image.
+replacements:
+  - source: { kind: ConfigMap, name: mock, fieldPath: data.name }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - metadata.name
+      - select: { kind: SandboxWarmPool }
+        fieldPaths:
+          - metadata.name
+          - spec.sandboxTemplateRef.name
+  - source: { kind: ConfigMap, name: mock, fieldPath: data.harness }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - "spec.podTemplate.metadata.labels.[agora.bretagne.dev/harness]"
+      - select: { kind: SandboxWarmPool }
+        fieldPaths:
+          - "metadata.labels.[agora.bretagne.dev/harness]"
+  - source: { kind: ConfigMap, name: mock, fieldPath: data.image }
+    targets:
+      - select: { kind: SandboxTemplate }
+        fieldPaths:
+          - "spec.podTemplate.spec.containers.[name=sandbox].image"
+patches:
+  - target: { kind: SandboxWarmPool }
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          # The settings each Session starts with (docs/specs/executions.md, "The API").
+          agora.bretagne.dev/session-config: mode=full-access
+          # For the tests only: the screen does not offer it.
+          agora.bretagne.dev/purpose: testing
+  - target: { kind: SandboxWarmPool }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2

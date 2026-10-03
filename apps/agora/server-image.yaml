@@ -1,0 +1,12 @@
+# What the server's image is built from (kustomization.yaml, images, holds its digest). Written by
+# Agora's CI when it proposes a new image (arnaultbretagne/agora, .github/workflows/ci.yml); never
+# applied.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-server-image
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  source: arnaultbretagne/agora feat/harness-settings ab25fbf (agora#121, preview before merge)
+  inputs: ""

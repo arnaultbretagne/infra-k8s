@@ -1,0 +1,12 @@
+# The catalogue of Agora's sandboxes (docs/specs/executions.md): one template and one warm pool per
+# harness image, named after the harness and its digest. A new image is a NEW template and pool, never
+# an edit in place — a pool can still hand out sandboxes prepared from the old template. The template
+# is shared (base); each harness folder holds its data (harness.yaml: name, image, versions, source —
+# written by Agora's CI when it proposes a new image) and patches for what differs.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - mock
+  - claude-code
+  - opencode
+  - codex
