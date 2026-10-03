@@ -51,12 +51,17 @@ spec:
         - 10.10.40.10/32
       toPorts:
         - ports: [{ port: "6638", protocol: TCP }]
-    # -> LG webOS TV (VLAN 30), the webostv integration's SSAP WebSocket over TLS. This IP and port
-    #    only; the TV's own SSH (:22) stays reachable from g4's shell, never from the pod.
+    # -> LG webOS TV (VLAN 30), the webostv integration's SSAP WebSocket over TLS (:3001). :3000 is
+    #    here only so its refusal comes back: aiowebostv tries ws://:3000 first and falls back to
+    #    wss://:3001 on a refused connection, but a silent drop here outlasts its 2 s connect timeout
+    #    and the whole connect fails ("cannot connect", no prompt on the TV). The router refuses
+    #    :3000 (RST), so the traffic stays TLS. The TV's SSH (:22) is never reachable from the pod.
     - toCIDR:
         - 10.10.30.110/32
       toPorts:
-        - ports: [{ port: "3001", protocol: TCP }]
+        - ports:
+            - { port: "3001", protocol: TCP }
+            - { port: "3000", protocol: TCP }
     # -> SSDP/UPnP discovery (default_config's ssdp integration): UDP 1900 to the SSDP
     #    multicast group and the local broadcast, nothing else. Without this rule the
     #    periodic discovery bursts feed NetworkPolicyDrops forever (hubble POLICY_DENIED).
