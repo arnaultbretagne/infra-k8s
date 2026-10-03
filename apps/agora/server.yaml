@@ -66,7 +66,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: server
-          image: ghcr.io/arnaultbretagne/agora-server@sha256:a260d289608d5927c9c656a942020dffb7374807e039e14b9c9feea8807eaf01 # feat/ui eae07c6 (agora#120, preview before merge)
+          image: ghcr.io/arnaultbretagne/agora-server@sha256:2d0064e72da9bf5f6b9e1e25c4b93aa58a6e6e004e420e24dff49f1f4efb3ac6 # feat/harness-settings d82682f (agora#121, preview before merge)
           ports:
             - name: http
               containerPort: 8080
