@@ -408,7 +408,7 @@ data:
     # Managed by GitOps (apps/home-assistant/configmap.yaml) — copied to /config/dashboards/ at every
     # pod start; a YAML dashboard is read-only in the UI, edit it here.
     # One full-screen card, custom:tv-remote-card (key tv-remote-card.js below); kiosk-mode hides the
-    # header and sidebar on THIS dashboard only, and the Maison tile goes back to the default one.
+    # header and sidebar on THIS dashboard only.
     # Tiles, in order: `key` = a remote key (webostv.button; names from the TV's
     # /usr/sbin/network-input-service), `app` / `input` = an app id (webostv.command
     # system.launcher/launch), `source` = the media player's `source` while it is in front (it picks
@@ -435,8 +435,6 @@ data:
               - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5, color: "#5ea0ff"}
               - {name: HDMI 2, input: com.webos.app.hdmi2, source: HDMI 2, label: H2}
               - {name: Switch 2, input: com.webos.app.hdmi3, source: Switch2, label: SW, color: "#ff4b4b"}
-              - {separator: true}
-              - {name: Maison, action: home, icon: ha, color: "#41bdf5"}
 
   tv-remote-card.js: |
     /*
@@ -446,13 +444,10 @@ data:
      *
      *   type: custom:tv-remote-card
      *   entity: media_player.salon_tv
-     *   home_path: /            # where the Maison tile goes (default: the default dashboard)
      *   tiles:                  # the bottom row, in order
      *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
      *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
      *     - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5}
-     *     - {separator: true}
-     *     - {name: Maison, action: home, icon: ha, color: "#41bdf5"}
      *
      * `source` is the media player's `source` attribute while that app or input is in front: it picks
      * the highlighted tile, the title and the tint. Keys go through webostv.button, apps and inputs
@@ -477,7 +472,6 @@ data:
         minus: '<path d="M6 12h12"/>',
         plus: '<path d="M12 6v12M6 12h12"/>',
         home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/>',
-        ha: '<path d="M3.5 11 12 3.5l8.5 7.5"/><path d="M5.5 9.5V20h13V9.5"/><circle cx="12" cy="12.5" r="1.6"/><path d="M12 14.1V20M12 12.5 9.3 10.3M12 16.5l2.7-2.2"/>',
         tile_play: '<path d="M9 7.5v9l7.5-4.5z"/>',
       };
       const FILLED = new Set(['rewind', 'play', 'pause', 'forward', 'tile_play']);
@@ -637,7 +631,7 @@ data:
       class TvRemoteCard extends HTMLElement {
         setConfig(config) {
           if (!config || !config.entity) throw new Error('tv-remote-card: `entity` is required');
-          this._config = { home_path: '/', ...config };
+          this._config = { ...config };
           this._tiles = (config.tiles || []).map((t) => ({ ...t }));
           this._build();
         }
@@ -669,8 +663,7 @@ data:
             if (t.separator) return '<span class="sep"></span>';
             const brand = color(t.color, '#ffffff');
             const act = t.key ? `data-key="${esc(t.key)}"`
-              : (t.app || t.input) ? `data-app="${esc(t.app || t.input)}"`
-              : t.action === 'home' ? 'data-action="home"' : '';
+              : (t.app || t.input) ? `data-app="${esc(t.app || t.input)}"` : '';
             const face = t.icon ? svg(t.icon === 'play' ? 'tile_play' : t.icon) : esc(t.label || initials(t.name));
             return `<button class="tile" data-tile="${i}" ${act} style="--brand:${brand}"><span class="tile-face glass press">${face}</span><span class="tile-name">${esc(t.name)}</span></button>`;
           }).join('');
@@ -797,7 +790,6 @@ data:
             return this._armVolume();
           }
           if (b.closest('.vol')) this._armVolume();
-          if (action === 'home') { this._haptic('light'); return this._navigate(this._config.home_path); }
           if (action === 'power') { this._haptic('medium'); return this._call('media_player', 'toggle'); }
           if (!this._isOn()) return this._nudgePower();
           if (key) { this._haptic('light'); return this._call('webostv', 'button', { button: key }); }
@@ -857,11 +849,6 @@ data:
         // The companion app turns this window event into a native haptic.
         _haptic(type) {
           window.dispatchEvent(new CustomEvent('haptic', { detail: type }));
-        }
-
-        _navigate(path) {
-          window.history.pushState(null, '', path);
-          window.dispatchEvent(new CustomEvent('location-changed', { detail: { replace: false } }));
         }
       }
 

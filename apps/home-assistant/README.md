@@ -107,8 +107,8 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   the header and sidebar on that dashboard only. The card holds power (`media_player.toggle`), quick
   settings, transport keys, the wheel, back, a volume capsule (mute, −, + only: with
   `sound_output: external_arc` webostv has no volume level) and a scrolling row of tiles defined in
-  the dashboard YAML. The **Maison** tile goes back to the default dashboard: it is the only way out
-  of the full screen. Arrows and volume repeat while held, taps fire the companion app's haptics,
+  the dashboard YAML (Accueil is the TV's own Home key). Arrows and volume repeat while held, taps
+  fire the companion app's haptics,
   and the tint follows the app in front (the tile whose `source` matches). `provision.py` puts a
   hash of each module in its URL, so a change in Git reaches the phone's cache at the next start.
   Every control was checked in a phone-sized headless browser against a fake `hass` (one service
