@@ -435,6 +435,14 @@ data:
               - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5, color: "#5ea0ff"}
               - {name: HDMI 2, input: com.webos.app.hdmi2, source: HDMI 2, label: H2}
               - {name: Switch 2, input: com.webos.app.hdmi3, source: Switch2, label: SW, color: "#ff4b4b"}
+      # The companion app's haptics, to pick the card's `haptic` / `haptic_power`:
+      # homeassistant://navigate/telecommande-tv/vibrations?server=default
+      - title: Vibrations
+        path: vibrations
+        icon: mdi:vibrate
+        type: panel
+        cards:
+          - type: custom:tv-haptic-test-card
 
   tv-remote-card.js: |
     /*
@@ -444,6 +452,8 @@ data:
      *
      *   type: custom:tv-remote-card
      *   entity: media_player.salon_tv
+     *   haptic: light           # companion app haptic on keys and tiles (default light)
+     *   haptic_power: medium    # ... on power (default medium)
      *   tiles:                  # the bottom row, in order
      *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
      *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
@@ -453,6 +463,10 @@ data:
      * the highlighted tile, the title and the tint. Keys go through webostv.button, apps and inputs
      * through webostv.command system.launcher/launch, power through media_player.toggle (on = the
      * Wake-on-LAN automation). Taps fire the companion app's haptics.
+     *
+     * The card covers the whole screen (position: fixed, under the status bar and the home indicator)
+     * and takes no height in the page, so the view cannot scroll; only the tile row pans, sideways.
+     * tv-haptic-test-card (below) lists the companion app's haptics to pick one.
      */
     (() => {
       const ICONS = {
@@ -486,7 +500,7 @@ data:
       const NEUTRAL_OFF = '#48484a';
 
       const CSS = `
-      :host { display: block; position: relative; height: 100dvh; }
+      :host { display: block; height: 0; }
       .remote {
         --accent: ${NEUTRAL_OFF};
         --text: #fff;
@@ -495,8 +509,8 @@ data:
         --on: #34c759;
         --sat: 0px;
         --sab: 0px;
-        position: relative; box-sizing: border-box; height: 100%;
-        display: flex; flex-direction: column;
+        position: fixed; inset: 0; z-index: 1; box-sizing: border-box;
+        display: flex; flex-direction: column; touch-action: none;
         padding: calc(var(--sat) + 12px) 20px calc(var(--sab) + 12px);
         overflow: hidden; isolation: isolate;
         background: #07080c; color: var(--text);
@@ -506,8 +520,9 @@ data:
       .remote *, .remote *::before, .remote *::after { box-sizing: border-box; }
       .remote button {
         appearance: none; border: 0; margin: 0; padding: 0; background: none;
-        color: inherit; font: inherit; cursor: pointer; touch-action: manipulation;
+        color: inherit; font: inherit; cursor: pointer; touch-action: none;
       }
+      .remote .tiles, .remote .tiles button { touch-action: pan-x; }
       .remote button:focus-visible { outline: 2px solid rgba(255,255,255,.85); outline-offset: 2px; }
       .remote svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
       .remote svg.fill { fill: currentColor; stroke: none; }
@@ -581,9 +596,19 @@ data:
       }
       .wheel::before { transform: rotate(45deg); }
       .wheel > i { transform: rotate(-45deg); }
-      .wedge { position: absolute; inset: 0; display: block; color: rgba(255,255,255,.85); transition: background .12s; }
-      .wedge:active { background: rgba(255,255,255,.14); }
-      .wedge svg { position: absolute; width: 26px; height: 26px; stroke-width: 2; }
+      .wedge { position: absolute; inset: 0; display: block; color: rgba(255,255,255,.85); }
+      .wedge::before {
+        content: ""; position: absolute; width: 78px; height: 78px; border-radius: 50%; pointer-events: none;
+        background: radial-gradient(circle, rgba(255,255,255,.3), rgba(255,255,255,.1) 52%, transparent 70%);
+        opacity: 0; transition: opacity .18s;
+      }
+      .wedge:active::before { opacity: 1; transition-duration: .05s; }
+      .wedge.up::before { top: -6px; left: 50%; margin-left: -39px; }
+      .wedge.down::before { bottom: -6px; left: 50%; margin-left: -39px; }
+      .wedge.left::before { left: -6px; top: 50%; margin-top: -39px; }
+      .wedge.right::before { right: -6px; top: 50%; margin-top: -39px; }
+      .wedge svg { position: absolute; width: 26px; height: 26px; stroke-width: 2; transition: transform .14s, color .14s; }
+      .wedge:active svg { color: #fff; transform: scale(1.12); }
       .wedge.up { clip-path: polygon(0 0, 100% 0, 50% 50%); }
       .wedge.up svg { top: 20px; left: 50%; margin-left: -13px; }
       .wedge.down { clip-path: polygon(0 100%, 100% 100%, 50% 50%); }
@@ -631,7 +656,7 @@ data:
       class TvRemoteCard extends HTMLElement {
         setConfig(config) {
           if (!config || !config.entity) throw new Error('tv-remote-card: `entity` is required');
-          this._config = { ...config };
+          this._config = { haptic: 'light', haptic_power: 'medium', ...config };
           this._tiles = (config.tiles || []).map((t) => ({ ...t }));
           this._build();
         }
@@ -763,19 +788,13 @@ data:
           this._shown = view;
         }
 
-        // Fill the screen below wherever the card starts, and pad only the safe areas the frontend
-        // has not already left free (with kiosk-mode the card starts under the status bar).
+        // The card spans the whole screen: keep its controls clear of the status bar and the home
+        // indicator (env() read through a probe, as the insets change with rotation).
         _fit() {
           if (!this._root || !this.isConnected) return;
-          const rect = this.getBoundingClientRect();
-          const top = Math.max(0, rect.top);
-          const vh = window.visualViewport?.height || window.innerHeight;
-          this.style.height = `${Math.max(560, Math.round(vh - top))}px`;
           const probe = getComputedStyle(this.shadowRoot.querySelector('.probe'));
-          const insetTop = parseFloat(probe.paddingTop) || 0;
-          const insetBottom = parseFloat(probe.paddingBottom) || 0;
-          this._root.style.setProperty('--sat', `${Math.max(0, insetTop - top)}px`);
-          this._root.style.setProperty('--sab', `${insetBottom}px`);
+          this._root.style.setProperty('--sat', `${parseFloat(probe.paddingTop) || 0}px`);
+          this._root.style.setProperty('--sab', `${parseFloat(probe.paddingBottom) || 0}px`);
         }
 
         _onClick(e) {
@@ -790,10 +809,10 @@ data:
             return this._armVolume();
           }
           if (b.closest('.vol')) this._armVolume();
-          if (action === 'power') { this._haptic('medium'); return this._call('media_player', 'toggle'); }
+          if (action === 'power') { this._haptic(this._config.haptic_power); return this._call('media_player', 'toggle'); }
           if (!this._isOn()) return this._nudgePower();
-          if (key) { this._haptic('light'); return this._call('webostv', 'button', { button: key }); }
-          if (app) { this._haptic('light'); return this._call('webostv', 'command', { command: 'system.launcher/launch', payload: { id: app } }); }
+          if (key) { this._haptic(this._config.haptic); return this._call('webostv', 'button', { button: key }); }
+          if (app) { this._haptic(this._config.haptic); return this._call('webostv', 'command', { command: 'system.launcher/launch', payload: { id: app } }); }
         }
 
         // Arrows and volume repeat while held, like a real remote.
@@ -806,7 +825,7 @@ data:
             this._call('webostv', 'button', { button: b.dataset.key });
             if (b.closest('.vol')) this._armVolume();
           };
-          this._haptic('light');
+          this._haptic(this._config.haptic);
           send();
           this._stopRepeat();
           this._repeating = b;
@@ -852,7 +871,64 @@ data:
         }
       }
 
+      // A page of the companion app's haptics, to pick the remote's. Same full-screen look.
+      const HAPTICS = [
+        ['light', 'Léger'], ['medium', 'Moyen'], ['heavy', 'Fort'],
+        ['selection', 'Sélection'], ['success', 'Succès'], ['warning', 'Alerte'], ['failure', 'Échec'],
+      ];
+      const TEST_CSS = `
+      :host { display: block; height: 0; }
+      .page {
+        position: fixed; inset: 0; z-index: 1; box-sizing: border-box; overflow: hidden; touch-action: none;
+        padding: calc(env(safe-area-inset-top, 0px) + 24px) 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
+        display: flex; flex-direction: column; gap: 18px;
+        background: radial-gradient(70% 40% at 30% 10%, rgba(94, 92, 230, .35), transparent 75%),
+          radial-gradient(60% 35% at 80% 90%, rgba(10, 132, 255, .25), transparent 75%), #07080c;
+        color: #fff; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+      }
+      h1 { margin: 0; font: 700 28px/1.15 -apple-system, system-ui, sans-serif; }
+      p { margin: 0; font: 400 14px/1.4 -apple-system, system-ui, sans-serif; color: rgba(255,255,255,.65); }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      button {
+        appearance: none; border: 0; margin: 0; padding: 14px 6px; border-radius: 20px; touch-action: none;
+        display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; cursor: pointer;
+        background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.05) 55%, rgba(255,255,255,.09));
+        -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+        box-shadow: inset 0 1px .5px rgba(255,255,255,.5), 0 14px 34px -10px rgba(0,0,0,.6);
+        transition: transform .14s, filter .14s;
+      }
+      button:active { transform: scale(.94); filter: brightness(1.3); }
+      button.last { box-shadow: inset 0 1px .5px rgba(255,255,255,.5), inset 0 0 0 1.5px rgba(52,199,89,.8), 0 0 18px -4px rgba(52,199,89,.8); }
+      b { font: 600 15px/1.2 -apple-system, system-ui, sans-serif; }
+      code { font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; color: rgba(255,255,255,.55); }`;
+
+      class TvHapticTestCard extends HTMLElement {
+        setConfig(config) {
+          this._config = config || {};
+          if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+          this.shadowRoot.innerHTML = `<style>${TEST_CSS}</style>
+    <div class="page">
+      <h1>Vibrations</h1>
+      <p>Touche chaque bouton, puis choisis celui des touches de la télécommande et celui de Power.</p>
+      <div class="grid">${HAPTICS.map(([t, n]) => `<button data-haptic="${t}"><b>${n}</b><code>${t}</code></button>`).join('')}</div>
+    </div>`;
+          this.shadowRoot.querySelector('.grid').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-haptic]');
+            if (!b) return;
+            window.dispatchEvent(new CustomEvent('haptic', { detail: b.dataset.haptic }));
+            this.shadowRoot.querySelector('.last')?.classList.remove('last');
+            b.classList.add('last');
+          });
+        }
+
+        set hass(hass) { this._hass = hass; }
+
+        getCardSize() { return 8; }
+      }
+
       if (!customElements.get('tv-remote-card')) customElements.define('tv-remote-card', TvRemoteCard);
+      if (!customElements.get('tv-haptic-test-card')) customElements.define('tv-haptic-test-card', TvHapticTestCard);
       window.customCards = window.customCards || [];
       if (!window.customCards.some((c) => c.type === 'tv-remote-card')) {
         window.customCards.push({ type: 'tv-remote-card', name: 'Télécommande TV', description: 'Liquid glass remote for an LG webOS TV' });
