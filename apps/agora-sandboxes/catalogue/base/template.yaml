@@ -52,6 +52,10 @@ spec:
             # The gateway's root: the harness's TLS to the outside ends at the gateway.
             - name: NODE_EXTRA_CA_CERTS
               value: /etc/agora/credential-proxy/ca.pem
+            # The same root for git, whose libcurl does not read NODE_EXTRA_CA_CERTS: everything it
+            # fetches or pushes goes through the gateway.
+            - name: GIT_SSL_CAINFO
+              value: /etc/agora/credential-proxy/ca.pem
           # Ready means the adapter runs; Agora initializes it after allocation.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }
