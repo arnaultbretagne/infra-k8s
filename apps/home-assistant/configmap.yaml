@@ -435,14 +435,6 @@ data:
               - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5, color: "#5ea0ff"}
               - {name: HDMI 2, input: com.webos.app.hdmi2, source: HDMI 2, label: H2}
               - {name: Switch 2, input: com.webos.app.hdmi3, source: Switch2, label: SW, color: "#ff4b4b"}
-      # The companion app's haptics, to pick the card's `haptic` / `haptic_power`:
-      # homeassistant://navigate/telecommande-tv/vibrations?server=default
-      - title: Vibrations
-        path: vibrations
-        icon: mdi:vibrate
-        type: panel
-        cards:
-          - type: custom:tv-haptic-test-card
 
   tv-remote-card.js: |
     /*
@@ -452,8 +444,9 @@ data:
      *
      *   type: custom:tv-remote-card
      *   entity: media_player.salon_tv
-     *   haptic: light           # companion app haptic on keys and tiles (default light)
-     *   haptic_power: medium    # ... on power (default medium)
+     *   haptic: selection       # companion app haptic on keys and tiles (default selection)
+     *   haptic_power: selection # ... on power (default selection)
+     *   haptic_off: failure     # ... on a key while the TV is off, which does nothing (default failure)
      *   tiles:                  # the bottom row, in order
      *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
      *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
@@ -466,7 +459,6 @@ data:
      *
      * The card covers the whole screen (position: fixed, under the status bar and the home indicator)
      * and takes no height in the page, so the view cannot scroll; only the tile row pans, sideways.
-     * tv-haptic-test-card (below) lists the companion app's haptics to pick one.
      */
     (() => {
       const ICONS = {
@@ -656,7 +648,7 @@ data:
       class TvRemoteCard extends HTMLElement {
         setConfig(config) {
           if (!config || !config.entity) throw new Error('tv-remote-card: `entity` is required');
-          this._config = { haptic: 'light', haptic_power: 'medium', ...config };
+          this._config = { haptic: 'selection', haptic_power: 'selection', haptic_off: 'failure', ...config };
           this._tiles = (config.tiles || []).map((t) => ({ ...t }));
           this._build();
         }
@@ -744,9 +736,7 @@ data:
           this._shown = {};
           this._root.addEventListener('click', (e) => this._onClick(e));
           this._root.addEventListener('pointerdown', (e) => this._onPointerDown(e));
-          for (const t of ['pointerup', 'pointercancel']) {
-            this._root.addEventListener(t, () => { this._stopRepeat(); setTimeout(() => { this._skipClick = null; }, 0); });
-          }
+          for (const t of ['pointerup', 'pointercancel']) this._root.addEventListener(t, () => this._stopRepeat());
           this._root.addEventListener('pointerout', (e) => { if (e.target.closest?.('[data-key]') === this._repeating) this._stopRepeat(); });
           this._update();
           this._fit();
@@ -800,7 +790,6 @@ data:
         _onClick(e) {
           const b = e.target.closest('button, .scrim');
           if (!b) return;
-          if (this._skipClick === b) { this._skipClick = null; return; }
           const { action, key, app } = b.dataset;
           if (action === 'close-volume') return this._closeVolume();
           if (action === 'volume') {
@@ -811,6 +800,8 @@ data:
           if (b.closest('.vol')) this._armVolume();
           if (action === 'power') { this._haptic(this._config.haptic_power); return this._call('media_player', 'toggle'); }
           if (!this._isOn()) return this._nudgePower();
+          // A repeating key was already sent on pointerdown; only a keyboard click (detail 0) sends it here.
+          if (key && REPEAT_KEYS.has(key) && e.detail > 0) return undefined;
           if (key) { this._haptic(this._config.haptic); return this._call('webostv', 'button', { button: key }); }
           if (app) { this._haptic(this._config.haptic); return this._call('webostv', 'command', { command: 'system.launcher/launch', payload: { id: app } }); }
         }
@@ -820,7 +811,6 @@ data:
           const b = e.target.closest('[data-key]');
           if (!b || !REPEAT_KEYS.has(b.dataset.key)) return;
           if (!this._isOn()) return;
-          this._skipClick = b;
           const send = () => {
             this._call('webostv', 'button', { button: b.dataset.key });
             if (b.closest('.vol')) this._armVolume();
@@ -849,7 +839,7 @@ data:
         }
 
         _nudgePower() {
-          this._haptic('warning');
+          this._haptic(this._config.haptic_off);
           this._root.classList.remove('nudge');
           void this._root.offsetWidth;
           this._root.classList.add('nudge');
@@ -871,64 +861,7 @@ data:
         }
       }
 
-      // A page of the companion app's haptics, to pick the remote's. Same full-screen look.
-      const HAPTICS = [
-        ['light', 'Léger'], ['medium', 'Moyen'], ['heavy', 'Fort'],
-        ['selection', 'Sélection'], ['success', 'Succès'], ['warning', 'Alerte'], ['failure', 'Échec'],
-      ];
-      const TEST_CSS = `
-      :host { display: block; height: 0; }
-      .page {
-        position: fixed; inset: 0; z-index: 1; box-sizing: border-box; overflow: hidden; touch-action: none;
-        padding: calc(env(safe-area-inset-top, 0px) + 24px) 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
-        display: flex; flex-direction: column; gap: 18px;
-        background: radial-gradient(70% 40% at 30% 10%, rgba(94, 92, 230, .35), transparent 75%),
-          radial-gradient(60% 35% at 80% 90%, rgba(10, 132, 255, .25), transparent 75%), #07080c;
-        color: #fff; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-        -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
-      }
-      h1 { margin: 0; font: 700 28px/1.15 -apple-system, system-ui, sans-serif; }
-      p { margin: 0; font: 400 14px/1.4 -apple-system, system-ui, sans-serif; color: rgba(255,255,255,.65); }
-      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-      button {
-        appearance: none; border: 0; margin: 0; padding: 14px 6px; border-radius: 20px; touch-action: none;
-        display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; cursor: pointer;
-        background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.05) 55%, rgba(255,255,255,.09));
-        -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
-        box-shadow: inset 0 1px .5px rgba(255,255,255,.5), 0 14px 34px -10px rgba(0,0,0,.6);
-        transition: transform .14s, filter .14s;
-      }
-      button:active { transform: scale(.94); filter: brightness(1.3); }
-      button.last { box-shadow: inset 0 1px .5px rgba(255,255,255,.5), inset 0 0 0 1.5px rgba(52,199,89,.8), 0 0 18px -4px rgba(52,199,89,.8); }
-      b { font: 600 15px/1.2 -apple-system, system-ui, sans-serif; }
-      code { font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; color: rgba(255,255,255,.55); }`;
-
-      class TvHapticTestCard extends HTMLElement {
-        setConfig(config) {
-          this._config = config || {};
-          if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
-          this.shadowRoot.innerHTML = `<style>${TEST_CSS}</style>
-    <div class="page">
-      <h1>Vibrations</h1>
-      <p>Touche chaque bouton, puis choisis celui des touches de la télécommande et celui de Power.</p>
-      <div class="grid">${HAPTICS.map(([t, n]) => `<button data-haptic="${t}"><b>${n}</b><code>${t}</code></button>`).join('')}</div>
-    </div>`;
-          this.shadowRoot.querySelector('.grid').addEventListener('click', (e) => {
-            const b = e.target.closest('[data-haptic]');
-            if (!b) return;
-            window.dispatchEvent(new CustomEvent('haptic', { detail: b.dataset.haptic }));
-            this.shadowRoot.querySelector('.last')?.classList.remove('last');
-            b.classList.add('last');
-          });
-        }
-
-        set hass(hass) { this._hass = hass; }
-
-        getCardSize() { return 8; }
-      }
-
       if (!customElements.get('tv-remote-card')) customElements.define('tv-remote-card', TvRemoteCard);
-      if (!customElements.get('tv-haptic-test-card')) customElements.define('tv-haptic-test-card', TvHapticTestCard);
       window.customCards = window.customCards || [];
       if (!window.customCards.some((c) => c.type === 'tv-remote-card')) {
         window.customCards.push({ type: 'tv-remote-card', name: 'Télécommande TV', description: 'Liquid glass remote for an LG webOS TV' });
