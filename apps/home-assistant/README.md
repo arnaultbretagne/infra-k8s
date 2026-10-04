@@ -110,7 +110,13 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   the dashboard YAML (Accueil is the TV's own Home key). Arrows and volume repeat while held, taps
   fire the companion app's haptics,
   and the tint follows the app in front (the tile whose `source` matches). `provision.py` puts a
-  hash of each module in its URL, so a change in Git reaches the phone's cache at the next start.
+  hash of each module in its URL, so a change in Git reaches the phone's cache at the next start
+  (HA serves `/local/` with a 31-day cache). The card is `position: fixed` over the whole screen,
+  under the status bar and the home indicator, and takes no height in the page: `hui-view-container`
+  keeps `min-height: 100vh` plus the safe-area paddings, so a card sized to the viewport inside it
+  overflowed by the bottom inset and scrolled. Its options `haptic` (keys and tiles, default `light`)
+  and `haptic_power` (default `medium`) take a companion app haptic type; the dashboard's second
+  page, `homeassistant://navigate/telecommande-tv/vibrations?server=default`, fires each one.
   Every control was checked in a phone-sized headless browser against a fake `hass` (one service
   call each, the right one).
 - **iPhone shortcut:** in the Shortcuts app, one action *Open URLs* with
