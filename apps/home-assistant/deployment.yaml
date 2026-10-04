@@ -36,6 +36,12 @@ spec:
               value: "1.2.1"
             - name: OIDC_SHA256
               value: "14ee70f00395f145d9280238a88f54af96f086746233578153c6e2d593a1ea64"
+            # kiosk-mode frontend module: bump BOTH together (release + sha256 of
+            # https://github.com/NemesisRE/kiosk-mode/releases/download/v<ver>/kiosk-mode.js).
+            - name: KIOSK_MODE_VERSION
+              value: "14.2.1"
+            - name: KIOSK_MODE_SHA256
+              value: "c0a6f2cb19dbf400bb149b4cfdf7e510a9fcb2bf721beedac1b9a30cbd14c543"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
