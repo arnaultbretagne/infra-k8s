@@ -114,9 +114,12 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   (HA serves `/local/` with a 31-day cache). The card is `position: fixed` over the whole screen,
   under the status bar and the home indicator, and takes no height in the page: `hui-view-container`
   keeps `min-height: 100vh` plus the safe-area paddings, so a card sized to the viewport inside it
-  overflowed by the bottom inset and scrolled. Its options `haptic` (keys and tiles, default `light`)
-  and `haptic_power` (default `medium`) take a companion app haptic type; the dashboard's second
-  page, `homeassistant://navigate/telecommande-tv/vibrations?server=default`, fires each one.
+  overflowed by the bottom inset and scrolled. Haptics (companion app types, chosen by the user on
+  a test page since removed): `haptic` on keys and tiles and `haptic_power` on power, both
+  `selection`, and `haptic_off` (`failure`) on a key pressed while the TV is off, which does
+  nothing. Arrows and volume are sent on pointerdown (to repeat while held); the click that
+  follows is ignored by its `detail` (> 0 for a finger), never by a timer, which once sent a
+  second press when iOS delivered the click late.
   Every control was checked in a phone-sized headless browser against a fake `hass` (one service
   call each, the right one).
 - **iPhone shortcut:** in the Shortcuts app, one action *Open URLs* with
