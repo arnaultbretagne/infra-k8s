@@ -16,7 +16,7 @@ Companion app / browser ──HTTPS──> Traefik (ha.bretagne.dev) ──> HA 
 | File | Role |
 |---|---|
 | `deployment.yaml` | HA (root image, PSS baseline, read-only rootfs) + `provision` init + `onboard` native sidecar |
-| `configmap.yaml` | `configuration.yaml` (Git-owned), `http-config.json` (reverse-proxy trust, written straight into `.storage/http` — see below), `provision.py`, `onboard.py`, `dashboard-*.yaml` (Git-owned dashboards) |
+| `configmap.yaml` | `configuration.yaml` (Git-owned), `http-config.json` (reverse-proxy trust, written straight into `.storage/http` — see below), `provision.py`, `onboard.py`, `dashboard-*.yaml` (Git-owned dashboards), `tv-remote-card.js` (the Télécommande card) |
 | `oidc-configmap.yaml` | owner username (= Pocket-ID username) and the Pocket-ID `client_id` |
 | `cluster.yaml` | `ha-pg` CNPG cluster + daily backup; `restore-test.yaml` proves it restores |
 | `config-backup.yaml` | nightly tarball of `/config` to R2 (`home-assistant-config/` prefix, 14 days) |
@@ -91,8 +91,8 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
 - **Entity id:** the manual flow titles the device `LG webOS TV <modelName>`; the TV was named
   *Salon TV* when paired (2026-10-03), so the media player is `media_player.salon_tv` (the screen
   switch, disabled by default, kept `switch.lg_webos_tv_oled65cx6la_screen`). The **Télécommande**
-  dashboard (`dashboard-telecommande-tv.yaml`, sidebar) defines that id once, at the top of the file
-  (`&tv`): rename the entity, change that line. HA re-reads a YAML dashboard when its file changes,
+  dashboard (`dashboard-telecommande-tv.yaml`, sidebar) names it once, in the card's `entity`:
+  rename the entity, change that line. HA re-reads a YAML dashboard when its file changes,
   so a fix can also be written to `/config/dashboards/` ahead of the merge; `provision.py` reseeds it
   from Git at the next start.
 - **Keys:** `webostv.button` sends the remote's key names over the TV's pointer input socket, so a
@@ -100,13 +100,30 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   names is the table inside the TV's `/usr/sbin/network-input-service` (`ssh lg-tv` from g4). Apps
   and HDMI inputs are launched by id with `webostv.command` `system.launcher/launch`; list ids with
   `luna-send -n 1 luna://com.webos.applicationManager/listLaunchPoints '{}'` on the TV.
+- **The Télécommande is one full-screen card.** `tv-remote-card.js` (a key of `configmap.yaml`) is
+  a custom card that `provision.py` copies to `www/` and `frontend.extra_module_url` loads on every
+  page. The dashboard is a panel view holding only that card; its `kiosk_mode` block makes the
+  pinned kiosk-mode module (`KIOSK_MODE_VERSION` / `KIOSK_MODE_SHA256` in `deployment.yaml`) hide
+  the header and sidebar on that dashboard only. The card holds power (`media_player.toggle`), quick
+  settings, transport keys, the wheel, back, a volume capsule (mute, −, + only: with
+  `sound_output: external_arc` webostv has no volume level) and a scrolling row of tiles defined in
+  the dashboard YAML (Accueil is the TV's own Home key). Arrows and volume repeat while held, taps
+  fire the companion app's haptics,
+  and the tint follows the app in front (the tile whose `source` matches). `provision.py` puts a
+  hash of each module in its URL, so a change in Git reaches the phone's cache at the next start.
+  Every control was checked in a phone-sized headless browser against a fake `hass` (one service
+  call each, the right one).
+- **iPhone shortcut:** in the Shortcuts app, one action *Open URLs* with
+  `homeassistant://navigate/telecommande-tv/tv?server=default`, added to the Home Screen. It opens
+  the HA app straight on the full-screen remote, while the app's own icon keeps the normal
+  dashboards. The app's native kiosk mode was ruled out: it locks the whole app to one dashboard.
 - **Power on/off.** Off is native (`media_player.turn_off` → SSAP `system/turnOff`). On is
   Wake-on-LAN: in standby the TV leaves the network and its NIC listens for a magic packet only
   (Quick Start+ and *Turn on via Wi-Fi/LAN* are on). webostv cannot wake it: its `turn_on` runs the
   automations on the `webostv.turn_on` trigger, here the Git-owned `tv_salon_power_on`
   (`configuration.yaml`, `automation gitops`), which sends the packet with `wake_on_lan`. While
   that automation exists the media player stays available (`off`) in standby and offers turn on,
-  so `media_player.toggle` (the *Marche / Arrêt* button, the media card's power icon) does both.
+  so `media_player.toggle` (the Télécommande's power button) does both.
   A broadcast cannot leave VLAN 20, so the packet goes **unicast** to `10.10.30.110` UDP `9`.
 - **Router for Wake-on-LAN (not in this repo, in place since 2026-10-03):** traffic rule
   `g4-media-wol` = `10.10.20.10` → `10.10.30.110` **UDP** `9`, accept (the `g4-media` rule is TCP

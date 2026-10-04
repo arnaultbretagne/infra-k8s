@@ -1,9 +1,10 @@
 # Config-only provisioning (ADR 0015): stock HA image + this ConfigMap + a /config PVC.
 # `provision.py` runs as an initContainer before EVERY start and is the idempotent provisioning
-# layer: it pins the hass-oidc-auth custom component (tag + sha256), pre-installs its Python
-# requirements into /config/deps, and re-seeds configuration.yaml and the dashboard-*.yaml dashboards
-# from here (Git is the source of truth for the YAML; the UI owns .storage/, automations.yaml,
-# scripts.yaml, scenes.yaml and the dashboards it creates).
+# layer: it pins the hass-oidc-auth custom component and the kiosk-mode frontend module (tag +
+# sha256), pre-installs the component's Python requirements into /config/deps, and re-seeds
+# configuration.yaml, the dashboard-*.yaml dashboards and the *.js frontend modules (www/) from here
+# (Git is the source of truth for the YAML; the UI owns .storage/, automations.yaml, scripts.yaml,
+# scenes.yaml and the dashboards it creates).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -82,6 +83,15 @@ data:
               broadcast_port: 9
         mode: single
 
+    # Frontend modules loaded on every page, served from www/ (= /local/) by provision.py: kiosk-mode
+    # (pinned; hides the header and sidebar on the dashboards that ask for it) and tv-remote-card (the
+    # Télécommande, key tv-remote-card.js below). provision.py replaces each @@<file>@@ with a hash of
+    # that file, so any change reaches the phone's cache.
+    frontend:
+      extra_module_url:
+        - /local/kiosk-mode.js?v=@@kiosk-mode.js@@
+        - /local/tv-remote-card.js?v=@@tv-remote-card.js@@
+
     # Git-owned dashboards (read-only in the UI): each `dashboard-<slug>.yaml` key of this ConfigMap is
     # copied by provision.py to dashboards/<slug>.yaml. The slug must contain a hyphen (HA rule).
     # Dashboards made in the UI live in .storage/ and are untouched.
@@ -117,15 +127,19 @@ data:
        image rootfs — read-only here, and lost at every restart anyway. Installed with --no-deps
        so nothing shadows the image's own pinned libraries (cryptography etc.); the manifest's deps
        are checked afterwards.
-    3. configuration.yaml and the dashboard-<slug>.yaml keys (-> dashboards/<slug>.yaml) re-seeded
-       from the ConfigMap; UI-editor include files created if absent.
-    4. The HTTP config (reverse-proxy trust, IP ban) written as the STABLE entry of .storage/http,
+    3. Frontend modules in www/ (served at /local/): kiosk-mode at the PINNED release, verified
+       against its pinned sha256 (a failure only logs: HA then starts without it, header shown), and
+       every *.js key of the ConfigMap copied as is.
+    4. configuration.yaml and the dashboard-<slug>.yaml keys (-> dashboards/<slug>.yaml) re-seeded
+       from the ConfigMap, each @@<file>@@ in configuration.yaml replaced by a hash of www/<file>
+       (cache busting for extra_module_url); UI-editor include files created if absent.
+    5. The HTTP config (reverse-proxy trust, IP ban) written as the STABLE entry of .storage/http,
        from http-config.json. HA >= 2026 keeps this config in storage: YAML is migrated once into a
        pending trial that must be promoted by an admin within 5 minutes or HA reverts + restarts —
        useless for an unattended, Git-owned config. Writing `stable` directly (same layout HA itself
        writes, storage v2.2) makes the config active from the first request, no trial, no promotion.
     """
-    import hashlib, importlib.metadata as md, io, json, os, shutil, subprocess, sys, tarfile
+    import hashlib, importlib.metadata as md, io, json, os, re, shutil, subprocess, sys, tarfile
     import urllib.request
 
     CONFIG = "/config"
@@ -137,6 +151,9 @@ data:
     DEPS = os.path.join(CONFIG, "deps")
     PYSTAMP = os.path.join(DEPS, ".python-version")
     PYVER = "%d.%d" % sys.version_info[:2]
+    WWW = os.path.join(CONFIG, "www")
+    KIOSK_VERSION = os.environ["KIOSK_MODE_VERSION"]
+    KIOSK_SHA256 = os.environ["KIOSK_MODE_SHA256"]
 
     def log(msg):
         print(f"[provision] {msg}", flush=True)
@@ -223,8 +240,41 @@ data:
             except md.PackageNotFoundError:
                 sys.exit(f"[provision] FATAL {r} needs {dep_name}, absent from image and deps")
 
-    # --- 3. configuration ---------------------------------------------------------------------
-    shutil.copyfile(os.path.join(SEED, "configuration.yaml"), os.path.join(CONFIG, "configuration.yaml"))
+    # --- 3. frontend modules ------------------------------------------------------------------
+    os.makedirs(WWW, exist_ok=True)
+    kiosk = os.path.join(WWW, "kiosk-mode.js")
+    kstamp = os.path.join(WWW, ".kiosk-mode-version")
+    have = open(kstamp).read().strip() if os.path.exists(kstamp) else None
+    if have == KIOSK_VERSION and os.path.exists(kiosk):
+        log(f"kiosk-mode v{KIOSK_VERSION} already installed")
+    else:
+        url = f"https://github.com/NemesisRE/kiosk-mode/releases/download/v{KIOSK_VERSION}/kiosk-mode.js"
+        try:
+            data = urllib.request.urlopen(url, timeout=120).read()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != KIOSK_SHA256:
+                raise ValueError(f"sha256 mismatch: got {digest}, pinned {KIOSK_SHA256}")
+            with open(kiosk + ".new", "wb") as f:
+                f.write(data)
+            os.rename(kiosk + ".new", kiosk)
+            with open(kstamp, "w") as f:
+                f.write(KIOSK_VERSION + "\n")
+            log(f"installed kiosk-mode v{KIOSK_VERSION} (sha256 ok)")
+        except Exception as e:  # cosmetic: HA must still start, with its header
+            log(f"WARNING kiosk-mode v{KIOSK_VERSION} NOT installed ({e}); kept: {have}")
+    for name in sorted(os.listdir(SEED)):
+        if name.endswith(".js"):
+            shutil.copyfile(os.path.join(SEED, name), os.path.join(WWW, name))
+            log(f"frontend module {name} seeded")
+
+    def www_hash(m):
+        p = os.path.join(WWW, m.group(1))
+        return hashlib.sha256(open(p, "rb").read()).hexdigest()[:12] if os.path.exists(p) else "missing"
+
+    # --- 4. configuration ---------------------------------------------------------------------
+    conf = open(os.path.join(SEED, "configuration.yaml")).read()
+    with open(os.path.join(CONFIG, "configuration.yaml"), "w") as f:
+        f.write(re.sub(r"@@([\w.-]+)@@", www_hash, conf))
     os.makedirs(os.path.join(CONFIG, "packages"), exist_ok=True)
     for name in ("automations.yaml", "scripts.yaml", "scenes.yaml"):
         p = os.path.join(CONFIG, name)
@@ -239,7 +289,7 @@ data:
             log(f"dashboard {name.removeprefix('dashboard-')} seeded")
     log("configuration seeded")
 
-    # --- 4. HTTP config -> .storage/http (stable) --------------------------------------------
+    # --- 5. HTTP config -> .storage/http (stable) --------------------------------------------
     import datetime as _dt
     store_path = os.path.join(CONFIG, ".storage", "http")
     desired = json.load(open(os.path.join(SEED, "http-config.json")))
@@ -357,199 +407,454 @@ data:
   dashboard-telecommande-tv.yaml: |
     # Managed by GitOps (apps/home-assistant/configmap.yaml) — copied to /config/dashboards/ at every
     # pod start; a YAML dashboard is read-only in the UI, edit it here.
-    # Keys go through webostv.button = the TV's remote channel (pointer input socket), so each one acts
-    # like the physical remote. Key names: the table in the TV's /usr/sbin/network-input-service.
-    # Apps and HDMI inputs are launched by id (webostv.command system.launcher/launch), not by title.
-    # The TV entity id is the one chosen at pairing, defined once below (&tv); README.md "LG TV remote".
-    # Power: media_player.toggle turns the TV off over SSAP, or on through the Wake-on-LAN automation
-    # (configuration.yaml, `automation gitops`).
+    # One full-screen card, custom:tv-remote-card (key tv-remote-card.js below); kiosk-mode hides the
+    # header and sidebar on THIS dashboard only.
+    # Tiles, in order: `key` = a remote key (webostv.button; names from the TV's
+    # /usr/sbin/network-input-service), `app` / `input` = an app id (webostv.command
+    # system.launcher/launch), `source` = the media player's `source` while it is in front (it picks
+    # the highlighted tile and the tint). README.md "LG TV remote".
+    kiosk_mode:
+      hide_header: true
+      hide_sidebar: true
     title: Télécommande
     views:
       - title: Télé LG
         path: tv
         icon: mdi:remote-tv
+        type: panel
         cards:
-          - type: media-control
-            entity: &tv media_player.salon_tv
-          - type: button
-            name: Marche / Arrêt
-            icon: mdi:power
-            entity: *tv
-            show_state: true
-            tap_action: {action: perform-action, perform_action: media_player.toggle, target: {entity_id: *tv}}
-          - type: grid
-            title: Navigation
-            columns: 3
-            square: false
-            cards:
-              - type: button
-                name: Retour
-                icon: mdi:arrow-u-left-top
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: BACK}}
-              - type: button
-                show_name: false
-                icon: mdi:chevron-up
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: UP}}
-              - type: button
-                name: Accueil
-                icon: mdi:home
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: HOME}}
-              - type: button
-                show_name: false
-                icon: mdi:chevron-left
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: LEFT}}
-              - type: button
-                name: OK
-                icon: mdi:checkbox-blank-circle-outline
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: ENTER}}
-              - type: button
-                show_name: false
-                icon: mdi:chevron-right
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: RIGHT}}
-              - type: button
-                name: Réglages
-                icon: mdi:cog-outline
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: QMENU}}
-              - type: button
-                show_name: false
-                icon: mdi:chevron-down
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: DOWN}}
-              - type: button
-                name: Quitter
-                icon: mdi:close
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: EXIT}}
-          - type: grid
-            title: Son et chaînes
-            columns: 3
-            square: false
-            cards:
-              - type: button
-                name: Vol −
-                icon: mdi:volume-minus
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: VOLUMEDOWN}}
-              - type: button
-                name: Muet
-                icon: mdi:volume-mute
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: MUTE}}
-              - type: button
-                name: Vol +
-                icon: mdi:volume-plus
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: VOLUMEUP}}
-              - type: button
-                name: Chaîne −
-                icon: mdi:minus
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: CHANNELDOWN}}
-              - type: button
-                name: Infos
-                icon: mdi:information-outline
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: INFO}}
-              - type: button
-                name: Chaîne +
-                icon: mdi:plus
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: CHANNELUP}}
-          - type: grid
-            title: Lecture
-            columns: 4
-            square: false
-            cards:
-              - type: button
-                show_name: false
-                icon: mdi:rewind
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: REWIND}}
-              - type: button
-                show_name: false
-                icon: mdi:play
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: PLAY}}
-              - type: button
-                show_name: false
-                icon: mdi:pause
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: PAUSE}}
-              - type: button
-                show_name: false
-                icon: mdi:fast-forward
-                tap_action: {action: perform-action, perform_action: webostv.button, target: {entity_id: *tv}, data: {button: FASTFORWARD}}
-          - type: grid
-            title: Applis
-            columns: 3
-            square: false
-            cards:
-              - type: button
-                name: Netflix
-                icon: mdi:netflix
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: netflix}}}
-              - type: button
-                name: YouTube
-                icon: mdi:youtube
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: youtube.leanback.v4}}}
-              - type: button
-                name: Prime Video
-                icon: mdi:filmstrip
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: amazon}}}
-              - type: button
-                name: Disney+
-                icon: mdi:castle
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.disney.disneyplus-prod}}}
-              - type: button
-                name: Apple TV
-                icon: mdi:apple
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.apple.appletv}}}
-              - type: button
-                name: CANAL+
-                icon: mdi:alpha-c-circle
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: canalplus}}}
-              - type: button
-                name: Play Suisse
-                icon: mdi:play-box
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: ch.srgssr.playsuisse.tv}}}
-              - type: button
-                name: blue TV
-                icon: mdi:television-play
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.swisscom.tv.bluetv}}}
-              - type: button
-                name: Stremio
-                icon: mdi:movie-open-play
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: io.strem.tv}}}
-              - type: button
-                name: Spotify
-                icon: mdi:spotify
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: spotify-beehive}}}
-              - type: button
-                name: Twitch
-                icon: mdi:twitch
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: tv.twitch.tv.starshot.lg}}}
-          - type: grid
-            title: Entrées
-            columns: 4
-            square: false
-            cards:
-              - type: button
-                name: PS5
-                icon: mdi:sony-playstation
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi1}}}
-              - type: button
-                name: HDMI 2
-                icon: mdi:video-input-hdmi
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi2}}}
-              - type: button
-                name: Switch 2
-                icon: mdi:nintendo-switch
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.webos.app.hdmi3}}}
-              - type: button
-                name: TV
-                icon: mdi:television-classic
-                tap_action: {action: perform-action, perform_action: webostv.command, target: {entity_id: *tv},
-                             data: {command: system.launcher/launch, payload: {id: com.webos.app.livetv}}}
+          - type: custom:tv-remote-card
+            entity: media_player.salon_tv
+            tiles:
+              - {name: Accueil, key: HOME, icon: home}
+              - {name: Netflix, app: netflix, source: Netflix, label: "N", color: "#e50914"}
+              - {name: YouTube, app: youtube.leanback.v4, source: YouTube, icon: play, color: "#ff3b30"}
+              - {name: Stremio, app: io.strem.tv, source: Stremio, label: St, color: "#9b6dff"}
+              - {name: blue TV, app: com.swisscom.tv.bluetv, source: Swisscom blue TV, label: bT, color: "#4c8dff"}
+              - {separator: true}
+              - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5, color: "#5ea0ff"}
+              - {name: HDMI 2, input: com.webos.app.hdmi2, source: HDMI 2, label: H2}
+              - {name: Switch 2, input: com.webos.app.hdmi3, source: Switch2, label: SW, color: "#ff4b4b"}
+
+  tv-remote-card.js: |
+    /*
+     * tv-remote-card: a liquid glass remote for an LG webOS TV (webostv integration), sized for a phone.
+     * Git-owned: apps/home-assistant/configmap.yaml (key tv-remote-card.js), copied to /config/www by
+     * provision.py and loaded app-wide with frontend.extra_module_url. Options: README.md "LG TV remote".
+     *
+     *   type: custom:tv-remote-card
+     *   entity: media_player.salon_tv
+     *   tiles:                  # the bottom row, in order
+     *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
+     *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
+     *     - {name: PS5, input: com.webos.app.hdmi1, source: PS5, label: PS5}
+     *
+     * `source` is the media player's `source` attribute while that app or input is in front: it picks
+     * the highlighted tile, the title and the tint. Keys go through webostv.button, apps and inputs
+     * through webostv.command system.launcher/launch, power through media_player.toggle (on = the
+     * Wake-on-LAN automation). Taps fire the companion app's haptics.
+     */
+    (() => {
+      const ICONS = {
+        power: '<path d="M12 3.5v8"/><path d="M6.6 6.9a7.5 7.5 0 1 0 10.8 0"/>',
+        settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+        rewind: '<path d="M11 6.5v11L3.5 12zM20.5 6.5v11L13 12z"/>',
+        play: '<path d="M8 5.5v13L18.5 12z"/>',
+        pause: '<path d="M7 5.5h3.5v13H7zM13.5 5.5H17v13h-3.5z"/>',
+        forward: '<path d="M3.5 6.5v11L11 12zM13 6.5v11l7.5-5.5z"/>',
+        up: '<path d="M6 15l6-6 6 6"/>',
+        down: '<path d="M6 9l6 6 6-6"/>',
+        left: '<path d="M15 6l-6 6 6 6"/>',
+        right: '<path d="M9 6l6 6-6 6"/>',
+        back: '<path d="M9 5 4 10l5 5"/><path d="M4 10h10a5 5 0 0 1 0 10h-3"/>',
+        speaker: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+        mute: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>',
+        minus: '<path d="M6 12h12"/>',
+        plus: '<path d="M12 6v12M6 12h12"/>',
+        home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/>',
+        tile_play: '<path d="M9 7.5v9l7.5-4.5z"/>',
+      };
+      const FILLED = new Set(['rewind', 'play', 'pause', 'forward', 'tile_play']);
+      const svg = (name) => `<svg viewBox="0 0 24 24" class="${FILLED.has(name) ? 'fill' : ''}" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const color = (c, fallback) => (/^#[0-9a-f]{3,8}$/i.test(c || '') ? c : fallback);
+      const initials = (s) => String(s || 'TV').split(/\s+/).map((w) => w[0]).join('').slice(0, 2);
+
+      const OFF_STATES = new Set(['off', 'unavailable', 'unknown', 'standby']);
+      const REPEAT_KEYS = new Set(['UP', 'DOWN', 'LEFT', 'RIGHT', 'VOLUMEUP', 'VOLUMEDOWN']);
+      const NEUTRAL = '#8e8e93';
+      const NEUTRAL_OFF = '#48484a';
+
+      const CSS = `
+      :host { display: block; position: relative; height: 100dvh; }
+      .remote {
+        --accent: ${NEUTRAL_OFF};
+        --text: #fff;
+        --text-dim: rgba(255, 255, 255, .6);
+        --hairline: rgba(255, 255, 255, .14);
+        --on: #34c759;
+        --sat: 0px;
+        --sab: 0px;
+        position: relative; box-sizing: border-box; height: 100%;
+        display: flex; flex-direction: column;
+        padding: calc(var(--sat) + 12px) 20px calc(var(--sab) + 12px);
+        overflow: hidden; isolation: isolate;
+        background: #07080c; color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+        -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+      }
+      .remote *, .remote *::before, .remote *::after { box-sizing: border-box; }
+      .remote button {
+        appearance: none; border: 0; margin: 0; padding: 0; background: none;
+        color: inherit; font: inherit; cursor: pointer; touch-action: manipulation;
+      }
+      .remote button:focus-visible { outline: 2px solid rgba(255,255,255,.85); outline-offset: 2px; }
+      .remote svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+      .remote svg.fill { fill: currentColor; stroke: none; }
+      .probe { position: absolute; visibility: hidden; pointer-events: none; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+      /* The wallpaper the glass refracts, tinted by the app in front. */
+      .bg {
+        position: absolute; inset: -25%; z-index: -1; pointer-events: none;
+        background:
+          radial-gradient(55% 32% at 30% 16%, color-mix(in srgb, var(--accent) 42%, transparent), transparent 75%),
+          radial-gradient(50% 34% at 92% 50%, rgba(94, 92, 230, .28), transparent 75%),
+          radial-gradient(60% 30% at 20% 88%, rgba(10, 132, 255, .22), transparent 75%),
+          radial-gradient(40% 24% at 80% 96%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 72%),
+          #07080c;
+        filter: blur(36px) saturate(130%);
+      }
+
+      /* Liquid glass: blur + saturation of what is behind, a lit rim, a top specular line. */
+      .glass {
+        position: relative;
+        background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.05) 55%, rgba(255,255,255,.09));
+        -webkit-backdrop-filter: blur(22px) saturate(180%);
+        backdrop-filter: blur(22px) saturate(180%);
+        box-shadow: inset 0 1px .5px rgba(255,255,255,.5), inset 0 -1px 1px rgba(255,255,255,.07), 0 14px 34px -10px rgba(0,0,0,.6);
+      }
+      .glass::after {
+        content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+        background: linear-gradient(145deg, rgba(255,255,255,.6), rgba(255,255,255,.07) 34%, rgba(255,255,255,0) 58%, rgba(255,255,255,.25));
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor; mask-composite: exclude;
+      }
+      .press { transition: transform .14s cubic-bezier(.2,.8,.2,1), filter .14s; }
+      .press:active { transform: scale(.94); filter: brightness(1.3); }
+
+      /* Now playing */
+      .now { flex: none; border-radius: 28px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+      .now-row { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0 4px; }
+      .now-icon {
+        flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+        background: var(--accent); font: 800 15px/1 -apple-system, system-ui, sans-serif; color: #fff;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 16px -6px var(--accent);
+      }
+      .now-icon svg { width: 20px; height: 20px; }
+      .now-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .now-title { font: 600 17px/1.2 -apple-system, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .now-sub { font: 400 12px/1.2 -apple-system, system-ui, sans-serif; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .remote .qmenu { margin-left: auto; flex: none; width: 40px; height: 48px; display: grid; place-items: center; color: rgba(255,255,255,.42); }
+      .remote .qmenu:active { color: rgba(255,255,255,.8); }
+      .remote .qmenu svg { width: 21px; height: 21px; stroke-width: 1.6; }
+      .power { flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; color: var(--text-dim); transition: color .3s, box-shadow .3s; }
+      .remote.is-on .power {
+        color: var(--on);
+        box-shadow: inset 0 1px .5px rgba(255,255,255,.5), inset 0 0 0 1px color-mix(in srgb, var(--on) 45%, transparent), 0 0 22px -2px color-mix(in srgb, var(--on) 65%, transparent);
+      }
+      .remote.nudge .power { animation: nudge .5s; }
+      @keyframes nudge { 0%, 100% { transform: none; } 25% { transform: scale(1.12); } 60% { transform: scale(.96); } }
+      .remote.is-off .now-icon { background: rgba(255,255,255,.1); color: var(--text-dim); box-shadow: inset 0 1px 0 rgba(255,255,255,.2); }
+      .remote.is-off .transport { opacity: .45; }
+      .transport { height: 48px; border-radius: 24px; display: flex; overflow: hidden; background: rgba(0,0,0,.22); box-shadow: inset 0 0 0 1px var(--hairline), inset 0 1px 2px rgba(0,0,0,.25); }
+      .transport button { flex: 1; display: grid; place-items: center; position: relative; }
+      .transport button + button::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 1px; background: var(--hairline); }
+      .transport button:active { background: rgba(255,255,255,.12); }
+      .transport svg { width: 20px; height: 20px; }
+
+      /* The wheel */
+      .pad { flex: none; position: relative; height: 256px; margin-top: auto; }
+      .wheel { position: absolute; left: 50%; top: 0; width: 256px; height: 256px; margin-left: -128px; border-radius: 50%; overflow: hidden; }
+      .wheel::before, .wheel > i {
+        content: ""; position: absolute; left: 12%; right: 12%; top: 50%; height: 1px; pointer-events: none;
+        background: linear-gradient(90deg, var(--hairline) 0 21%, transparent 21% 79%, var(--hairline) 79% 100%);
+      }
+      .wheel::before { transform: rotate(45deg); }
+      .wheel > i { transform: rotate(-45deg); }
+      .wedge { position: absolute; inset: 0; display: block; color: rgba(255,255,255,.85); transition: background .12s; }
+      .wedge:active { background: rgba(255,255,255,.14); }
+      .wedge svg { position: absolute; width: 26px; height: 26px; stroke-width: 2; }
+      .wedge.up { clip-path: polygon(0 0, 100% 0, 50% 50%); }
+      .wedge.up svg { top: 20px; left: 50%; margin-left: -13px; }
+      .wedge.down { clip-path: polygon(0 100%, 100% 100%, 50% 50%); }
+      .wedge.down svg { bottom: 20px; left: 50%; margin-left: -13px; }
+      .wedge.left { clip-path: polygon(0 0, 0 100%, 50% 50%); }
+      .wedge.left svg { left: 20px; top: 50%; margin-top: -13px; }
+      .wedge.right { clip-path: polygon(100% 0, 100% 100%, 50% 50%); }
+      .wedge.right svg { right: 20px; top: 50%; margin-top: -13px; }
+      .ok { position: absolute; inset: 76px; border-radius: 50%; display: grid; place-items: center; font: 600 18px/1 -apple-system, system-ui, sans-serif; letter-spacing: .02em; }
+
+      /* Back + sound */
+      .row2 { flex: none; position: relative; height: 62px; margin-top: 22px; z-index: 3; }
+      .round { position: absolute; top: 0; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; }
+      .round.back { left: 0; }
+      .sound { position: absolute; right: 0; top: 0; height: 62px; width: 62px; border-radius: 31px; display: flex; align-items: center; justify-content: flex-end; overflow: hidden; transition: width .32s cubic-bezier(.2,.9,.25,1); }
+      .remote.vol-open .sound { width: calc(100% - 62px - 14px); }
+      .vol { flex: 1; display: flex; align-items: center; justify-content: space-around; padding-left: 8px; opacity: 0; transition: opacity .18s; pointer-events: none; }
+      .remote.vol-open .vol { opacity: 1; transition-delay: .1s; pointer-events: auto; }
+      .vol button { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; }
+      .vol button:active { background: rgba(255,255,255,.14); }
+      .vol .sep { width: 1px; height: 26px; background: var(--hairline); }
+      .speaker { flex: none; width: 62px; height: 62px; border-radius: 50%; display: grid; place-items: center; }
+      .remote.vol-open .speaker { color: var(--text-dim); }
+      .scrim { position: absolute; inset: 0; z-index: 2; display: none; }
+      .remote.vol-open .scrim { display: block; }
+      .dimmable { transition: opacity .25s, filter .25s; }
+      .remote.vol-open .dimmable { opacity: .35; filter: blur(1.5px); }
+
+      /* Apps + sources */
+      .launcher { flex: none; margin-top: 22px; }
+      .tiles { display: flex; gap: 12px; overflow-x: auto; margin: 0 -20px; padding: 2px 20px 4px; scroll-snap-type: x proximity; scroll-padding-inline: 20px; scrollbar-width: none; }
+      .tiles::-webkit-scrollbar { display: none; }
+      .tile { flex: none; width: 72px; display: flex; flex-direction: column; align-items: center; gap: 7px; scroll-snap-align: start; }
+      .tile-face { width: 72px; height: 56px; border-radius: 18px; display: grid; place-items: center; font: 800 17px/1 -apple-system, system-ui, sans-serif; color: var(--brand); }
+      .tile-face svg { width: 24px; height: 24px; color: var(--brand); }
+      .tile-name { font: 500 11px/1.1 -apple-system, system-ui, sans-serif; color: var(--text-dim); white-space: nowrap; }
+      .tile.is-current .tile-face { box-shadow: inset 0 1px .5px rgba(255,255,255,.5), inset 0 0 0 1.5px color-mix(in srgb, var(--brand) 70%, transparent), 0 0 20px -4px var(--brand); }
+      .tile.is-current .tile-name { color: var(--text); }
+      .tiles .sep { flex: none; width: 1px; height: 40px; margin: 8px 2px 0; background: var(--hairline); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .remote *, .remote *::before, .remote *::after { transition: none !important; animation: none !important; }
+      }`;
+
+      class TvRemoteCard extends HTMLElement {
+        setConfig(config) {
+          if (!config || !config.entity) throw new Error('tv-remote-card: `entity` is required');
+          this._config = { ...config };
+          this._tiles = (config.tiles || []).map((t) => ({ ...t }));
+          this._build();
+        }
+
+        set hass(hass) {
+          this._hass = hass;
+          this._update();
+        }
+
+        getCardSize() { return 12; }
+
+        connectedCallback() {
+          this._onResize = this._onResize || (() => this._fit());
+          window.addEventListener('resize', this._onResize);
+          window.visualViewport?.addEventListener('resize', this._onResize);
+          requestAnimationFrame(() => this._fit());
+        }
+
+        disconnectedCallback() {
+          window.removeEventListener('resize', this._onResize);
+          window.visualViewport?.removeEventListener('resize', this._onResize);
+          this._stopRepeat();
+          clearTimeout(this._volTimer);
+        }
+
+        _build() {
+          if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+          const tiles = this._tiles.map((t, i) => {
+            if (t.separator) return '<span class="sep"></span>';
+            const brand = color(t.color, '#ffffff');
+            const act = t.key ? `data-key="${esc(t.key)}"`
+              : (t.app || t.input) ? `data-app="${esc(t.app || t.input)}"` : '';
+            const face = t.icon ? svg(t.icon === 'play' ? 'tile_play' : t.icon) : esc(t.label || initials(t.name));
+            return `<button class="tile" data-tile="${i}" ${act} style="--brand:${brand}"><span class="tile-face glass press">${face}</span><span class="tile-name">${esc(t.name)}</span></button>`;
+          }).join('');
+          this.shadowRoot.innerHTML = `<style>${CSS}</style>
+    <div class="remote is-off">
+      <div class="bg"></div><div class="probe"></div>
+      <section class="now glass dimmable">
+        <div class="now-row">
+          <div class="now-icon"></div>
+          <div class="now-text"><span class="now-title"></span><span class="now-sub"></span></div>
+          <button class="qmenu" data-key="QMENU" aria-label="Réglages rapides">${svg('settings')}</button>
+          <button class="power glass press" data-action="power" aria-label="Marche / Arrêt">${svg('power')}</button>
+        </div>
+        <div class="transport">
+          <button data-key="REWIND" aria-label="Retour rapide">${svg('rewind')}</button>
+          <button data-key="PLAY" aria-label="Lecture">${svg('play')}</button>
+          <button data-key="PAUSE" aria-label="Pause">${svg('pause')}</button>
+          <button data-key="FASTFORWARD" aria-label="Avance rapide">${svg('forward')}</button>
+        </div>
+      </section>
+      <section class="pad dimmable">
+        <div class="wheel glass">
+          <i></i>
+          <button class="wedge up" data-key="UP" aria-label="Haut">${svg('up')}</button>
+          <button class="wedge down" data-key="DOWN" aria-label="Bas">${svg('down')}</button>
+          <button class="wedge left" data-key="LEFT" aria-label="Gauche">${svg('left')}</button>
+          <button class="wedge right" data-key="RIGHT" aria-label="Droite">${svg('right')}</button>
+          <button class="ok glass press" data-key="ENTER">OK</button>
+        </div>
+      </section>
+      <div class="scrim" data-action="close-volume"></div>
+      <section class="row2">
+        <button class="round back glass press dimmable" data-key="BACK" aria-label="Retour">${svg('back')}</button>
+        <div class="sound glass">
+          <div class="vol">
+            <button data-key="MUTE" aria-label="Muet">${svg('mute')}</button>
+            <span class="sep"></span>
+            <button data-key="VOLUMEDOWN" aria-label="Volume moins">${svg('minus')}</button>
+            <span class="sep"></span>
+            <button data-key="VOLUMEUP" aria-label="Volume plus">${svg('plus')}</button>
+          </div>
+          <button class="speaker press" data-action="volume" aria-label="Son">${svg('speaker')}</button>
+        </div>
+      </section>
+      <section class="launcher dimmable"><div class="tiles">${tiles}</div></section>
+    </div>`;
+          this._root = this.shadowRoot.querySelector('.remote');
+          this._els = {
+            icon: this._root.querySelector('.now-icon'),
+            title: this._root.querySelector('.now-title'),
+            sub: this._root.querySelector('.now-sub'),
+          };
+          this._shown = {};
+          this._root.addEventListener('click', (e) => this._onClick(e));
+          this._root.addEventListener('pointerdown', (e) => this._onPointerDown(e));
+          for (const t of ['pointerup', 'pointercancel']) {
+            this._root.addEventListener(t, () => { this._stopRepeat(); setTimeout(() => { this._skipClick = null; }, 0); });
+          }
+          this._root.addEventListener('pointerout', (e) => { if (e.target.closest?.('[data-key]') === this._repeating) this._stopRepeat(); });
+          this._update();
+          this._fit();
+        }
+
+        _entity() { return this._hass?.states?.[this._config?.entity]; }
+
+        _isOn() { const st = this._entity(); return !!st && !OFF_STATES.has(st.state); }
+
+        _update() {
+          if (!this._root || !this._hass) return;
+          const st = this._entity();
+          const on = this._isOn();
+          const source = on ? st.attributes?.source : null;
+          const idx = source == null ? -1 : this._tiles.findIndex((t) => t.source === source);
+          const tile = idx >= 0 ? this._tiles[idx] : null;
+          const input = !!tile?.input;
+          const view = {
+            on,
+            idx,
+            accent: !on ? NEUTRAL_OFF : color(tile?.color, NEUTRAL),
+            title: !st ? 'TV introuvable' : !on ? 'TV éteinte' : (tile?.name || source || 'TV'),
+            sub: !st ? this._config.entity : !on ? 'Appuie sur le bouton pour l’allumer' : input ? 'Source en cours' : 'Appli en cours',
+            icon: !on ? svg('power') : tile?.icon ? svg(tile.icon === 'play' ? 'tile_play' : tile.icon) : esc(tile?.label || initials(source)),
+          };
+          const was = this._shown;
+          if (was.on !== view.on) {
+            this._root.classList.toggle('is-on', on);
+            this._root.classList.toggle('is-off', !on);
+          }
+          if (was.accent !== view.accent) this._root.style.setProperty('--accent', view.accent);
+          if (was.title !== view.title) this._els.title.textContent = view.title;
+          if (was.sub !== view.sub) this._els.sub.textContent = view.sub;
+          if (was.icon !== view.icon) this._els.icon.innerHTML = view.icon;
+          if (was.idx !== view.idx) {
+            this._root.querySelector('.tile.is-current')?.classList.remove('is-current');
+            if (idx >= 0) this._root.querySelector(`[data-tile="${idx}"]`)?.classList.add('is-current');
+          }
+          this._shown = view;
+        }
+
+        // Fill the screen below wherever the card starts, and pad only the safe areas the frontend
+        // has not already left free (with kiosk-mode the card starts under the status bar).
+        _fit() {
+          if (!this._root || !this.isConnected) return;
+          const rect = this.getBoundingClientRect();
+          const top = Math.max(0, rect.top);
+          const vh = window.visualViewport?.height || window.innerHeight;
+          this.style.height = `${Math.max(560, Math.round(vh - top))}px`;
+          const probe = getComputedStyle(this.shadowRoot.querySelector('.probe'));
+          const insetTop = parseFloat(probe.paddingTop) || 0;
+          const insetBottom = parseFloat(probe.paddingBottom) || 0;
+          this._root.style.setProperty('--sat', `${Math.max(0, insetTop - top)}px`);
+          this._root.style.setProperty('--sab', `${insetBottom}px`);
+        }
+
+        _onClick(e) {
+          const b = e.target.closest('button, .scrim');
+          if (!b) return;
+          if (this._skipClick === b) { this._skipClick = null; return; }
+          const { action, key, app } = b.dataset;
+          if (action === 'close-volume') return this._closeVolume();
+          if (action === 'volume') {
+            this._haptic('selection');
+            this._root.classList.toggle('vol-open');
+            return this._armVolume();
+          }
+          if (b.closest('.vol')) this._armVolume();
+          if (action === 'power') { this._haptic('medium'); return this._call('media_player', 'toggle'); }
+          if (!this._isOn()) return this._nudgePower();
+          if (key) { this._haptic('light'); return this._call('webostv', 'button', { button: key }); }
+          if (app) { this._haptic('light'); return this._call('webostv', 'command', { command: 'system.launcher/launch', payload: { id: app } }); }
+        }
+
+        // Arrows and volume repeat while held, like a real remote.
+        _onPointerDown(e) {
+          const b = e.target.closest('[data-key]');
+          if (!b || !REPEAT_KEYS.has(b.dataset.key)) return;
+          if (!this._isOn()) return;
+          this._skipClick = b;
+          const send = () => {
+            this._call('webostv', 'button', { button: b.dataset.key });
+            if (b.closest('.vol')) this._armVolume();
+          };
+          this._haptic('light');
+          send();
+          this._stopRepeat();
+          this._repeating = b;
+          this._repeatDelay = setTimeout(() => { this._repeatTimer = setInterval(send, 170); }, 450);
+        }
+
+        _stopRepeat() {
+          clearTimeout(this._repeatDelay);
+          clearInterval(this._repeatTimer);
+          this._repeating = null;
+        }
+
+        _armVolume() {
+          clearTimeout(this._volTimer);
+          this._volTimer = setTimeout(() => this._closeVolume(), 3000);
+        }
+
+        _closeVolume() {
+          clearTimeout(this._volTimer);
+          this._root.classList.remove('vol-open');
+        }
+
+        _nudgePower() {
+          this._haptic('warning');
+          this._root.classList.remove('nudge');
+          void this._root.offsetWidth;
+          this._root.classList.add('nudge');
+        }
+
+        _call(domain, service, data = {}) {
+          if (!this._hass) return undefined;
+          return this._hass.callService(domain, service, { entity_id: this._config.entity, ...data })
+            .catch((err) => this._notify(err?.message || String(err)));
+        }
+
+        _notify(message) {
+          this.dispatchEvent(new CustomEvent('hass-notification', { detail: { message }, bubbles: true, composed: true }));
+        }
+
+        // The companion app turns this window event into a native haptic.
+        _haptic(type) {
+          window.dispatchEvent(new CustomEvent('haptic', { detail: type }));
+        }
+      }
+
+      if (!customElements.get('tv-remote-card')) customElements.define('tv-remote-card', TvRemoteCard);
+      window.customCards = window.customCards || [];
+      if (!window.customCards.some((c) => c.type === 'tv-remote-card')) {
+        window.customCards.push({ type: 'tv-remote-card', name: 'Télécommande TV', description: 'Liquid glass remote for an LG webOS TV' });
+      }
+    })();
