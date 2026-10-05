@@ -86,8 +86,10 @@ spec:
             - { name: GRANTS_KEY_FILE, value: /etc/agora/grants/private.pem }
             # What the composer's access picker offers, each at its widest access (Agora's
             # docs/specs/credentials.md, "Offered profiles"). The gateway's GitHub PAT
-            # (agora-gateway/upstream-credentials) must reach each of them: the grants only narrow it.
-            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write" }
+            # (agora-gateway/upstream-credentials) must reach each repository: the grants only narrow
+            # it. `internet` is the gateway's route without hosts, public addresses only
+            # (apps/agora-gateway): off unless picked for an execution.
+            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet" }
           # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL.
           envFrom:
             - secretRef:

@@ -1,5 +1,7 @@
 # Default-deny. The gateway takes CONNECT from Agora's sandboxes only, and goes out to the Internet on
-# 443 only: every upstream it serves is HTTPS (docs/credentials.md on arnaultbretagne/agora). The other
+# 443 only: every upstream it serves is HTTPS (docs/specs/credentials.md on arnaultbretagne/agora). Its
+# `internet` route lets an execution name any host, so private addresses are cut here: the home network
+# (VLANs, router), Tailscale, the cluster's Pods and Services, link-local. Pods are IPv4 only. The other
 # half is apps/agora-sandboxes/networkpolicy.yaml (credential-gateway).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -37,7 +39,14 @@ spec:
             k8s:k8s-app: kube-dns
       toPorts:
         - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
-    - toEntities: [world]
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.168.0.0/16
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]
 ---

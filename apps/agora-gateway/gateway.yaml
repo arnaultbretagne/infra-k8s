@@ -1,5 +1,6 @@
-# The gateway (docs/credentials.md on arnaultbretagne/agora, "La passerelle"). One replica: it keeps no
-# state, but one is enough for the lab.
+# The gateway (docs/specs/credentials.md on arnaultbretagne/agora, "The gateway"). One replica: it keeps
+# no state, but one is enough for the lab. Its configuration is not watched: a change here takes
+# `kubectl -n agora-gateway rollout restart deploy/gateway`.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -160,6 +161,28 @@ data:
                       key:
                         value: { file: /etc/agentgateway/credentials/github-basic }
                         location: { header: { name: authorization, prefix: "Basic " } }
+                # The Internet: no hostnames, so agentgateway picks it last, for a host none of the routes
+                # above names — those keep their own grants, and their credentials, whatever this one
+                # allows. No credential set: the request leaves as the sandbox sent it. Its own rule: a
+                # grant on host "*" (Agora's `internet` profile). The home network and the cluster are cut
+                # off by networkpolicy.yaml, not here.
+                - name: internet
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        - allow: 'jwt.grants.exists(g, g.host == "*" && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
 ---
 # Agora's public key for the grants JWT (the private half is apps/agora/grants-key.secrets.yaml).
 apiVersion: v1
