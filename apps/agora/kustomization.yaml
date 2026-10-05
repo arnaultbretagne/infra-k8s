@@ -21,4 +21,4 @@ resources:
 # The server's image, by digest: written by Agora's CI when it proposes a new one, with server-image.yaml.
 images:
   - name: ghcr.io/arnaultbretagne/agora-server
-    digest: sha256:0f3edc1263298d6a90680825f649e4571bcf32314b23ea1468c6e3f7d808c705
+    digest: sha256:f6d5898ef460b7b08ebc107bbd189a17af454133ea076a809fde9abe36101610
