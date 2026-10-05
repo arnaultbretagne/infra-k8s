@@ -105,14 +105,35 @@ must be at `/root/.config/sops/age/keys.txt`, and the Flux deploy key at
 
 The script handles:
 1. Strict preflight (static IP, NTP, deploy key, Age key, and TCP/443)
-2. OS hardening (HTTPS-only nftables firewall, SSH, fail2ban, unattended-upgrades, kernel modules, sysctl)
-3. Installing k0s, Helm, Flux CLI, age, sops (pinned versions)
-4. Generating or loading the AES key for encryption at rest
-5. Starting k0s, arming netguard, then installing Cilium via Helm (CNI + LB, pre-Flux)
-6. Installing the checked-in Flux manifests, adding its read-only deploy key and creating the SOPS Age secret
-7. Creating the dedicated `dev` account with NOPASSWD sudo and provisioning the host-side terminal services
+2. The node's address made static: `bootstrap/host-network.sh` turns the ifupdown `inet dhcp` stanza holding `PUBLIC_IP` into a static one (same address, gateway, MAC, MTU and resolver), so that a link loss never takes the address away
+3. OS hardening (HTTPS-only nftables firewall, SSH, fail2ban, unattended-upgrades, kernel modules, sysctl)
+4. Installing k0s, Helm, Flux CLI, age, sops (pinned versions)
+5. Generating or loading the AES key for encryption at rest
+6. Starting k0s, arming netguard, then installing Cilium via Helm (CNI + LB, pre-Flux)
+7. Installing the checked-in Flux manifests, adding its read-only deploy key and creating the SOPS Age secret
+8. Creating the dedicated `dev` account with NOPASSWD sudo and provisioning the host-side terminal services
 
 After bootstrap, Flux reconciles the full dependency chain automatically.
+
+### The node's address
+
+With `inet dhcp`, every link loss makes the node ask the router again; when no answer comes within
+five seconds, dhcpcd drops the address and falls back to `169.254.x.x`. A blip then becomes an
+outage that only an out-of-band reboot (AMT) ends, and netguard, seeing the link up with no
+connectivity, disables k0s. A DHCP reservation on the router does not prevent it: the node still
+waits for the answer. So the node declares its address itself; keep the router's reservation for
+its MAC, so that nothing else is given the address.
+
+On a node already running, the step runs alone. `--dry-run` shows the files it would write:
+
+```bash
+sudo -n env PUBLIC_IP="<static-node-ip>" ./bootstrap/host-network.sh --dry-run
+sudo -n env PUBLIC_IP="<static-node-ip>" ./bootstrap/host-network.sh
+```
+
+Applying bounces the interface for a few seconds, from a transient systemd unit, so a dropped SSH
+session does not stop it halfway. If the gateway does not answer within 60 s, the previous files are
+put back and the interface comes up again with them; they stay under `/var/lib/host-network/`.
 
 ## Secrets
 

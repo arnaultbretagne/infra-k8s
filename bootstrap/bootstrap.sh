@@ -173,6 +173,10 @@ ok "Required download endpoints are reachable"
 # ─── Phase 1: OS Hardening ───────────────────────────────────────────
 log "Phase 1 — OS hardening"
 
+# The node's address, declared by the node rather than obtained from DHCP:
+# a link loss must never take it away (host-network.sh says why).
+PUBLIC_IP="$PUBLIC_IP" "$BOOTSTRAP_DIR/host-network.sh"
+
 # Firewall (nftables)
 cat > /etc/nftables.conf <<'NFTEOF'
 #!/usr/sbin/nft -f
