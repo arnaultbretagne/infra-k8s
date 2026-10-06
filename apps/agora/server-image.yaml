@@ -8,5 +8,5 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  source: arnaultbretagne/agora design/agora-foundations 5bd0f42
-  inputs: "9e26673847f5d3c5"
+  source: arnaultbretagne/agora design/agora-foundations 4adbb9c
+  inputs: "e98f515f6f0b8473"
