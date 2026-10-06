@@ -9,7 +9,10 @@ data:
   config.yaml: |
     # agentgateway v1.5.0, standalone. Port 3000 takes CONNECT from the sandboxes' bridges; each tunnel to
     # :443 re-enters the internal bind, where TLS is terminated with Agora's gateway CA (the sandboxes trust
-    # it), the JWT is verified, the grants are checked, and the host's credential is set.
+    # it), the JWT is verified, the grants are checked, and the host's credential is set. The JWT names the
+    # Pod's address (`ip`, from its Sandbox): the agent can read the token out of its bridge (same uid), so
+    # only the address it comes from, which the network vouches for, keeps it from working elsewhere.
+    # `source.address` is the sandbox's own address, kept across the CONNECT (verified on g4: src.addr).
     frontendPolicies:
       accessLog:
         add:
@@ -50,9 +53,9 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: no path tricks, and some grant of the JWT covers
-                        # this host, path and query, and method.
-                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/anthropic }
@@ -75,9 +78,9 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: no path tricks, and some grant of the JWT covers
-                        # this host, path and query, and method.
-                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/zai }
@@ -102,9 +105,9 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: no path tricks, and some grant of the JWT covers
-                        # this host, path and query, and method.
-                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
                     requestHeaderModifier:
                       remove: [chatgpt-account-id]
                     backendAuth:
@@ -129,9 +132,9 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: no path tricks, and some grant of the JWT covers
-                        # this host, path and query, and method.
-                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/github }
@@ -154,9 +157,9 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: no path tricks, and some grant of the JWT covers
-                        # this host, path and query, and method.
-                        - allow: '!request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/github-basic }
@@ -182,7 +185,8 @@ data:
                       jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        - allow: 'jwt.grants.exists(g, g.host == "*" && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        # From the Pod the JWT is bound to, and a grant on "*".
+                        - allow: 'jwt.ip == source.address && jwt.grants.exists(g, g.host == "*" && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
 ---
 # Agora's public key for the grants JWT (the private half is apps/agora/grants-key.secrets.yaml).
 apiVersion: v1
