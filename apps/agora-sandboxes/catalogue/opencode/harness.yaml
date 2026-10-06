@@ -11,8 +11,8 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   harness: opencode
-  name: opencode-16a1bd9e0420
-  image: ghcr.io/arnaultbretagne/agora-harness-opencode@sha256:16a1bd9e04209029439b591a4d94bf185ec59b78b023be31a6fad1b3f4f09eeb
+  name: opencode-44f3d8c29f03
+  image: ghcr.io/arnaultbretagne/agora-harness-opencode@sha256:44f3d8c29f030c15f990fe101cb68176193c95e708c550118a6d822058c850cb
   versions: opencode-linux-x64 1.18.34
-  source: arnaultbretagne/agora design/agora-foundations a2d4230
-  inputs: "a81f7e2925e9cb51"
+  source: arnaultbretagne/agora design/agora-foundations 4e33168
+  inputs: "a5f0e036d3b11d6d"
