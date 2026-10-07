@@ -31,7 +31,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: sync
-          image: ghcr.io/arnaultbretagne/obsidian-sync:0.2.0
+          image: ghcr.io/arnaultbretagne/obsidian-sync:0.4.0
           securityContext:
             runAsUser: 1000
             runAsGroup: 1000

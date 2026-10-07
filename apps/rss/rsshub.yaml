@@ -32,7 +32,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: rsshub
-          image: diygod/rsshub:2026-10-06
+          image: diygod/rsshub:2026-10-07
           command: [dumb-init, --, node, dist/index.mjs]
           securityContext:
             allowPrivilegeEscalation: false
