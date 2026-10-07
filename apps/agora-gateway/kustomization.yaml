@@ -10,5 +10,6 @@ resources:
   - gateway-ca.secrets.yaml
   - upstream-credentials.secrets.yaml
   - chatgpt-refresher.yaml
+  - claude-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml
