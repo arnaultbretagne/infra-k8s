@@ -1,0 +1,79 @@
+# RSSHub: feeds for the sites that publish none (https://docs.rsshub.app/routes). Miniflux
+# subscribes to http://rsshub.rss.svc.cluster.local:1200/<route>; nothing else reaches it, and it
+# has no route on the gateway.
+#
+# Config-only, with the upstream image's dated tag. The image runs as root and starts through npm;
+# here it runs as the image's `node` user (1000) on a read-only root, started with the same node
+# command npm would run, and without log files. No Chromium (the `chromium-bundled` image is three
+# times the size): the few routes that need a browser are out. No Redis: the in-memory cache is
+# enough for one reader that polls hourly, and a restart only refetches.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rsshub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rsshub
+  template:
+    metadata:
+      labels:
+        app: rsshub
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: bretagne-low
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rsshub
+          image: diygod/rsshub:2026-10-06
+          command: [dumb-init, --, node, dist/index.mjs]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: NODE_OPTIONS, value: "--max-http-header-size=32768 --max-old-space-size=320" }
+            - { name: NO_LOGFILES, value: "true" }
+            - { name: CACHE_TYPE, value: memory }
+            - { name: TZ, value: Europe/Zurich }
+          ports:
+            - containerPort: 1200
+          resources:
+            requests: { cpu: 20m, memory: 192Mi }
+            limits: { memory: 512Mi }
+          startupProbe:
+            httpGet: { path: /healthz, port: 1200 }
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet: { path: /healthz, port: 1200 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 1200 }
+            periodSeconds: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rsshub
+spec:
+  selector:
+    app: rsshub
+  ports:
+    - { port: 1200, targetPort: 1200 }

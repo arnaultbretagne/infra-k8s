@@ -22,6 +22,8 @@ resources:
   - agora-gateway
   # The orchestrator of Agora's workflows (prefect.bretagne.dev, OIDC-gated).
   - prefect
+  # The RSS stack (rss.bretagne.dev, OIDC-gated): Miniflux and RSSHub.
+  - rss
   - agent-vault
   - home-assistant
   - terminal

@@ -1,0 +1,11 @@
+# The RSS stack: Miniflux, the reader (rss.bretagne.dev), and RSSHub, which makes feeds for the
+# sites that have none and is only reached by Miniflux, in-cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rss
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,58 @@
+# Miniflux's database: the subscriptions, their categories, every entry fetched and what was read
+# or starred. Miniflux needs PostgreSQL and nothing else. Losing it loses the subscriptions (an
+# OPML export rebuilds those) and the reading state, so a daily backup is enough. Miniflux reads
+# the CNPG-generated `miniflux-pg-app` Secret directly (miniflux.yaml). `cnpg-s3-creds` is
+# distributed into this namespace by apps/shared/cnpg-s3-creds.yaml.
+#
+# Never pruned: a refactor of this directory must not be able to delete the database.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: miniflux-pg
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  enablePDB: true
+  primaryUpdateStrategy: unsupervised
+  priorityClassName: bretagne-low
+  monitoring:
+    enablePodMonitor: true
+  bootstrap:
+    initdb:
+      database: miniflux
+      owner: miniflux
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/miniflux
+      # One cluster, one barman server: never reuse this serverName for another cluster.
+      serverName: miniflux-pg
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+        secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+      wal:
+        compression: snappy
+    retentionPolicy: "7d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: miniflux-pg-daily
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # Six fields, seconds first (robfig/cron), in UTC: 04:30, after the other clusters' base backups
+  # (03:00–04:15), so no two contend on this single node.
+  schedule: "0 30 4 * * *"
+  immediate: true
+  cluster:
+    name: miniflux-pg
+  backupOwnerReference: self
