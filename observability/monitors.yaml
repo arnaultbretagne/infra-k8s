@@ -16,7 +16,7 @@ spec:
       app.kubernetes.io/name: cert-manager
       app.kubernetes.io/component: controller
   endpoints:
-    - port: tcp-prometheus-servicemonitor
+    - port: http-metrics
       interval: 60s
 ---
 # Flux controllers (:8080 http-prom) — reconciliation / workqueue metrics.

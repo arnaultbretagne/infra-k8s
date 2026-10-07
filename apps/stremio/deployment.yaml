@@ -28,7 +28,7 @@ spec:
         # upstream AIOStreams handles HEAD (issue Viren070/AIOStreams#1009).
         # =====================================================================
         - name: head-shim
-          image: nginx:1.29.8-alpine
+          image: nginx:1.31.6-alpine
           command: ["nginx", "-c", "/etc/nginx-head-shim/nginx.conf", "-g", "daemon off;"]
           ports:
             - containerPort: 8080
