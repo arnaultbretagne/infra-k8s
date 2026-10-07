@@ -442,8 +442,8 @@ fi
 
 mkdir -p /etc/k0s/containerd.d
 cat > /etc/k0s/containerd.d/gvisor.toml <<'EOF'
-version = 2
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+version = 3
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"
   runtime_path = "/usr/local/bin/containerd-shim-runsc-v1"
 EOF
@@ -480,12 +480,12 @@ else
       /opt/kata/share/defaults/kata-containers/runtime-rs/configuration-clh-runtime-rs.toml \
       > /etc/kata-containers/configuration.toml
   cat > /etc/k0s/containerd.d/kata.toml <<'EOF'
-version = 2
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
+version = 3
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata]
   runtime_type = "io.containerd.kata.v2"
   runtime_path = "/opt/kata/runtime-rs/bin/containerd-shim-kata-v2"
   privileged_without_host_devices = true
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata.options]
+  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata.options]
     ConfigPath = "/etc/kata-containers/configuration.toml"
 EOF
   ok "containerd kata drop-in written, vhost modules loaded at boot"
