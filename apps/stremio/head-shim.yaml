@@ -4,7 +4,8 @@
  # WHY THIS EXISTS (2026-09-27):
  #   AIOStreams v2 blocks HTTP HEAD on the whole /api/v1/debrid router
  #   (explicit middleware in packages/server/src/routes/api/debrid.ts,
- #   "block HEAD requests" -> 405). Verified present in v2.26.0 AND v2.35.0.
+ #   "block HEAD requests" -> 405). Verified present in v2.26.0, v2.35.0 and
+ #   v2.35.9 (2026-10-07: HEAD on the playback route still answers 405).
  #   Stremio's streaming engine (server.js v4.21.x, dl.strem.io) probes every
  #   stream URL with `fetch(url, {method: "HEAD"})` and ABORTS playback when
  #   the response is not ok ("Failed to fetch Media URL"). Result: streams are

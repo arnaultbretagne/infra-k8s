@@ -55,7 +55,7 @@ spec:
             - name: head-shim-cache
               mountPath: /var/cache/nginx
         - name: aiostreams
-          image: viren070/aiostreams:v2.26.0
+          image: viren070/aiostreams:v2.35.9
           ports:
             - containerPort: 3000
           securityContext:
