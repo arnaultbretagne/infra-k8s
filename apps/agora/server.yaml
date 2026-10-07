@@ -90,6 +90,13 @@ spec:
             # it. `internet` is the gateway's route without hosts, public addresses only
             # (apps/agora-gateway): off unless picked for an execution.
             - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet" }
+            # Agora's docs/specs/credentials.md, "Limits": the server reads each account's limits
+            # through the gateway, with a grant bound to its own address, checked against the
+            # gateway's root (gateway-ca.yaml).
+            - name: POD_IP
+              valueFrom:
+                fieldRef: { fieldPath: status.podIP }
+            - { name: GATEWAY_CA_FILE, value: /etc/agora/gateway-ca/ca.pem }
           # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL.
           envFrom:
             - secretRef:
@@ -117,6 +124,7 @@ spec:
           volumeMounts:
             - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
             - { name: grants, mountPath: /etc/agora/grants, readOnly: true }
+            - { name: gateway-ca, mountPath: /etc/agora/gateway-ca, readOnly: true }
       volumes:
         - name: signing
           secret:
@@ -127,6 +135,9 @@ spec:
           secret:
             secretName: grants-key
             defaultMode: 0440
+        - name: gateway-ca
+          configMap:
+            name: gateway-ca
 ---
 apiVersion: v1
 kind: Service

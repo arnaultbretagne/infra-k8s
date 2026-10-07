@@ -1,0 +1,22 @@
+# The gateway's root, for the server's own reads through it: the accounts' limits (Agora's
+# docs/specs/credentials.md, "Limits"). The same certificate as apps/agora-sandboxes/credential-proxy-ca.yaml,
+# which the harnesses trust: a ConfigMap is read in its own namespace only. Public material only; the key
+# stays in apps/agora-gateway/gateway-ca.secrets.yaml. CN "Agora gateway CA", valid 2026-09-29 → 2028-09-28,
+# SHA-256 72:4A:B0:36:2F:F5:4B:A3:06:15:8C:E3:5F:D0:CA:B9:D0:1D:DD:68:33:27:57:C4:42:07:68:D6:10:C0:B5:69.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-ca
+data:
+  ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBmzCCAUGgAwIBAgIUIDH/h02+wsgUdAYRCsF+Ht0k1n8wCgYIKoZIzj0EAwIw
+    GzEZMBcGA1UEAwwQQWdvcmEgZ2F0ZXdheSBDQTAeFw0yNjA5MjkwNzEyMTRaFw0y
+    ODA5MjgwNzEyMTRaMBsxGTAXBgNVBAMMEEFnb3JhIGdhdGV3YXkgQ0EwWTATBgcq
+    hkjOPQIBBggqhkjOPQMBBwNCAAStRVO9XOnq2pMQx1Ax01a9FM183INApF8esW0d
+    uwdhJcea91yuHhsHnZg4TCItTb4J/5FJSY5PKFrexncT8Mv5o2MwYTAdBgNVHQ4E
+    FgQUdsGsFI/ccNL5RESfBKqXWYVPTxowHwYDVR0jBBgwFoAUdsGsFI/ccNL5RESf
+    BKqXWYVPTxowDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZI
+    zj0EAwIDSAAwRQIhAJbpxn6OWSQsq3RoY3r9guHRiYiV/FHTZg4Cgp8akKs+AiBe
+    0vC5I8QWX2I+CjaJE2irlpenWazvxmyPAolMZSyGNg==
+    -----END CERTIFICATE-----
