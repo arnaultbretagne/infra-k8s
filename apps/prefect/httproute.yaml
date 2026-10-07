@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prefect
+spec:
+  parentRefs:
+    - name: bretagne-gateway
+      namespace: traefik
+      sectionName: https-prefect
+  hostnames:
+    - prefect.bretagne.dev
+  rules:
+    - filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=86400; includeSubDomains"
+      backendRefs:
+        - name: oauth2-proxy
+          port: 4180

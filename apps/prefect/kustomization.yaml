@@ -1,0 +1,16 @@
+# prefect.bretagne.dev — Prefect, the orchestrator of Agora's workflows: a flow's steps each open an
+# Agora Workstream through the server's API (apps/agora), wait for the agent's turn, and decide what
+# comes next. Flow code: arnaultbretagne/agora, pulled at each run. Operators only (OIDC, admin).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: prefect
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - postgres.yaml
+  - restore-test.yaml
+  - oauth2-proxy.secrets.yaml
+  - prefect.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml

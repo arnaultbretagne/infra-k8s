@@ -1,0 +1,132 @@
+# Prefect, from its official charts: the server (API, UI, background services in one process) and
+# one worker. The chart's own hardening holds (uid 1001, read-only root, emptyDir scratch); below are
+# only what this cluster asks on top (docs/hosting-an-app.md §4): no capability, no CPU limit, no
+# service-account token, a priority — and no bundled PostgreSQL or Redis.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prefect-server
+spec:
+  interval: 1h
+  timeout: 10m
+  chart:
+    spec:
+      chart: prefect-server
+      version: "2026.10.6163015"
+      sourceRef:
+        kind: HelmRepository
+        name: prefect
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    global:
+      prefect:
+        image:
+          repository: prefecthq/prefect
+          prefectTag: 3.8.8-python3.12
+        env:
+          - { name: PREFECT_SERVER_ANALYTICS_ENABLED, value: "false" }
+    server:
+      priorityClassName: bretagne-low
+      automountServiceAccountToken: false
+      # The browser reaches the API on the same host, through oauth2-proxy.
+      uiConfig:
+        prefectUiApiUrl: https://prefect.bretagne.dev/api
+      resources:
+        requests: { cpu: 100m, memory: 384Mi }
+        limits: { cpu: null, memory: 1Gi }
+      containerSecurityContext:
+        capabilities:
+          drop: [ALL]
+    serviceAccount:
+      automountServiceAccountToken: false
+    # Exposed by this directory's own HTTPRoute, to oauth2-proxy rather than to the server.
+    ingress: { enabled: false }
+    gateway: { enabled: false }
+    httproute: { enabled: false }
+    # The CNPG cluster of postgres.yaml, read straight from the Secret CNPG generates.
+    externalDatabase:
+      existingSecret: prefect-pg-app
+      usernameSecretKey: username
+      passwordSecretKey: password
+      hostSecretKey: host
+      portSecretKey: port
+      nameSecretKey: dbname
+    secret: { create: false }
+    postgresql: { enabled: false }
+    redis: { enabled: false }
+---
+# The worker: type `process`, so a flow run is a process in this Pod — no Kubernetes Job, hence no
+# Role and no route to the API server. It polls the work pool `agora`, at most 3 runs at once: each
+# step of a run holds one of Agora's 6 active executions until its claim is gone.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prefect-worker
+spec:
+  interval: 1h
+  timeout: 10m
+  dependsOn:
+    - name: prefect-server
+  chart:
+    spec:
+      chart: prefect-worker
+      version: "2026.10.6163015"
+      sourceRef:
+        kind: HelmRepository
+        name: prefect
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    worker:
+      image:
+        repository: prefecthq/prefect
+        prefectTag: 3.8.8-python3.12
+      config:
+        workPool: agora
+        type: process
+        installPolicy: never
+        limit: 3
+      apiConfig: selfHostedServer
+      selfHostedServerApiConfig:
+        apiUrl: http://prefect-server.prefect.svc.cluster.local:4200/api
+      priorityClassName: bretagne-low
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits: { cpu: null, memory: 1Gi }
+      containerSecurityContext:
+        capabilities:
+          drop: [ALL]
+      # `--with-healthcheck`: the worker answers /health on :8080.
+      livenessProbe:
+        enabled: true
+      # What the flows read: Agora's server, reached in-cluster without the OIDC gate, and the owner
+      # their Workstreams are created for — the operator's identity UUID, so they appear in their list.
+      extraEnvVars:
+        - { name: AGORA_URL, value: http://server.agora.svc.cluster.local:8080 }
+        - { name: AGORA_OWNER, value: c18ec77d-a9b8-508e-9777-165b93aa7648 }
+    role:
+      create: false
+    rolebinding:
+      create: false
+  # The chart has no switch for the Pod's service-account token; the worker needs none.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: prefect-worker
+            patch: |
+              - op: add
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false

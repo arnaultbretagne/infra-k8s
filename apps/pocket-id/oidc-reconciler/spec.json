@@ -88,6 +88,13 @@
       "allowedGroups": ["admin"],
       "isPublic": true,
       "pkceEnabled": true
+    },
+    {
+      "_comment": "Prefect (apps/prefect, prefect.bretagne.dev), the orchestrator of Agora's workflows, gated via oauth2-proxy: its runs start Agora executions, so operators only. Secret bootstrapped the same way as 'onecli' (created 2026-10-07).",
+      "name": "prefect",
+      "callbackURLs": ["https://prefect.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     }
   ]
 }

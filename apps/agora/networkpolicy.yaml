@@ -30,6 +30,14 @@ spec:
     - fromEntities: [host] # kubelet probes, and the scripted cases run from the node
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
+    # Prefect's worker (apps/prefect): its flows drive Workstreams through the API, without the OIDC
+    # gate, so this rule is what bounds who may act on Agora from inside the cluster.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: prefect
+            app.kubernetes.io/name: prefect-worker
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
     # The anchor receiver: the sandboxes push there when their Pod ends, and reach nothing else.
     - fromEndpoints:
         - matchLabels:

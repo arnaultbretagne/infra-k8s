@@ -107,6 +107,20 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Prefect (apps/prefect): the orchestrator of Agora's workflows, behind the OIDC gate
+    # (oauth2-proxy, ALLOWED_GROUPS=admin): its runs start Agora executions.
+    - name: https-prefect
+      port: 8443
+      protocol: HTTPS
+      hostname: prefect.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: All
     # The redesign's UI showcase: a static page with an in-browser fake server, no data behind it.
     # Public on purpose (a design review surface), unlike https-agora.
     - name: https-agora-test
