@@ -729,7 +729,7 @@ else
   helm repo update cilium
   helm install cilium cilium/cilium \
     --namespace kube-system \
-    --version 1.19.2 \
+    --version 1.20.2 \
     --set kubeProxyReplacement=false \
     --set operator.replicas=1 \
     --set k8sServiceHost=localhost \
