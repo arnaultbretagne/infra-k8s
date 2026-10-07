@@ -153,10 +153,8 @@ download_endpoints=(
   "$FLUX_RELEASE_URL/flux_${FLUX_VERSION}_checksums.txt"
   "$SOPS_RELEASE_URL/$SOPS_ASSET"
   "$SOPS_RELEASE_URL/sops-v${SOPS_VERSION}.checksums.txt"
-  "$GVISOR_RELEASE_URL/runsc"
-  "$GVISOR_RELEASE_URL/runsc.sha512"
-  "$GVISOR_RELEASE_URL/containerd-shim-runsc-v1"
-  "$GVISOR_RELEASE_URL/containerd-shim-runsc-v1.sha512"
+  "$GVISOR_RELEASE_URL/gvisor.tar.zstd"
+  "$GVISOR_RELEASE_URL/gvisor.tar.zstd.sha512"
   "$TTYD_RELEASE_URL/ttyd.${GVISOR_ARCH}"
   "$TTYD_RELEASE_URL/SHA256SUMS"
   "$KATA_RELEASE_URL/$KATA_ASSET"
@@ -425,17 +423,18 @@ SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" \
 ok "Official AGE key verified against repository secrets"
 
 # runsc (gVisor) — untrusted-compute runtime substrate (ADR 0027).
-if command -v runsc &>/dev/null && runsc --version 2>/dev/null | grep -q "$RUNSC_VERSION"; then
+# Releases ship one tarball: runsc, containerd-shim-runsc-v1 and gvisor-bin/, the sidecar
+# binaries runsc executes at runtime. runsc looks for gvisor-bin/ next to itself, so the whole
+# tarball is extracted into /usr/local/bin (upstream install guide).
+if command -v runsc &>/dev/null && runsc --version 2>/dev/null | grep -q "$RUNSC_VERSION" && [ -d /usr/local/bin/gvisor-bin ]; then
   ok "runsc ${RUNSC_VERSION} already installed"
 else
+  command -v zstd &>/dev/null || apt-get install -y -qq --no-install-recommends zstd
   gvisor_tmp=$(mktemp -d)
-  curl -fsSLo "$gvisor_tmp/runsc" "$GVISOR_RELEASE_URL/runsc"
-  curl -fsSLo "$gvisor_tmp/runsc.sha512" "$GVISOR_RELEASE_URL/runsc.sha512"
-  curl -fsSLo "$gvisor_tmp/containerd-shim-runsc-v1" "$GVISOR_RELEASE_URL/containerd-shim-runsc-v1"
-  curl -fsSLo "$gvisor_tmp/containerd-shim-runsc-v1.sha512" "$GVISOR_RELEASE_URL/containerd-shim-runsc-v1.sha512"
-  (cd "$gvisor_tmp" && sha512sum -c runsc.sha512 && sha512sum -c containerd-shim-runsc-v1.sha512)
-  chmod a+rx "$gvisor_tmp/runsc" "$gvisor_tmp/containerd-shim-runsc-v1"
-  mv "$gvisor_tmp/runsc" "$gvisor_tmp/containerd-shim-runsc-v1" /usr/local/bin/
+  curl -fsSLo "$gvisor_tmp/gvisor.tar.zstd" "$GVISOR_RELEASE_URL/gvisor.tar.zstd"
+  curl -fsSLo "$gvisor_tmp/gvisor.tar.zstd.sha512" "$GVISOR_RELEASE_URL/gvisor.tar.zstd.sha512"
+  (cd "$gvisor_tmp" && sha512sum -c gvisor.tar.zstd.sha512)
+  tar --zstd -xf "$gvisor_tmp/gvisor.tar.zstd" -C /usr/local/bin --no-same-owner
   rm -rf "$gvisor_tmp"
   ok "runsc ${RUNSC_VERSION} installed"
 fi
