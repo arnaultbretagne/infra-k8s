@@ -35,6 +35,17 @@
     },
     {
       "customType": "regex",
+      "description": "Flux CLI pinned in bootstrap.sh. Same depName as the controllers in gotk-components.yaml (flux manager), so both land in one branch and the CLI never lags the cluster. Neither is applied by a reconcile: clusters/bretagne/flux-system is outside the sync path, apply it with `kubectl apply -k`.",
+      "managerFilePatterns": [
+        "/^bootstrap/bootstrap\\.sh$/"
+      ],
+      "matchStrings": ["FLUX_VERSION=\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "fluxcd/flux2",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
       "description": "gVisor (runsc) host binary pinned in bootstrap.sh — PR on new releases; apply stays deliberate and supervised (ADR 0027 §6, same host-substrate flow as K0S_VERSION). google/gvisor has no published GitHub Releases, only tags (release-20260622.0 style), so this uses github-tags, not github-releases.",
       "managerFilePatterns": [
         "/^bootstrap/bootstrap\\.sh$/"
