@@ -50,6 +50,12 @@
       "description": "cloudnative-pg/postgresql is NOT an independent dependency — it's a TOOL image (oidc-reconciler, restore-drill, chown init) that must mirror the CNPG database major (currently 17). The restore-drill boots a Postgres on data restored from the pg17 DB; pg18 binaries can't start a pg17 data dir, so a blind bump would break the backup drill. Renovate can't see the DB version (it's in a CNPG Cluster CRD it doesn't parse), so it must not drive this bump. The :17 tag already floats to the latest 17.x; bump every reference by hand, together, during a deliberate DB major migration.",
       "matchDepNames": ["ghcr.io/cloudnative-pg/postgresql"],
       "enabled": false
+    },
+    {
+      "description": "RSSHub (apps/rss) has no releases, only an image per build, tagged with its date (2026-10-06). Renovate's docker versioning splits a tag at its first hyphen and would never see a newer one, so the date is the version here. Builds land several times a week: once a month is enough for a feed generator.",
+      "matchDepNames": ["diygod/rsshub"],
+      "versioning": "regex:^(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})$",
+      "schedule": ["* * 1 * *"]
     }
   ]
 }

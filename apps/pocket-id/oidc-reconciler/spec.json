@@ -95,6 +95,13 @@
       "callbackURLs": ["https://prefect.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin"],
       "pkceEnabled": false
+    },
+    {
+      "_comment": "The RSS stack (apps/rss, rss.bretagne.dev): Miniflux, gated via oauth2-proxy, which signs the user in from the e-mail it passes. Secret bootstrapped the same way as 'onecli' (created 2026-10-07).",
+      "name": "rss",
+      "callbackURLs": ["https://rss.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     }
   ]
 }

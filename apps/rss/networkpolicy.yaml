@@ -1,0 +1,210 @@
+# Default-deny plus the flows that exist (docs/hosting-an-app.md §7): Traefik → oauth2-proxy →
+# Miniflux; Miniflux → its
+# database, → RSSHub, → the public internet; RSSHub → the public internet; the database and the
+# drill → R2. CiliumNetworkPolicy throughout, as in the other namespaces.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+# Miniflux fetches feeds, their pages and their images from anywhere public, on 80 and 443. Not
+# the private ranges: FETCHER_ALLOW_PRIVATE_NETWORKS lets it reach RSSHub's cluster address, so
+# this is what keeps a feed URL from pointing at the home LAN (the router, the TV, the IoT VLAN).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: miniflux
+spec:
+  endpointSelector:
+    matchLabels:
+      app: miniflux
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: miniflux-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: rsshub
+      toPorts:
+        - ports: [{ port: "1200", protocol: TCP }]
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      toPorts:
+        - ports: [{ port: "80", protocol: TCP }, { port: "443", protocol: TCP }]
+---
+# RSSHub: Miniflux only in; the public internet out, as for Miniflux.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: rsshub
+spec:
+  endpointSelector:
+    matchLabels:
+      app: rsshub
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: miniflux
+      toPorts:
+        - ports: [{ port: "1200", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "1200", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+      toPorts:
+        - ports: [{ port: "80", protocol: TCP }, { port: "443", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: miniflux
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy
+    # DNATs to Traefik — both paths, as for Agora's gate.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+---
+# The database: its one client is Miniflux; then the CNPG operator, its own instances, the kubelet
+# and Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: miniflux-pg
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: miniflux-pg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: miniflux
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: cloudnative-pg
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }, { port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: miniflux-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }, { port: "8000", protocol: TCP }]
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # Barman → R2: WAL archiving and base backups leave the cluster over TLS.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: miniflux-pg
+    - toEntities: [kube-apiserver]
+---
+# The restore drill: the one Pod that pulls a base backup and its WAL from R2.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: restore-drill
+spec:
+  endpointSelector:
+    matchLabels:
+      app: restore-drill
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
