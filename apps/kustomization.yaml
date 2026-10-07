@@ -20,6 +20,8 @@ resources:
   - agora
   # Their credential gateway: the sandboxes' only way out (agentgateway, grants signed by the server).
   - agora-gateway
+  # The orchestrator of Agora's workflows (prefect.bretagne.dev, OIDC-gated).
+  - prefect
   - agent-vault
   - home-assistant
   - terminal

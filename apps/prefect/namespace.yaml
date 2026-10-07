@@ -1,0 +1,12 @@
+# Prefect: the orchestrator that runs Agora's workflows (steps that each open an Agora Workstream,
+# wait for its turn, and decide what comes next). It runs our own flow code, pulled from the agora
+# repository, never a user's or an agent's.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prefect
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

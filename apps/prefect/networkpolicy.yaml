@@ -1,0 +1,195 @@
+# Default-deny plus the flows that exist (docs/hosting-an-app.md §7): Traefik → oauth2-proxy → server;
+# the worker → server and → Agora's server; the server → its database; the database and the drill →
+# R2. CiliumNetworkPolicy throughout, as in the other namespaces. The other half of the worker → Agora
+# flow is apps/agora/networkpolicy.yaml.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: prefect-server
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: prefect-server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+        - matchLabels:
+            app.kubernetes.io/name: prefect-worker
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: prefect-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+---
+# The worker runs the flows: it clones their code from GitHub and reads PRs and checks there (HTTPS
+# to the world, as for the other apps until toFQDNs is adopted), drives Agora's server in-cluster,
+# and reports to the Prefect server. Nothing reaches it but the kubelet's probe.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: prefect-worker
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: prefect-worker
+  ingress:
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: prefect-server
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: prefect-server
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy
+    # DNATs to Traefik — both paths, as for Agora's gate.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
+---
+# The database: its one client is the Prefect server; then the CNPG operator, its own instances, the
+# kubelet and Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: prefect-pg
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: prefect-pg
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: prefect-server
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:app.kubernetes.io/name: cloudnative-pg
+            k8s:io.kubernetes.pod.namespace: cnpg-system
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }, { port: "5432", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: prefect-pg
+      toPorts:
+        - ports: [{ port: "5432", protocol: TCP }, { port: "8000", protocol: TCP }]
+    - fromEntities: [host]
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus
+      toPorts:
+        - ports: [{ port: "9187", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    # Barman → R2: WAL archiving and base backups leave the cluster over TLS.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: prefect-pg
+    - toEntities: [kube-apiserver]
+---
+# The restore drill: the one Pod that pulls a base backup and its WAL from R2.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: restore-drill
+spec:
+  endpointSelector:
+    matchLabels:
+      app: restore-drill
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

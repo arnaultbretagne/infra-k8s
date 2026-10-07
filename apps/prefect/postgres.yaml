@@ -1,0 +1,58 @@
+# Prefect's database: the server's state — flows, deployments, runs, their logs and the inputs a
+# paused run waits for. Losing it loses the runs' history and any run waiting on a human, not
+# Agora's record (each step's Workstream lives in Agora's own log), so a daily backup is enough.
+# The chart reads the CNPG-generated `prefect-pg-app` Secret directly (externalDatabase in
+# prefect.yaml). `cnpg-s3-creds` is distributed into this namespace by apps/shared/cnpg-s3-creds.yaml.
+#
+# Never pruned: a refactor of this directory must not be able to delete the database.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: prefect-pg
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.4
+  enablePDB: true
+  primaryUpdateStrategy: unsupervised
+  priorityClassName: bretagne-low
+  monitoring:
+    enablePodMonitor: true
+  bootstrap:
+    initdb:
+      database: prefect
+      owner: prefect
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://bretagne-pg-backups/prefect
+      # One cluster, one barman server: never reuse this serverName for another cluster.
+      serverName: prefect-pg
+      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+      s3Credentials:
+        accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+        secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+      wal:
+        compression: snappy
+    retentionPolicy: "7d"
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: prefect-pg-daily
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  # Six fields, seconds first (robfig/cron), in UTC: 04:15, after the other clusters' base backups
+  # (03:00–04:00), so no two contend on this single node.
+  schedule: "0 15 4 * * *"
+  immediate: true
+  cluster:
+    name: prefect-pg
+  backupOwnerReference: self
