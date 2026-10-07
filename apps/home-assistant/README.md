@@ -145,6 +145,17 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   now. `ip neigh show 10.10.30.110` must say `PERMANENT`, also after `ifup lan3`. Verified
   2026-10-03: a magic packet from g4 woke the TV within a second, while 20 minutes of webostv
   reconnects reaching the sleeping NIC had not.
+- **dnsmasq must leave that ARP entry alone.** The TV renews its lease at every wake-up. dnsmasq
+  answers an unconfigured client by unicast, and before that it writes the client's MAC into the
+  ARP table as an ordinary entry (`dhcp.c`: "inject mac address direct into ARP cache"), which
+  replaces the permanent one; at the next standby the router no longer knows the MAC and Wake-on-LAN
+  dies (seen 2026-10-03: the entry was `INCOMPLETE` after the TV's next standby). So the TV's
+  reservation (`dhcp.cfg0afe63`, `lg-tv`) carries `broadcast '1'`: dnsmasq then answers it by
+  broadcast (`set:needs-broadcast` + `dhcp-broadcast=tag:needs-broadcast` in
+  `/var/etc/dnsmasq.conf*`) and never touches the ARP table. The RutOS UI has no field for it (UCI
+  only: `uci set dhcp.cfg0afe63.broadcast='1'`, `uci commit dhcp`, `/etc/init.d/dnsmasq restart`);
+  after editing that lease in the UI, check `uci get dhcp.cfg0afe63.broadcast` still says `1`.
+  Verified 2026-10-03: after a full DHCP exchange at wake-up the entry stayed `PERMANENT`.
 
 ## HTTP config is storage-backed (why there is no `http:` in the YAML)
 
