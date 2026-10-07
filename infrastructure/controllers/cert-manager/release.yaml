@@ -28,23 +28,24 @@ spec:
       apiVersion: controller.config.cert-manager.io/v1alpha1
       kind: ControllerConfiguration
       enableGatewayAPI: true
+    # Sized on 7 days of measured usage (2026-10-07; docs/hosting-an-app.md §4.3).
     resources:
       requests:
         cpu: 10m
-        memory: 64Mi
+        memory: 144Mi
       limits:
         memory: 192Mi
     webhook:
       resources:
         requests:
           cpu: 10m
-          memory: 32Mi
+          memory: 48Mi
         limits:
-          memory: 64Mi
+          memory: 128Mi   # peaked at 63Mi against the old 64Mi
     cainjector:
       resources:
         requests:
           cpu: 10m
-          memory: 64Mi
+          memory: 112Mi
         limits:
           memory: 128Mi

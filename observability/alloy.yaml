@@ -82,9 +82,11 @@ spec:
               url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
             }
           }
+      # Sized on 7 days of measured usage (2026-10-07): p95 239Mi, peak 242Mi against the
+      # old 256Mi limit.
       resources:
         requests:
-          cpu: 50m
-          memory: 128Mi
+          cpu: 30m
+          memory: 288Mi
         limits:
-          memory: 256Mi
+          memory: 384Mi

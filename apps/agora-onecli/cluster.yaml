@@ -23,7 +23,7 @@ spec:
   # double freeze — swapless thrash, not a cgroup OOM).
   resources:
     requests:
-      cpu: 100m
+      cpu: 35m
       memory: 256Mi
     limits:
       memory: 512Mi

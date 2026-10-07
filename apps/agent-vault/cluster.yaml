@@ -8,7 +8,7 @@ spec:
   priorityClassName: bretagne-critical
   resources:
     requests:
-      cpu: 100m
+      cpu: 30m
       memory: 256Mi
     limits:
       memory: 512Mi

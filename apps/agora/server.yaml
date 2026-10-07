@@ -54,7 +54,8 @@ spec:
         app: server
     spec:
       serviceAccountName: server
-      priorityClassName: bretagne-low
+      # Every workspace goes through the server: shed last, like the IdP.
+      priorityClassName: bretagne-critical
       imagePullSecrets:
         - name: ghcr-pull
       securityContext:
@@ -75,7 +76,8 @@ spec:
           env:
             - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
-            - { name: MAX_ACTIVE, value: "6" }
+            # Bounded with the namespace quota (apps/agora-sandboxes/quota.yaml): change both.
+            - { name: MAX_ACTIVE, value: "16" }
             - { name: TEST_ROUTES, value: "true" }
             - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
             # The API server's CA, for the global fetch of the Kubernetes client.
@@ -112,9 +114,11 @@ spec:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 30
           # The log keeps the Workstreams it follows in memory: a long run of large answers needs
-          # room, and Node's heap is sized to the container's limit.
+          # room, and Node's heap is sized to the container's limit. The request is the 7-day p95
+          # (204Mi, 2026-10-07) plus margin; its CPU is the request-path floor (docs/hosting-an-app.md
+          # §4.3), the share it keeps when sandboxes saturate the node.
           resources:
-            requests: { cpu: 20m, memory: 128Mi }
+            requests: { cpu: 50m, memory: 256Mi }
             limits: { memory: 1Gi }
           securityContext:
             allowPrivilegeEscalation: false

@@ -24,9 +24,9 @@ spec:
     resources:
       requests:
         cpu: 10m
-        memory: 32Mi
-      limits:
         memory: 64Mi
+      limits:
+        memory: 128Mi   # peaked at 55Mi against the old 64Mi
     config:
       modules:
         http_2xx:
