@@ -34,7 +34,10 @@ spec:
               type: RuntimeDefault
           containers:
             - name: restore-test
-              image: ghcr.io/cloudnative-pg/postgresql:17.4
+              # The 17 line, as agora-pg's drill: the barman-cloud of the 17.4 image answers
+              # "Unknown backup 'latest'" on this server's backups (first drill, 2026-10-07), where
+              # this one restores them.
+              image: ghcr.io/cloudnative-pg/postgresql:17
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
