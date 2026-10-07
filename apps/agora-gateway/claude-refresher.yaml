@@ -1,0 +1,176 @@
+# Keeps the cluster's Claude login alive, for the account's usage limits through the gateway (route
+# `anthropic-usage`, docs/specs/credentials.md on arnaultbretagne/agora). Inference keeps the operator's
+# setup-token: a refresh revokes the previous access token at once, and the gateway only sees the new one
+# when the kubelet updates the mounted Secret, about a minute later. The login is the cluster's own
+# (`claude auth login` in a fresh CLAUDE_CONFIG_DIR), never the operator's: its refresh token rotates and
+# may be spent only once. It lives in the Secret `claude-session`, created by hand and kept out of git —
+# this job rewrites it, Flux would put it back. Keys: `credentials.json` (Claude Code's own file) and
+# `access_token` (what the gateway sets).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claude-refresher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: claude-refresher
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [claude-session]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: claude-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: claude-refresher
+subjects:
+  - kind: ServiceAccount
+    name: claude-refresher
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: claude-refresher
+data:
+  refresh.mjs: |
+    // The access token lives 8 hours. Every two hours: when it expires within REFRESH_BELOW_HOURS, trade
+    // the refresh token at platform.claude.com for a new pair, as Claude Code does, and write both keys
+    // back at once. The login itself ends on a fixed date that refreshes do not move
+    // (`refreshTokenExpiresAt`, about 28 days after `claude auth login`): from WARN_DAYS before it, the
+    // job fails, so KubeJobFailed asks for a new login in time. Logs dates and error codes, never a token.
+    import { readFileSync } from 'node:fs'
+
+    const NAME = 'claude-session'
+    const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e' // Claude Code's own OAuth client (its CLIENT_ID)
+    const TOKEN_URL = 'https://platform.claude.com/v1/oauth/token' // Claude Code's TOKEN_URL
+    const SA = '/var/run/secrets/kubernetes.io/serviceaccount'
+    const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
+    const url = `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}/api/v1/namespaces/${namespace}/secrets/${NAME}`
+    const below = Number(process.env.REFRESH_BELOW_HOURS ?? 4) * 3_600_000
+    const warn = Number(process.env.WARN_DAYS ?? 5) * 86_400_000
+    const iso = (ms) => new Date(ms).toISOString()
+    const b64 = (text) => Buffer.from(text).toString('base64')
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    async function kube(method, body) {
+      const response = await fetch(url, {
+        method,
+        headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, accept: 'application/json', 'content-type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (method === 'GET' && !response.ok) throw new Error(`reading ${NAME}: ${response.status}`)
+      return response
+    }
+
+    const secret = await (await kube('GET')).json()
+    const file = JSON.parse(Buffer.from(secret.data['credentials.json'], 'base64').toString('utf8'))
+    const login = file.claudeAiOauth
+
+    // Said first, and still failing the job after a refresh: the refresh does not move this date.
+    let status = 0
+    if (login.refreshTokenExpiresAt - Date.now() < warn) {
+      console.error(`the login ends ${iso(login.refreshTokenExpiresAt)}: log in again (claude auth login) and replace ${NAME}`)
+      status = 3
+    }
+    if (login.expiresAt - Date.now() > below) {
+      console.log(`access token valid until ${iso(login.expiresAt)}, login ends ${iso(login.refreshTokenExpiresAt)}: nothing to do`)
+      process.exit(status)
+    }
+
+    const answer = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ grant_type: 'refresh_token', refresh_token: login.refreshToken, client_id: CLIENT_ID, scope: login.scopes.join(' ') }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!answer.ok) {
+      const detail = await answer.json().catch(() => ({}))
+      console.error(`refresh refused: ${answer.status} ${String(detail.error ?? '')} — the login must be done again`)
+      process.exit(1)
+    }
+    const fresh = await answer.json()
+    const now = Date.now()
+    login.accessToken = fresh.access_token
+    if (fresh.refresh_token) login.refreshToken = fresh.refresh_token
+    login.expiresAt = now + fresh.expires_in * 1000
+    if (fresh.refresh_token_expires_in) login.refreshTokenExpiresAt = now + fresh.refresh_token_expires_in * 1000
+    if (fresh.scope) login.scopes = fresh.scope.split(' ')
+
+    // The old refresh token is spent now: the new pair must be written, whatever it takes.
+    for (let attempt = 1; ; attempt++) {
+      const current = attempt === 1 ? secret : await (await kube('GET')).json()
+      const data = { ...current.data, 'credentials.json': b64(JSON.stringify(file, null, 2)), access_token: b64(login.accessToken) }
+      const put = await kube('PUT', { ...current, data })
+      if (put.ok) break
+      if (attempt === 6) {
+        console.error(`refreshed but not written (${put.status}): the login is lost, log in again`)
+        process.exit(2)
+      }
+      await sleep(2000 * attempt)
+    }
+    console.log(`refreshed: access token valid until ${iso(login.expiresAt)}, login ends ${iso(login.refreshTokenExpiresAt)}`)
+    process.exit(status)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: claude-refresher
+spec:
+  schedule: "23 */2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # No retry by a new Pod: a refresh that went through but was not written would be retried with a
+      # spent refresh token. The script retries the write itself.
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app: claude-refresher
+        spec:
+          serviceAccountName: claude-refresher
+          restartPolicy: Never
+          priorityClassName: bretagne-low
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresher
+              image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+              command: ["node", "/app/refresh.mjs"]
+              env:
+                # The API server's CA, on top of the public roots platform.claude.com needs.
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                - name: REFRESH_BELOW_HOURS
+                  value: "4"
+                - name: WARN_DAYS
+                  value: "5"
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: script, mountPath: /app, readOnly: true }
+          volumes:
+            - name: script
+              configMap:
+                name: claude-refresher

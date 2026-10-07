@@ -35,6 +35,36 @@ data:
               cert: /etc/agentgateway/ca/ca-cert.pem
               key: /etc/agentgateway/ca/ca-key.pem
             routes:
+                # Claude's usage limits (5-hour and weekly windows): the cluster's own login, kept alive by
+                # claude-refresher.yaml — the setup-token below lacks the `user:profile` scope this one path
+                # asks for. Its exact path outranks the `anthropic` route, which takes every other path.
+                - name: anthropic-usage
+                  hostnames: [api.anthropic.com]
+                  matches:
+                    - path: { exact: /api/oauth/usage }
+                      method: GET
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    jwtAuth:
+                      mode: strict
+                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                      location:
+                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                      issuer: agora
+                      audiences: [agora-gateway]
+                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
+                    authorization:
+                      rules:
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/claude/access_token }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
                 # Claude: the operator's setup-token replaces the harness's placeholder.
                 - name: anthropic
                   hostnames: [api.anthropic.com]
@@ -253,6 +283,8 @@ spec:
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
             # The ChatGPT session's access token, rewritten by chatgpt-refresher: watched the same way.
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
+            # The Claude login's access token, rewritten by claude-refresher: watched the same way.
+            - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
       volumes:
         - name: config
           configMap:
@@ -272,6 +304,14 @@ spec:
         - name: chatgpt
           secret:
             secretName: chatgpt-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
+        # Created by hand, outside git (claude-refresher.yaml): optional, so the gateway starts without it.
+        - name: claude
+          secret:
+            secretName: claude-session
             optional: true
             defaultMode: 0440
             items:
