@@ -86,6 +86,11 @@
       "enabled": false
     },
     {
+      "description": "Agora's images (server, harnesses, lab, showcase) are pinned by digest alone and moved by Agora's own CI: its propose-infra job keeps one rolling PR on the branch agora/images. Renovate cannot resolve a digest without a tag (dashboard lookup warnings) and must not race that PR.",
+      "matchPackageNames": ["/^ghcr\\.io/arnaultbretagne/agora-/"],
+      "enabled": false
+    },
+    {
       "description": "RSSHub (apps/rss) has no releases, only an image per build, tagged with its date (2026-10-06). Renovate's docker versioning splits a tag at its first hyphen and would never see a newer one, so the date is the version here. Builds land several times a week: once a month is enough for a feed generator.",
       "matchDepNames": ["diygod/rsshub"],
       "versioning": "regex:^(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})$",
