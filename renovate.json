@@ -7,17 +7,27 @@
   "description": "Behaviour lives here in Git (single source of truth). The Mend app is only the runner — nothing app-specific lives at Mend (all images/charts/k0s are public, no registry creds).",
   "kubernetes": {
     "description": "Renovate's kubernetes manager has no default file scope — point it at our manifests so image tags (e.g. viren070/aiostreams) get bump PRs.",
-    "fileMatch": ["(^|/)apps/.+\\.ya?ml$", "(^|/)infrastructure/.+\\.ya?ml$", "(^|/)observability/.+\\.ya?ml$"]
+    "managerFilePatterns": [
+      "/(^|/)apps/.+\\.ya?ml$/",
+      "/(^|/)infrastructure/.+\\.ya?ml$/",
+      "/(^|/)observability/.+\\.ya?ml$/"
+    ]
   },
   "flux": {
     "description": "Our HelmReleases + HelmRepositories live under infrastructure/ and observability/, not the flux manager's default flux/ dir — point it here so pinned chart versions (cilium, traefik, cert-manager, loki, kube-prometheus-stack…) get bump PRs. Config-only: nothing deploys until a PR is merged and Flux reconciles it.",
-    "fileMatch": ["(^|/)apps/.+\\.ya?ml$", "(^|/)infrastructure/.+\\.ya?ml$", "(^|/)observability/.+\\.ya?ml$"]
+    "managerFilePatterns": [
+      "/(^|/)apps/.+\\.ya?ml$/",
+      "/(^|/)infrastructure/.+\\.ya?ml$/",
+      "/(^|/)observability/.+\\.ya?ml$/"
+    ]
   },
   "customManagers": [
     {
       "customType": "regex",
       "description": "k0s host binary pinned in bootstrap.sh — PR on new releases; apply stays deliberate (Autopilot Plan, ADR 0015). Tags look like v1.35.2+k0s.0.",
-      "fileMatch": ["^bootstrap/bootstrap\\.sh$"],
+      "managerFilePatterns": [
+        "/^bootstrap/bootstrap\\.sh$/"
+      ],
       "matchStrings": ["K0S_VERSION=\"(?<currentValue>v[0-9.]+\\+k0s\\.[0-9]+)\""],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "k0sproject/k0s",
@@ -26,7 +36,9 @@
     {
       "customType": "regex",
       "description": "gVisor (runsc) host binary pinned in bootstrap.sh — PR on new releases; apply stays deliberate and supervised (ADR 0027 §6, same host-substrate flow as K0S_VERSION). google/gvisor has no published GitHub Releases, only tags (release-20260622.0 style), so this uses github-tags, not github-releases.",
-      "fileMatch": ["^bootstrap/bootstrap\\.sh$"],
+      "managerFilePatterns": [
+        "/^bootstrap/bootstrap\\.sh$/"
+      ],
       "matchStrings": ["RUNSC_VERSION=\"(?<currentValue>release-[0-9]{8}\\.[0-9]+)\""],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "google/gvisor",
