@@ -46,6 +46,17 @@
     },
     {
       "customType": "regex",
+      "description": "Cilium chart version of the pre-Flux helm install in bootstrap.sh (Flux needs a CNI before it can run). Same depName and registry as the HelmRelease, so a rebuilt node starts on the version Flux will keep.",
+      "managerFilePatterns": [
+        "/^bootstrap/bootstrap\\.sh$/"
+      ],
+      "matchStrings": ["--version (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+) \\\\"],
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://helm.cilium.io",
+      "depNameTemplate": "cilium"
+    },
+    {
+      "customType": "regex",
       "description": "gVisor (runsc) host binary pinned in bootstrap.sh — PR on new releases; apply stays deliberate and supervised (ADR 0027 §6, same host-substrate flow as K0S_VERSION). google/gvisor has no published GitHub Releases, only tags (release-20260622.0 style), so this uses github-tags, not github-releases.",
       "managerFilePatterns": [
         "/^bootstrap/bootstrap\\.sh$/"
