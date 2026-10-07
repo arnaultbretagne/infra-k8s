@@ -1,4 +1,4 @@
-# Default-deny. The gateway takes CONNECT from Agora's sandboxes only, and goes out to the Internet on
+# Default-deny. The gateway takes CONNECT from Agora's sandboxes and its server only, and goes out to the Internet on
 # 443 only: every upstream it serves is HTTPS (docs/specs/credentials.md on arnaultbretagne/agora). Its
 # `internet` route lets an execution name any host, so private addresses are cut here: the home network
 # (VLANs, router), Tailscale, the cluster's Pods and Services, link-local. Pods are IPv4 only. The other
@@ -27,6 +27,13 @@ spec:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: agora-sandboxes
             app.kubernetes.io/part-of: agora-sandboxes
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
+    # Agora's server, for the accounts' limits it reads itself (apps/agora/networkpolicy.yaml).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
     - fromEntities: [host] # kubelet probes

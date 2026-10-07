@@ -13,6 +13,7 @@ resources:
   - grants-key.secrets.yaml
   - oauth2-proxy.secrets.yaml
   - log.secrets.yaml
+  - gateway-ca.yaml
   - server.yaml
   - server-image.yaml
   - oauth2-proxy.yaml

@@ -1,6 +1,7 @@
 # Default-deny plus the flows of the server: Traefik → oauth2-proxy → server; the server reaches the
-# Kubernetes API (claims), the sandboxes' bridge port and its database, nothing else. The other half
-# of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml.
+# Kubernetes API (claims), the sandboxes' bridge port, its database and the gateway (the accounts'
+# limits), nothing else. The other half of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml,
+# of the gateway's apps/agora-gateway/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -58,6 +59,13 @@ spec:
             cnpg.io/cluster: agora-pg
       toPorts:
         - ports: [{ port: "5432", protocol: TCP }]
+    # The gateway, for the accounts' limits it reads there itself (Agora's credentials.md, "Limits").
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-gateway
+            app: gateway
+      toPorts:
+        - ports: [{ port: "3000", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
