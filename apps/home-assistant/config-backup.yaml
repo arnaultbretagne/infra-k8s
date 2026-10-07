@@ -13,6 +13,7 @@ metadata:
   name: ha-config-backup
 spec:
   schedule: "15 4 * * *"          # 04:15 daily (ha-pg backup 04:00, pocket-id/onecli 03:00-03:30)
+  timeZone: Etc/UTC   # same clock as the CNPG ScheduledBackups; unset = the node's zone (g4: Europe/Zurich)
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
