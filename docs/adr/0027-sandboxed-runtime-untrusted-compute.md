@@ -71,7 +71,7 @@ gVisor requires no hardware virtualization: its `systrap` platform intercepts th
 **Why not the alternatives considered:**
 - **Kata + any VMM** — requires KVM (unavailable). Revisit on substrate change.
 - **Sysbox** — stronger-than-runc containers but the same kernel boundary class (no syscall interposition, no guest kernel); solves dev-env problems (docker-in-docker, systemd), not this ADR's problem.
-- **Pod user namespaces (`hostUsers: false`)** — complementary hardening, not a substitute; requires containerd ≥ 2.0 and k0s v1.35.2 ships containerd 1.7.30. Adopt when a k0s bump brings containerd 2.x — it is nearly free and benefits *all* pods.
+- **Pod user namespaces (`hostUsers: false`)** — complementary hardening, not a substitute; requires containerd ≥ 2.0, which k0s ships since v1.36 (containerd 2.3.5 in v1.36.4); not adopted yet — it is nearly free and benefits *all* pods. Since containerd 2, the runtime drop-ins in `/etc/k0s/containerd.d/` must use the v3 format (`io.containerd.cri.v1.runtime`): k0s refuses to start on a v2 one.
 - **Do nothing until the machine changes** — leaves the exact gap ADR 0024 already refuses to accept for agent runtimes.
 
 **Performance model (why the tax is acceptable here):** agent sessions are dominated by LLM inference latency; the gVisor tax applies to syscall-heavy bursts (package installs, git operations, builds) at ~10–40 % in bad cases — noise at session level. `directFS` (default) removes most historical file-IO overhead. The per-pod opt-in makes every claim testable: the same pod spec with and without `runtimeClassName` is a one-field A/B.
