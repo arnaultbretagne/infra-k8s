@@ -121,9 +121,7 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # The RSS stack (apps/rss): Miniflux behind the OIDC gate (oauth2-proxy, ALLOWED_GROUPS=admin),
-    # save the Google Reader API that native apps sync through, guarded by Miniflux's own
-    # credentials.
+    # The RSS stack (apps/rss): Miniflux behind the OIDC gate (oauth2-proxy, ALLOWED_GROUPS=admin).
     - name: https-rss
       port: 8443
       protocol: HTTPS

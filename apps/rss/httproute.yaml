@@ -1,7 +1,6 @@
-# rss.bretagne.dev: everything behind the OIDC gate, except the Google Reader API that native apps
-# (NetNewsWire, Reeder, ReadKit…) sync through. Those apps cannot do a browser sign-in, so that path
-# goes straight to Miniflux and is guarded by its own credentials (Settings → Integrations → Google
-# Reader). There, the gate's identity header is removed: only oauth2-proxy may set it.
+# rss.bretagne.dev: everything behind the OIDC gate, the API included. Native apps (NetNewsWire,
+# Reeder…) would need the Google Reader API (POST /accounts/ClientLogin, /reader/api/0) routed
+# straight to Miniflux, outside the gate: not opened.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -14,26 +13,6 @@ spec:
   hostnames:
     - rss.bretagne.dev
   rules:
-    - matches:
-        - method: POST
-          path: { type: Exact, value: /accounts/ClientLogin }
-        - path: { type: PathPrefix, value: /reader/api/0 }
-      filters:
-        - type: RequestHeaderModifier
-          requestHeaderModifier:
-            remove:
-              - X-Forwarded-Email
-              - X-Forwarded-User
-              - X-Forwarded-Preferred-Username
-              - X-Forwarded-Groups
-        - type: ResponseHeaderModifier
-          responseHeaderModifier:
-            set:
-              - name: Strict-Transport-Security
-                value: "max-age=86400; includeSubDomains"
-      backendRefs:
-        - name: miniflux
-          port: 8080
     - filters:
         - type: ResponseHeaderModifier
           responseHeaderModifier:

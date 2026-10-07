@@ -1,7 +1,6 @@
 # OIDC gate (ADR 0021/0022) in front of Miniflux: ALLOWED_GROUPS=admin, on top of the Pocket-ID
 # client's own group restriction. It passes the signed-in e-mail on in X-Forwarded-Email, which is
-# who Miniflux signs in (miniflux.yaml). The Google Reader API for native apps does not come this
-# way (httproute.yaml).
+# who Miniflux signs in (miniflux.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

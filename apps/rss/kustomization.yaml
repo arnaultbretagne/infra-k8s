@@ -1,6 +1,5 @@
 # rss.bretagne.dev — the RSS stack: Miniflux, the reader, on its CNPG database, and RSSHub, which
-# makes feeds for the sites that publish none. Operators only (OIDC, admin), except the Google
-# Reader API that native apps sync through.
+# makes feeds for the sites that publish none. Operators only (OIDC, admin).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: rss

@@ -4,13 +4,9 @@
 #
 # Who is signed in: oauth2-proxy (oauth2-proxy.yaml) passes the Pocket-ID e-mail in
 # X-Forwarded-Email, Miniflux trusts that header from pod addresses only (the network policy admits
-# just oauth2-proxy and Traefik, and the route strips the header on the one path Traefik sends here
-# directly), and creates the account at the first sign-in. The account has no password: the login
-# form is off (DISABLE_LOCAL_AUTH), so the REST API's Basic auth has nothing to match either.
-#
-# Native apps sign in to the Google Reader API with the credentials set in Miniflux itself
-# (Settings → Integrations → Google Reader), which is the one path not behind the gate
-# (httproute.yaml).
+# oauth2-proxy alone), and creates the account at the first sign-in. The account has no password:
+# the login form is off (DISABLE_LOCAL_AUTH), so the REST API's Basic auth has nothing to match
+# either.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

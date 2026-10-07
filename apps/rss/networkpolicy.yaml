@@ -1,5 +1,5 @@
 # Default-deny plus the flows that exist (docs/hosting-an-app.md §7): Traefik → oauth2-proxy →
-# Miniflux, and Traefik → Miniflux for the Google Reader API alone (httproute.yaml); Miniflux → its
+# Miniflux; Miniflux → its
 # database, → RSSHub, → the public internet; RSSHub → the public internet; the database and the
 # drill → R2. CiliumNetworkPolicy throughout, as in the other namespaces.
 apiVersion: cilium.io/v2
@@ -28,8 +28,6 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: oauth2-proxy
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
     - fromEntities: [host] # kubelet probes
