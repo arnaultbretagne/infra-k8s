@@ -21,7 +21,8 @@
 - **The repo is the single source of truth** (monorepo, ADR 0019). App *source code* lives in its own
   repo; only *deployment manifests* live here (ADR 0016).
 - **Single node, single public IP.** k0s single-node, Cilium CNI, Traefik owns `:80/:443` via the
-  node's `externalIPs`. No HA. 16GB RAM, already ~126% committed on memory limits — **size honestly**.
+  node's `externalIPs`. No HA. 6 cores, 32GB RAM, memory limits overcommitted (their sum exceeds the
+  RAM) — **size honestly**.
 - **An app isn't "done" until it is hardened, network-policed, resource-bounded, backed-up (if it has
   state), auth-gated (if it's protected), and verified.** A Deployment that merely boots is ~40% of
   the job.
@@ -169,6 +170,19 @@ than a brief burst). The namespace `LimitRange` provides defaults, but set expli
             requests: { cpu: 50m, memory: 64Mi }
             limits:   { memory: 128Mi }
 ```
+
+These are a first guess. Once the app has run for a week, size it on what Prometheus measured,
+grouped by workload (a rollout renames the Pod and cuts its history):
+
+| Value | Rule | Why |
+|---|---|---|
+| `requests.memory` | max(p95 × 1.2, peak × 0.75) of the working set | The kubelet evicts first the Pods above their request: a request under real use puts the app at the front of the line. |
+| `limits.memory` | at least peak × 1.5 | A working set that sits at its limit is reclaim pressure, or a GC death spiral when `GOMEMLIMIT` follows the limit (Grafana). |
+| `requests.cpu` | p95 × 1.5, at least 5m | On a single node a CPU request reserves nothing: it is the share the container keeps when the node is saturated. |
+| `requests.cpu`, request path | at least 50m | What a user waits on (Traefik, the IdP, Home Assistant, Agora's server and gateway, their databases) must stay responsive while sandboxes saturate the node. |
+
+An idle service uses 1-20m CPU, so a round 100m guess holds node capacity that sandboxes then
+cannot get. The scheduler, not the CPU, is what runs out first.
 
 ### 4.4 Priority & rollout strategy
 
@@ -430,8 +444,8 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
   fsGroup still works for `emptyDir`, so keep it there.
 - **Prometheus/Alertmanager images are distroless** — use `promtool`, not `wget`.
 - **PSS `restricted` needs `seccompProfile: RuntimeDefault`** explicitly — the #1 rejection.
-- **Memory limits are ~126% overcommitted** — big new limits raise real OOM risk; size requests to
-  reality, set a sane limit, set priority.
+- **Memory limits are overcommitted** (their sum exceeds the RAM) — big new limits raise real OOM
+  risk; size requests to reality (§4.3), set a sane limit, set priority.
 - **Changing a CNPG `Cluster`'s resources restarts PG** — a single instance = a brief app blip; sequence it.
 - **Listing a Pocket-ID client's allowed groups does NOT restrict it** — the `isGroupRestricted` flag
   must also be true, else the group list is ignored and *any* user gets in (this is how Grafana stayed

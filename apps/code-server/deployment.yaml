@@ -42,7 +42,7 @@ spec:
               value: /home/coder/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           resources:
             requests:
-              cpu: 100m
+              cpu: 50m           # interactive: the request-path floor (docs/hosting-an-app.md §4.3)
               memory: 512Mi
             limits:
               memory: 3Gi        # headroom for claude sessions + builds

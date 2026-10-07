@@ -54,12 +54,20 @@ spec:
         enabled: true
         storageClass: local-path
         size: 10Gi
+      # Requests sized on 7 days of measured usage (2026-10-07: p95 298Mi, peak 356Mi).
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi
+          cpu: 20m
+          memory: 384Mi
         limits:
           memory: 512Mi   # strict cap: broad queries must not OOM the node
+
+    # The rules sidecar holds ~90Mi; the chart sets no requests.
+    sidecar:
+      resources:
+        requests:
+          cpu: 5m
+          memory: 112Mi
 
     # Simple-scalable components off (single-binary mode)
     read:

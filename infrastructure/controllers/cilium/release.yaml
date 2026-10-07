@@ -73,7 +73,7 @@ spec:
       serviceMonitor:
         enabled: true
 
-    # Resources
+    # Resources, sized on 7 days of measured usage (2026-10-07; docs/hosting-an-app.md §4.3).
     operator:
       replicas: 1          # single-node: avoid 2nd replica stuck Pending on hostPort conflict
       prometheus:
@@ -81,13 +81,20 @@ spec:
           enabled: true       # operator.prometheus.enabled is already chart-default true
       resources:
         requests:
-          cpu: 50m
-          memory: 64Mi
+          cpu: 10m
+          memory: 224Mi
         limits:
-          memory: 256Mi
+          memory: 320Mi
+    # The agent is the datapath: its request is the CPU it is guaranteed when sandboxes saturate
+    # the node (p95 175m, 1.2 cores at boot). Its working set sat at the old 512Mi limit.
     resources:
       requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
+        cpu: 250m
         memory: 512Mi
+      limits:
+        memory: 1Gi
+    envoy:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 96Mi

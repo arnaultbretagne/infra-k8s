@@ -61,13 +61,16 @@ spec:
       externalIPs:
         - 10.10.20.10
 
-    # Resource limits
+    # Every app's traffic goes through here: evicted last, and its CPU request is the share it is
+    # guaranteed when sandboxes saturate the node (the request-path floor, docs/hosting-an-app.md
+    # §4.3). Memory sized on 7 days of measured usage (2026-10-07: p95 197Mi, peak 205Mi).
+    priorityClassName: bretagne-critical
     resources:
       requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
+        cpu: 50m
         memory: 256Mi
+      limits:
+        memory: 384Mi
 
     # Edge RED (research 2026-07-04 §4.1): custom latency buckets — the default
     # [0.1,0.3,1.2,5.0] makes p95/p99 useless. addServices/EntryPoints labels are

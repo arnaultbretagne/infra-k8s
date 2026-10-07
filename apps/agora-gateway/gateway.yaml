@@ -242,7 +242,8 @@ spec:
       labels:
         app: gateway
     spec:
-      priorityClassName: bretagne-low
+      # Every sandbox reaches its model through here: shed last, like the server.
+      priorityClassName: bretagne-critical
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
@@ -267,8 +268,10 @@ spec:
           livenessProbe:
             httpGet: { path: /healthz/ready, port: readiness }
             periodSeconds: 30
+          # CPU: the request-path floor (docs/hosting-an-app.md §4.3), its share when sandboxes
+          # saturate the node; its load grows with the number of parallel sandboxes.
           resources:
-            requests: { cpu: 20m, memory: 64Mi }
+            requests: { cpu: 50m, memory: 80Mi }
             limits: { memory: 256Mi }
           securityContext:
             allowPrivilegeEscalation: false

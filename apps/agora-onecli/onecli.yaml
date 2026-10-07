@@ -99,7 +99,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: [ALL] }
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
+            requests: { cpu: 10m, memory: 256Mi }
             limits: { cpu: 500m, memory: 512Mi }
           readinessProbe:
             httpGet: { path: /v1/health, port: 10254 }

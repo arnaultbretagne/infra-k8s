@@ -45,8 +45,8 @@ spec:
               value: info
           resources:
             requests:
-              cpu: 50m
-              memory: 256Mi
+              cpu: 5m
+              memory: 160Mi
             limits:
               memory: 2Gi        # Chromium render peaks (legacy compose limit)
           startupProbe:

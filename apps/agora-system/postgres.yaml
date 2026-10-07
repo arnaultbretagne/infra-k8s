@@ -41,8 +41,11 @@ spec:
   storage:
     size: 10Gi
     storageClass: local-path
+  # The log of every workspace: shed last. Memory request = 7-day measured usage (2026-10-07:
+  # p95 508Mi, peak 609Mi); CPU = the request-path floor (docs/hosting-an-app.md §4.3).
+  priorityClassName: bretagne-critical
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 50m, memory: 640Mi }
     limits: { cpu: '2', memory: 1Gi }
   # A client gone without its connection's close ever reaching PostgreSQL (the lab's Pod, when it
   # moved to `agora`) leaves its backend idle — and the advisory lock that makes a server the log's

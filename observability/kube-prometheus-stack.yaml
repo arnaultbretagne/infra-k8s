@@ -76,13 +76,20 @@ spec:
             sourceLabels: [__name__]
             regex: (apiserver_request_duration_seconds|apiserver_request_body_size_bytes|apiserver_request_slo_duration_seconds|apiserver_request_sli_duration_seconds|apiserver_response_sizes|apiserver_watch_events_sizes|apiserver_watch_events_duration_seconds|etcd_request_duration_seconds)_bucket
 
+    # Requests below are sized on 7 days of measured usage (2026-10-07; docs/hosting-an-app.md §4.3).
     prometheusOperator:
       resources:
         requests:
-          cpu: 50m
-          memory: 64Mi
+          cpu: 10m
+          memory: 112Mi
         limits:
           memory: 256Mi
+      # The config-reloader sidecar of Prometheus and Alertmanager (chart default: no requests).
+      prometheusConfigReloader:
+        resources:
+          requests:
+            cpu: 5m
+            memory: 48Mi
 
     prometheus:
       prometheusSpec:
@@ -112,7 +119,7 @@ spec:
                   storage: 20Gi
         resources:
           requests:
-            cpu: 200m
+            cpu: 100m
             memory: 1Gi
           limits:
             memory: 2Gi
@@ -126,7 +133,7 @@ spec:
         resources:
           requests:
             cpu: 10m
-            memory: 32Mi
+            memory: 80Mi
           limits:
             memory: 128Mi
 
@@ -177,6 +184,11 @@ spec:
       # (Cilium/Hubble charts, Flux JSONs in P3). Un-annotated ConfigMaps (the 24
       # kps mixins) keep landing at the provider root -> folder "General".
       sidecar:
+        # Both sidecars (dashboards, datasources) hold ~90Mi each; the chart sets no requests.
+        resources:
+          requests:
+            cpu: 5m
+            memory: 128Mi
         dashboards:
           folderAnnotation: grafana_folder
           provider:
@@ -237,12 +249,14 @@ spec:
       # timing out, SQLITE_BUSY) until the liveness probe finally restarted it.
       # The request also has to tell the truth: at 128Mi the scheduler was
       # budgeting for a third of what Grafana actually holds.
+      # Re-measured over 7 days (2026-10-07): p95 472Mi, peak 761Mi against the
+      # 768Mi limit, the same squeeze again; the limit gets 1.5x the peak.
       resources:
         requests:
           cpu: 50m
-          memory: 384Mi
+          memory: 576Mi
         limits:
-          memory: 768Mi
+          memory: 1152Mi
       # The chart default inherits Kubernetes' 1s probe timeout, which pulls the
       # pod out of the Service on any transient slow /api/health. That endpoint
       # hits the database, so it is exactly what goes slow under load.
@@ -264,9 +278,9 @@ spec:
       resources:
         requests:
           cpu: 20m
-          memory: 32Mi
+          memory: 48Mi
         limits:
-          memory: 64Mi
+          memory: 96Mi
 
     kube-state-metrics:
       fullnameOverride: kube-state-metrics
@@ -492,6 +506,6 @@ spec:
       resources:
         requests:
           cpu: 20m
-          memory: 64Mi
+          memory: 144Mi
         limits:
-          memory: 128Mi
+          memory: 192Mi   # peaked at 127Mi against the old 128Mi

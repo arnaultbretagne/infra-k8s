@@ -31,3 +31,18 @@ patches:
         labels:
           pod-security.kubernetes.io/enforce: restricted
           pod-security.kubernetes.io/enforce-version: latest
+  # Requests sized on 7 days of measured usage (2026-10-07; docs/hosting-an-app.md §4.3): the
+  # upstream 64Mi is a third of what each controller holds. Applied at bootstrap like the rest of
+  # this dir (`kubectl apply -k clusters/bretagne/flux-system` to apply it in between).
+  - target: { kind: Deployment, name: source-controller }
+    patch: |
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests, value: { cpu: 10m, memory: 256Mi } }
+  - target: { kind: Deployment, name: kustomize-controller }
+    patch: |
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests, value: { cpu: 10m, memory: 224Mi } }
+  - target: { kind: Deployment, name: helm-controller }
+    patch: |
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests, value: { cpu: 5m, memory: 224Mi } }
+  - target: { kind: Deployment, name: notification-controller }
+    patch: |
+      - { op: replace, path: /spec/template/spec/containers/0/resources/requests, value: { cpu: 5m, memory: 128Mi } }

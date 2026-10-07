@@ -99,8 +99,8 @@ spec:
                   key: AIOSTREAMS_AUTH
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi          # steady-state is small; the spike is one-time sync
+              cpu: 10m
+              memory: 416Mi          # steady state, measured over 7 days (2026-10-07: p95 339Mi)
             limits:
               memory: 1Gi            # must cover the initial full-sync heap peak
           startupProbe:
