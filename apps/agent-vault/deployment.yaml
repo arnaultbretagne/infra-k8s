@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
       - name: agent-vault
-        image: infisical/agent-vault:0.39.3@sha256:22d52239e5896717e499a47782bc2a1c9290d09db3bc2ece4008f37ab8654a92
+        image: infisical/agent-vault:0.40.0@sha256:4d490e2586c553ea121fa404b66812ad40c246cc841b0cc746682d0a360bdf1e
         args:
         - server
         - --host
