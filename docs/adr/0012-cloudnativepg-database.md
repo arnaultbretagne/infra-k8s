@@ -2,7 +2,30 @@
 
 ## Status
 
-Accepted
+Accepted — **amended 2026-10-08** (Barman Cloud through the plugin)
+
+## Amendment 2026-10-08 — Barman Cloud runs as a CNPG plugin
+
+The choice of Barman Cloud stands; where it runs changes. CloudNativePG deprecated its built-in
+Barman Cloud support (`Cluster.spec.backup.barmanObjectStore`) in 1.26 and removes it in 1.31. The
+same `barman-cloud` tools now come from the **Barman Cloud plugin** (CNPG-I), installed next to the
+operator in `cnpg-system` (`infrastructure/controllers/cloudnativepg/plugin-barman-cloud.yaml`):
+
+- **Per cluster**, an `ObjectStore` (`barmancloud.cnpg.io/v1`) holds what `barmanObjectStore` held —
+  bucket path, endpoint, `cnpg-s3-creds`, WAL compression — and the **retention**, which moved there.
+  The `Cluster` names it in `spec.plugins` (`isWALArchiver: true`, same `serverName`), and its
+  `ScheduledBackup` uses `method: plugin`. A recovery source in `externalClusters` names it the same way.
+- **The plugin runs a sidecar next to each PostgreSQL instance**, which archives WAL and takes base
+  backups. It shares the instance Pod's network identity, so the Pod's CiliumNetworkPolicy (R2 +
+  kube-apiserver) covers it.
+- **The bucket layout does not change** (`<destinationPath>/<serverName>`): the backups taken before
+  stay restorable and the restore drills, which read the bucket with `barman-cloud-restore`, are unchanged.
+- **Metrics**: backup age comes from `barman_cloud_cloudnative_pg_io_last_available_backup_timestamp`;
+  the `cnpg_collector_*` backup series freeze at the last built-in backup (`CNPGBackupTooOld` reads the
+  plugin's series first).
+
+All eight clusters moved on 2026-10-08, each checked by a forced WAL switch archived by the plugin, a
+plugin backup and its restore drill.
 
 ## Context
 
@@ -145,20 +168,33 @@ spec:
   instances: 1                     # single-node, no replica
   storage:
     size: 5Gi
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://bretagne-pg-backups/pocket-id
-      endpointURL: https://<account-id>.r2.cloudflarestorage.com
-      s3Credentials:
-        accessKeyId:
-          name: cnpg-s3-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: cnpg-s3-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: snappy
-    retentionPolicy: "3d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: pocket-id-pg-r2
+        serverName: pocket-id-pg
+
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pocket-id-pg-r2
+  namespace: pocket-id
+spec:
+  retentionPolicy: "3d"
+  configuration:
+    destinationPath: s3://bretagne-pg-backups/pocket-id
+    endpointURL: https://<account-id>.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-s3-creds
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-s3-creds
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: snappy
 
 ---
 apiVersion: postgresql.cnpg.io/v1
@@ -167,9 +203,12 @@ metadata:
   name: pocket-id-pg-daily
   namespace: pocket-id
 spec:
-  schedule: "0 3 * * *"
+  schedule: "0 0 3 * * *"          # 6 fields, seconds first
   cluster:
     name: pocket-id-pg
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   backupOwnerReference: self
 ```
 
