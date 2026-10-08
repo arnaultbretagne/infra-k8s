@@ -6,7 +6,7 @@ set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 TTYD_VERSION="${TTYD_VERSION:-1.7.7}"
-OAUTH2_PROXY_VERSION="${OAUTH2_PROXY_VERSION:-7.7.1}"
+OAUTH2_PROXY_VERSION="${OAUTH2_PROXY_VERSION:-7.15.5}"
 AGE_KEY="/root/.config/sops/age/keys.txt"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
