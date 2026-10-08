@@ -38,6 +38,7 @@ apiVersion: barmancloud.cnpg.io/v1
 kind: ObjectStore
 metadata:
   name: agent-vault-pg-r2
+  namespace: agent-vault
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled
 spec:
