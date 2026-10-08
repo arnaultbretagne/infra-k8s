@@ -29,7 +29,10 @@ spec:
           # Base backups are now DAILY (ScheduledBackup 03:00, was hourly) → age
           # grows to ~24h between runs; only alert if a daily backup was actually
           # missed. 93600s = 26h (24h + 2h grace).
-          expr: time() - cnpg_collector_last_available_backup_timestamp > 93600
+          # A cluster backed up through the Barman Cloud plugin reports its backups in
+          # barman_cloud_cloudnative_pg_io_*; its cnpg_collector_* value stays frozen at
+          # the last in-tree backup. The plugin's series wins when both exist.
+          expr: time() - (barman_cloud_cloudnative_pg_io_last_available_backup_timestamp or cnpg_collector_last_available_backup_timestamp) > 93600
           for: 15m
           labels:
             severity: critical

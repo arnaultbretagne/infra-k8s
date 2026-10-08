@@ -21,21 +21,39 @@ spec:
     initdb:
       database: agentvault
       owner: agentvault
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://bretagne-pg-backups/agent-vault
-      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
-      s3Credentials:
-        accessKeyId:
-          name: cnpg-s3-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: cnpg-s3-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: snappy
-    retentionPolicy: 3d
+  # Base backups, WAL archiving and restores go through the Barman Cloud plugin
+  # (infrastructure/controllers/cloudnativepg), into the ObjectStore below.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: agent-vault-pg-r2
+        # One cluster, one barman server: never reuse this serverName for another cluster.
+        serverName: agent-vault-pg
   imageName: ghcr.io/cloudnative-pg/postgresql:17
+---
+# Where agent-vault-pg's backups go: R2, under s3://bretagne-pg-backups/agent-vault/agent-vault-pg,
+# the layout restore-test.yaml reads. The plugin's sidecar in the PostgreSQL Pod uses it.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: agent-vault-pg-r2
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  retentionPolicy: "3d"
+  configuration:
+    destinationPath: s3://bretagne-pg-backups/agent-vault
+    endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+    wal:
+      compression: snappy
+  instanceSidecarConfiguration:
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+      limits: { memory: 512Mi }
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
@@ -47,4 +65,7 @@ spec:
   immediate: true
   cluster:
     name: agent-vault-pg
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   backupOwnerReference: self
