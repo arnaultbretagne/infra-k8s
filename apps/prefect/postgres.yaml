@@ -29,18 +29,38 @@ spec:
   resources:
     requests: { cpu: 50m, memory: 192Mi }
     limits: { memory: 512Mi }
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://bretagne-pg-backups/prefect
-      # One cluster, one barman server: never reuse this serverName for another cluster.
-      serverName: prefect-pg
-      endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
-      s3Credentials:
-        accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
-        secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
-      wal:
-        compression: snappy
-    retentionPolicy: "7d"
+  # Base backups, WAL archiving and restores go through the Barman Cloud plugin
+  # (infrastructure/controllers/cloudnativepg), into the ObjectStore below.
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: prefect-pg-r2
+        # One cluster, one barman server: never reuse this serverName for another cluster.
+        serverName: prefect-pg
+---
+# Where prefect-pg's backups go: R2, under s3://bretagne-pg-backups/prefect/prefect-pg,
+# the layout restore-test.yaml reads. The plugin's sidecar in the PostgreSQL Pod uses it.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: prefect-pg-r2
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  retentionPolicy: "7d"
+  configuration:
+    destinationPath: s3://bretagne-pg-backups/prefect
+    endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId: { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+    wal:
+      compression: snappy
+  instanceSidecarConfiguration:
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+      limits: { memory: 512Mi }
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
@@ -55,4 +75,7 @@ spec:
   immediate: true
   cluster:
     name: prefect-pg
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   backupOwnerReference: self
