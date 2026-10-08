@@ -1,0 +1,76 @@
+# Regenerates apps/stremio/templates/tamtaro-fr-3vf-2vostfr.json from Tam-Taro's latest
+# template (see apps/stremio/templates/README.md). When the result changed, it opens or
+# updates one pull request with TEMPLATES_PR_TOKEN: a fine-grained token on this
+# repository with "Contents" and "Pull requests" read and write. Without that secret the
+# run fails instead, so an upstream change is still noticed. Nothing is merged here.
+name: Tam-Taro template
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tamtaro-template
+  cancel-in-progress: false
+
+env:
+  TEMPLATE: apps/stremio/templates/tamtaro-fr-3vf-2vostfr.json
+  BRANCH: auto/tamtaro-template
+  HAS_TOKEN: ${{ secrets.TEMPLATES_PR_TOKEN != '' }}
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Regenerate
+        run: node apps/stremio/templates/tamtaro-fr/generate.mjs
+
+      - name: Detect a change
+        id: diff
+        run: |
+          if git diff --quiet -- "$TEMPLATE"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Template already up to date."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- "$TEMPLATE"
+          fi
+
+      - name: Report a change without a token
+        if: steps.diff.outputs.changed == 'true' && env.HAS_TOKEN != 'true'
+        run: |
+          echo "::error::Tam-Taro's template changed. Set TEMPLATES_PR_TOKEN, or run generate.mjs and open the pull request by hand."
+          exit 1
+
+      - name: Open or update the pull request
+        if: steps.diff.outputs.changed == 'true' && env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.TEMPLATES_PR_TOKEN }}
+        run: |
+          version=$(node -p "require('./$TEMPLATE').metadata.version")
+          git config user.name "tamtaro-template"
+          git config user.email "tamtaro-template@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add "$TEMPLATE"
+          git commit -m "chore(stremio): regenerate the Tam-Taro FR template ($version)"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(stremio): regenerate the Tam-Taro FR template ($version)" \
+              --body "Tam-Taro's template changed upstream; this is the regenerated instance template (version $version). Before merging, run \`check-live.mjs\` against an AIOStreams instance (apps/stremio/templates/README.md)."
+          else
+            echo "Open pull request updated."
+          fi
