@@ -18,7 +18,7 @@ BOOTSTRAP_DIR="$REPO_DIR/bootstrap"
 
 # ─── Configuration ────────────────────────────────────────────────────
 K0S_VERSION="v1.36.4+k0s.1"
-HELM_VERSION="v3.20.2"
+HELM_VERSION="v3.22.0"
 FLUX_VERSION="2.9.6"
 SOPS_VERSION="3.9.4"
 RUNSC_VERSION="release-20260928.0"
