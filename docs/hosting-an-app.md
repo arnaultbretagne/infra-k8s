@@ -313,17 +313,32 @@ spec:
   resources:                                    # BOUND it — an unbounded PG can OOM the node
     requests: { cpu: 100m, memory: 256Mi }
     limits:   { memory: 512Mi }
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://bretagne-pg-backups/myapp   # distinct path per app
-      endpointURL: https://<r2-account>.r2.cloudflarestorage.com
-      s3Credentials:
-        accessKeyId:     { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
-        secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
-      wal: { compression: snappy }
-    retentionPolicy: "3d"
+  plugins:                                      # backups go through the Barman Cloud plugin
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: myapp-pg-r2
+        serverName: myapp-pg                    # never reuse another cluster's serverName
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata: { name: myapp-pg-r2 }                 # set namespace here if kustomization.yaml does not
+spec:
+  retentionPolicy: "3d"
+  configuration:
+    destinationPath: s3://bretagne-pg-backups/myapp   # distinct path per app
+    endpointURL: https://<r2-account>.r2.cloudflarestorage.com
+    s3Credentials:
+      accessKeyId:     { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
+    wal: { compression: snappy }
+  instanceSidecarConfiguration:                 # the plugin's sidecar: bound it, or the LimitRange default applies
+    resources:
+      requests: { cpu: 10m, memory: 64Mi }
+      limits: { memory: 512Mi }
 ```
 Connect the app to `myapp-pg-rw.<ns>.svc:5432` using the CNPG-generated `myapp-pg-app` secret.
+The built-in `spec.backup.barmanObjectStore` is gone from CloudNativePG 1.31: do not use it.
 
 ### 9.2 S3 creds — via the shared ResourceSet
 Add a resource entry to `apps/shared/cnpg-s3-creds.yaml` (the flux-operator ResourceSet) so
@@ -335,6 +350,9 @@ Add a resource entry to `apps/shared/cnpg-s3-creds.yaml` (the flux-operator Reso
 kind: ScheduledBackup
 spec:
   schedule: "0 0 3 * * *"      # 6 fields (sec min hour dom mon dow) = 03:00 DAILY.
+  cluster: { name: myapp-pg }
+  method: plugin
+  pluginConfiguration: { name: barman-cloud.cloudnative-pg.io }
 ```
 `"0 3 * * *"` (5 fields) is read as **hourly at HH:03** — a real trap.
 
