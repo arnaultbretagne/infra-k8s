@@ -18,7 +18,7 @@ BOOTSTRAP_DIR="$REPO_DIR/bootstrap"
 
 # ─── Configuration ────────────────────────────────────────────────────
 K0S_VERSION="v1.36.4+k0s.1"
-HELM_VERSION="v3.20.2"
+HELM_VERSION="v4.3.0"
 FLUX_VERSION="2.9.6"
 SOPS_VERSION="3.13.3"
 RUNSC_VERSION="release-20260928.0"
@@ -726,6 +726,9 @@ if helm status cilium -n kube-system &>/dev/null 2>&1; then
 else
   helm repo add cilium https://helm.cilium.io
   helm repo update cilium
+  # Helm 4 installs with server-side apply by default; every release on this cluster was installed
+  # client-side and Flux's helm-controller keeps a release's apply method. --server-side=false keeps
+  # a rebuilt node identical to the live one.
   helm install cilium cilium/cilium \
     --namespace kube-system \
     --version 1.20.2 \
@@ -741,6 +744,7 @@ else
     --set resources.requests.cpu=100m \
     --set resources.requests.memory=128Mi \
     --set resources.limits.memory=512Mi \
+    --server-side=false \
     --wait --timeout 120s
   ok "Cilium installed via Helm"
 fi
