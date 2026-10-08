@@ -65,6 +65,48 @@
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "google/gvisor",
       "versioningTemplate": "regex:^release-(?<major>\\d{8})\\.(?<minor>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Helm CLI pinned in bootstrap.sh (pre-Flux Cilium install, operator use; Flux's helm-controller carries its own Helm).",
+      "managerFilePatterns": ["/^bootstrap/bootstrap\\.sh$/"],
+      "matchStrings": ["HELM_VERSION=\"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "helm/helm"
+    },
+    {
+      "customType": "regex",
+      "description": "SOPS CLI pinned in bootstrap.sh (decrypts the repository's age-encrypted secrets at bootstrap).",
+      "managerFilePatterns": ["/^bootstrap/bootstrap\\.sh$/"],
+      "matchStrings": ["SOPS_VERSION=\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "getsops/sops",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Kata Containers static release pinned in bootstrap.sh. KATA_SHA256 pins the amd64 asset and Renovate cannot compute it: a Kata PR is complete only once KATA_SHA256 is updated in the same branch.",
+      "managerFilePatterns": ["/^bootstrap/bootstrap\\.sh$/"],
+      "matchStrings": ["KATA_VERSION=\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kata-containers/kata-containers"
+    },
+    {
+      "customType": "regex",
+      "description": "ttyd behind terminal.bretagne.dev, pinned in bootstrap.sh and as provision.sh's default. Restarting ttyd-terminal.service kills every process started from the web terminal (KillMode=control-group).",
+      "managerFilePatterns": ["/^bootstrap/bootstrap\\.sh$/", "/^bootstrap/terminal-host/provision\\.sh$/"],
+      "matchStrings": ["TTYD_VERSION=\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\"", "TTYD_VERSION=\"\\$\\{TTYD_VERSION:-(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\}\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "tsl0922/ttyd"
+    },
+    {
+      "customType": "regex",
+      "description": "oauth2-proxy in front of terminal.bretagne.dev (host service, not the in-cluster image), pinned in bootstrap.sh and as provision.sh's default.",
+      "managerFilePatterns": ["/^bootstrap/bootstrap\\.sh$/", "/^bootstrap/terminal-host/provision\\.sh$/"],
+      "matchStrings": ["OAUTH2_PROXY_VERSION=\"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\"", "OAUTH2_PROXY_VERSION=\"\\$\\{OAUTH2_PROXY_VERSION:-(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\\}\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "oauth2-proxy/oauth2-proxy",
+      "extractVersionTemplate": "^v(?<version>.+)$"
     }
   ],
   "packageRules": [
@@ -89,6 +131,11 @@
       "description": "Agora's images (server, harnesses, lab, showcase) are pinned by digest alone and moved by Agora's own CI: its propose-infra job keeps one rolling PR on the branch agora/images. Renovate cannot resolve a digest without a tag (dashboard lookup warnings) and must not race that PR.",
       "matchPackageNames": ["/^ghcr\\.io/arnaultbretagne/agora-/"],
       "enabled": false
+    },
+    {
+      "description": "Host tools installed by bootstrap.sh are not applied by Flux: merging the PR changes the pin, installing the binary on the node is a deliberate step.",
+      "matchDepNames": ["helm/helm", "getsops/sops", "kata-containers/kata-containers", "tsl0922/ttyd", "oauth2-proxy/oauth2-proxy"],
+      "addLabels": ["host", "manual-apply"]
     },
     {
       "description": "RSSHub (apps/rss) has no releases, only an image per build, tagged with its date (2026-10-06). Renovate's docker versioning splits a tag at its first hyphen and would never see a newer one, so the date is the version here. Builds land several times a week: once a month is enough for a feed generator.",
