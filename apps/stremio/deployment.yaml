@@ -129,6 +129,10 @@ spec:
               mountPath: /app/data/templates/knaben-stfr-top5-torbox-v2.26.json
               subPath: knaben-stfr-top5-torbox-v2.26.json
               readOnly: true
+            - name: templates
+              mountPath: /app/data/templates/tamtaro-fr-3vf-2vostfr.json
+              subPath: tamtaro-fr-3vf-2vostfr.json
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
