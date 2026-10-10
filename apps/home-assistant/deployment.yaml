@@ -26,7 +26,7 @@ spec:
         # Same image as the app (python + pip + the exact interpreter the deps must match).
         # Runs as root like the app — the /config PVC is root-owned, so no chown dance needed.
         - name: provision
-          image: ghcr.io/home-assistant/home-assistant:2026.10.0
+          image: ghcr.io/home-assistant/home-assistant:2026.10.1
           command: ["python3", "/etc/home-assistant/provision.py"]
           env:
             # hass-oidc-auth: bump BOTH together (tag + sha256 of
@@ -64,7 +64,7 @@ spec:
         # Native sidecar (restartPolicy: Always): completes first-run onboarding via localhost the
         # moment HA answers, then idles at ~1MB. See onboard.py in configmap.yaml for why.
         - name: onboard
-          image: ghcr.io/home-assistant/home-assistant:2026.10.0
+          image: ghcr.io/home-assistant/home-assistant:2026.10.1
           restartPolicy: Always
           command: ["python3", "/etc/home-assistant/onboard.py"]
           env:
@@ -95,7 +95,7 @@ spec:
               readOnly: true
       containers:
         - name: home-assistant
-          image: ghcr.io/home-assistant/home-assistant:2026.10.0
+          image: ghcr.io/home-assistant/home-assistant:2026.10.1
           ports:
             - containerPort: 8123
           env:
