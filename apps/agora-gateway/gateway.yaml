@@ -7,7 +7,7 @@ metadata:
   name: gateway-config
 data:
   config.yaml: |
-    # agentgateway v1.5.0, standalone. Port 3000 takes CONNECT from the sandboxes' bridges; each tunnel to
+    # agentgateway v1.6.0, standalone. Port 3000 takes CONNECT from the sandboxes' bridges; each tunnel to
     # :443 re-enters the internal bind, where TLS is terminated with Agora's gateway CA (the sandboxes trust
     # it), the JWT is verified, the grants are checked, and the host's credential is set. The JWT names the
     # Pod's address (`ip`, from its Sandbox): the agent can read the token out of its bridge (same uid), so
@@ -34,6 +34,27 @@ data:
               mode: dynamicCa
               cert: /etc/agentgateway/ca/ca-cert.pem
               key: /etc/agentgateway/ca/ca-key.pem
+            # The listener's policies run before a route is picked (read in agentgateway 1.6.0's code), so
+            # the routes can be chosen by what they set.
+            policies:
+              jwtAuth:
+                mode: strict
+                # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
+                location:
+                  expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
+                issuer: agora
+                audiences: [agora-gateway]
+                jwks: { file: /etc/agentgateway/jwks/jwks.json }
+              # GitHub has two routes per host: one for what a grant covers, one for the rest. This header,
+              # always overwritten here and removed before GitHub, says which: "covered" when the rule of
+              # the routes with a credential would let the request through. It only steers: each route
+              # checks the request again, so a header the sandbox sends itself gains nothing.
+              transformations:
+                conditional:
+                  - condition: 'request.host == "api.github.com" || request.host == "github.com"'
+                    request:
+                      set:
+                        x-gateway-grant: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods)) ? "covered" : "none"'
             routes:
                 # Claude's usage limits (5-hour and weekly windows): the cluster's own login, kept alive by
                 # claude-refresher.yaml — the setup-token below lacks the `user:profile` scope this one path
@@ -48,14 +69,6 @@ data:
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
@@ -73,14 +86,6 @@ data:
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
@@ -98,14 +103,6 @@ data:
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
@@ -125,14 +122,6 @@ data:
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
@@ -144,52 +133,85 @@ data:
                       key:
                         value: { file: /etc/agentgateway/chatgpt/access_token }
                         location: { header: { name: authorization, prefix: "Bearer " } }
-                # GitHub REST (GraphQL stays closed: no grant covers /graphql).
+                # GitHub REST, what a grant covers (GraphQL stays closed: no grant covers /graphql). A header
+                # match outranks the route without one for the same host.
                 - name: github-api
+                  hostnames: [api.github.com]
+                  matches:
+                    - headers:
+                        - { name: x-gateway-grant, value: { exact: covered } }
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    authorization:
+                      rules:
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      remove: [x-gateway-grant]
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/github }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
+                # git smart HTTP, what a grant covers: Basic x-access-token:<PAT>.
+                - name: github-git
+                  hostnames: [github.com]
+                  matches:
+                    - headers:
+                        - { name: x-gateway-grant, value: { exact: covered } }
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    authorization:
+                      rules:
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      remove: [x-gateway-grant]
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/credentials/github-basic }
+                        location: { header: { name: authorization, prefix: "Basic " } }
+                # Public GitHub through the Internet: what no grant covers, read only, with the same PAT. A
+                # fine-grained PAT reads every public repository, so a repository given no grant reads as
+                # the public sees it. Reads only, because the PAT can write to the repositories offered;
+                # GraphQL stays closed (always a POST). Open to a grant on "*" (Agora's `internet` profile).
+                - name: github-api-public
                   hostnames: [api.github.com]
                   backends:
                     - dynamic: {}
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
-                        # and some grant of the JWT covers this host, path and query, and method.
-                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && request.method in ["GET", "HEAD"] && jwt.grants.exists(g, g.host == "*" && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      remove: [x-gateway-grant]
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/github }
                         location: { header: { name: authorization, prefix: "Bearer " } }
-                # git smart HTTP: Basic x-access-token:<PAT>.
-                - name: github-git
+                # git smart HTTP through the Internet: clone and fetch (git-upload-pack, which POSTs too),
+                # never push (git-receive-pack, from its first GET on).
+                - name: github-git-public
                   hostnames: [github.com]
                   backends:
                     - dynamic: {}
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
-                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
-                        # and some grant of the JWT covers this host, path and query, and method.
-                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && ((request.method in ["GET", "HEAD"] && !request.pathAndQuery.matches("git-receive-pack")) || (request.method == "POST" && request.pathAndQuery.matches("^/[^/?]+/[^/?]+/git-upload-pack$"))) && jwt.grants.exists(g, g.host == "*" && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      remove: [x-gateway-grant]
                     backendAuth:
                       key:
                         value: { file: /etc/agentgateway/credentials/github-basic }
@@ -205,14 +227,6 @@ data:
                       policies:
                         backendTLS: {}
                   policies:
-                    jwtAuth:
-                      mode: strict
-                      # The execution's JWT rides on the CONNECT, in Proxy-Authorization (set by the bridge).
-                      location:
-                        expression: 'source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
-                      issuer: agora
-                      audiences: [agora-gateway]
-                      jwks: { file: /etc/agentgateway/jwks/jwks.json }
                     authorization:
                       rules:
                         # From the Pod the JWT is bound to, and a grant on "*".
