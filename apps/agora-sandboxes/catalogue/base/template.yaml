@@ -79,16 +79,18 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+          # The home and /tmp share one volume, so neither has a wall of its own: at 256Mi for /tmp, an
+          # agent unpacking a 257 MB npm package there got its Pod evicted mid-turn (2026-10-13).
           volumeMounts:
-            - { name: home, mountPath: /home/harness }
-            - { name: tmp, mountPath: /tmp }
+            - { name: scratch, mountPath: /home/harness, subPath: home }
+            - { name: scratch, mountPath: /tmp, subPath: tmp }
             - { name: agora-token, mountPath: /var/run/agora, readOnly: true }
             - { name: credential-proxy, mountPath: /etc/agora/credential-proxy, readOnly: true }
       volumes:
-        - name: home
-          emptyDir: { sizeLimit: 2Gi }
-        - name: tmp
-          emptyDir: { sizeLimit: 256Mi }
+        # Past this size the kubelet evicts the Pod at once. It takes only what is written: at worst
+        # MAX_ACTIVE (16) × 8Gi = 128Gi, against ~318 GB free on g4 (2026-10-13).
+        - name: scratch
+          emptyDir: { sizeLimit: 8Gi }
         # The Pod's identity when it pushes its anchor: minted and rotated by the kubelet, bound to
         # this Pod, only valid for the back-end's audience — useless against the API server.
         - name: agora-token
