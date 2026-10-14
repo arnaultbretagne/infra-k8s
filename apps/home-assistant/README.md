@@ -139,6 +139,17 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
     database and its backups. Deletes are real Backspace presses (the IME's other delete mode
     miscounts accented characters, per its source), and only while a field is focused (outside one,
     some apps take Backspace for Back).
+  - **Enter and the TV's keyboard.** On webOS the on-screen keyboard closes when the app moves focus
+    off the field; its Enter key, like the remote keyboard's, only hands Enter to the app. The browser
+    leaves the field on Enter (measured 2026-10-14: 370 ms). **Nuvio TV does not** (its bug, same
+    with the TV remote): it searches as you type, and `runSearchFromInput` returns early when the
+    query was already searched, so Enter never moves focus to the results
+    (`js/ui/screens/search/searchScreenMethods-05-ensure-header-visible.js` in
+    NuvioMedia/NuvioTVSmart). Until Nuvio fixes it, the card's `back_after_enter: [space.nuvio.webos]`
+    presses Back right after Enter in that app, which closes the keyboard (checked on the TV with
+    screenshots). The TV reports nothing when its keyboard closes (the field stays focused), and
+    there is no SSAP call to close it or to read whether it shows. Remove the option once Nuvio
+    leaves the field on Enter: its Back would then take Nuvio back a screen.
   - It only sees fields that use the TV's own keyboard (the browser, the settings, most web apps).
     An app that draws its own on-screen keyboard reports nothing (likely YouTube and Netflix; not
     checked app by app).
