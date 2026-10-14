@@ -139,14 +139,17 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
     database and its backups. Deletes are real Backspace presses (the IME's other delete mode
     miscounts accented characters, per its source), and only while a field is focused (outside one,
     some apps take Backspace for Back).
-  - **Enter, then Back if the field is still up.** A remote keyboard's Enter only reaches the app;
-    the TV's on-screen keyboard closes on its own Enter key and otherwise stays up. Nuvio TV searches
-    as you type, so its Enter changes nothing and the keyboard stayed (seen 2026-10-14). So 0.8 s
-    after Enter, if the same field is still focused, the component presses Back, which the TV's
-    keyboard takes for itself while it shows. An app that leaves the field on Enter (a page loading,
-    the next field of a form) gets no Back. Residual risk: an app that keeps the field focused with
-    its keyboard already hidden gets that Back (it may go back a screen). There is no SSAP call to
-    close the keyboard or to read whether it shows (checked in the TV's SSAP interfaces).
+  - **Enter and the TV's keyboard.** On webOS the on-screen keyboard closes when the app moves focus
+    off the field; its Enter key, like the remote keyboard's, only hands Enter to the app. The browser
+    leaves the field on Enter (measured 2026-10-14: 370 ms). **Nuvio TV does not** (its bug, same
+    with the TV remote): it searches as you type, and `runSearchFromInput` returns early when the
+    query was already searched, so Enter never moves focus to the results
+    (`js/ui/screens/search/searchScreenMethods-05-ensure-header-visible.js` in
+    NuvioMedia/NuvioTVSmart). Until Nuvio fixes it, the card's `back_after_enter: [space.nuvio.webos]`
+    presses Back right after Enter in that app, which closes the keyboard (checked on the TV with
+    screenshots). The TV reports nothing when its keyboard closes (the field stays focused), and
+    there is no SSAP call to close it or to read whether it shows. Remove the option once Nuvio
+    leaves the field on Enter: its Back would then take Nuvio back a screen.
   - It only sees fields that use the TV's own keyboard (the browser, the settings, most web apps).
     An app that draws its own on-screen keyboard reports nothing (likely YouTube and Netflix; not
     checked app by app).

@@ -27,9 +27,6 @@ from .const import DOMAIN, ENTER_KEYS, IME_DELETE, IME_ENTER, IME_INSERT, IME_SU
 
 _LOGGER = logging.getLogger(__name__)
 
-# After Enter, how long the app gets to leave the field before Back closes the TV's keyboard.
-CLOSE_AFTER_ENTER = 0.8
-
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -220,8 +217,7 @@ class TvKeyboard(BinarySensorEntity):
     async def async_edit(
         self, *, clear: bool = False, delete: int = 0, text: str = "", enter: bool = False
     ) -> None:
-        """Clear the field, press Backspace `delete` times, insert `text`, press Enter, in order;
-        after Enter, close the TV's keyboard if the field is still up.
+        """Clear the field, press Backspace `delete` times, insert `text`, press Enter, in order.
 
         Only while a field is focused: outside one, a Backspace reaches the app as a key and
         some apps treat it as Back.
@@ -239,22 +235,7 @@ class TvKeyboard(BinarySensorEntity):
             if text:
                 await client.request(IME_INSERT, {"text": text, "replace": False})
             if enter:
-                field = self._field
                 await client.request(IME_ENTER)
-                await self._async_close_tv_keyboard(client, field)
-
-    async def _async_close_tv_keyboard(self, client: WebOsClient, field: int) -> None:
-        """Close the TV's on-screen keyboard after Enter, as its own Enter key does.
-
-        A remote keyboard's Enter only reaches the app: the TV's keyboard closes on its own Enter
-        key, and stays up when the app keeps the field focused (Nuvio TV searches as you type, so
-        its Enter changes nothing). Still the same field a moment later = the keyboard is still up,
-        and Back closes it: the keyboard takes Back for itself while it shows. An app that left the
-        field on Enter (a page loading, the next field) gets nothing.
-        """
-        await asyncio.sleep(CLOSE_AFTER_ENTER)
-        if self._attr_is_on and self._field == field and client.connection is not None:
-            await client.button("BACK")
 
     async def _async_clear(self, client: WebOsClient) -> None:
         widget = self._widget

@@ -453,6 +453,9 @@ data:
         cards:
           - type: custom:tv-remote-card
             entity: media_player.salon_tv
+            # Nuvio TV keeps its search field on Enter (its bug), so the TV keyboard stays up: Back
+            # after Enter closes it. Drop once Nuvio leaves the field (README.md "LG TV remote").
+            back_after_enter: [space.nuvio.webos]
             tiles:
               - {name: Accueil, key: HOME, icon: home}
               - {name: Netflix, app: netflix, source: Netflix, label: "N", color: "#e50914"}
@@ -476,6 +479,7 @@ data:
      *   haptic_power: selection # ... on power (default selection)
      *   haptic_off: failure     # ... on a key while the TV is off, which does nothing (default failure)
      *   keyboard: binary_sensor.salon_tv_keyboard  # default: binary_sensor.<entity's object id>_keyboard
+     *   back_after_enter: [space.nuvio.webos]       # apps whose Enter leaves the TV keyboard up
      *   tiles:                  # the bottom row, in order
      *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
      *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
@@ -488,8 +492,9 @@ data:
      *
      * While the TV shows a text field (`keyboard`, from the webostv_keyboard custom component), a text
      * bar slides over the top: a tap opens the phone's keyboard and what is typed goes to the TV's
-     * field as it is typed, Return presses the field's Enter (and closes the TV's keyboard if the
-     * app keeps the field), × clears it. iOS opens the keyboard
+     * field as it is typed, Return presses the field's Enter, × clears it. The TV's keyboard closes
+     * when the app leaves the field on Enter; in the `back_after_enter` apps, which keep the field
+     * (Nuvio TV's bug), Back follows Enter to close it. iOS opens the keyboard
      * only on a tap, so the bar cannot open it by itself. Typing goes through that component's
      * websocket command, which the recorder does not store (a service call would be, with its data).
      *
@@ -711,7 +716,7 @@ data:
       class TvRemoteCard extends HTMLElement {
         setConfig(config) {
           if (!config || !config.entity) throw new Error('tv-remote-card: `entity` is required');
-          this._config = { haptic: 'selection', haptic_power: 'selection', haptic_off: 'failure', ...config };
+          this._config = { haptic: 'selection', haptic_power: 'selection', haptic_off: 'failure', back_after_enter: [], ...config };
           this._tiles = (config.tiles || []).map((t) => ({ ...t }));
           this._build();
         }
@@ -1000,14 +1005,17 @@ data:
               this._kbClear = false;
               this._kbEnter = false;
               if (edit.enter) {
-                // Submitted: the TV keeps that text, the input starts afresh at once (the TV's own
-                // keyboard closes a moment later). On a "next" key the TV moves to the next field, so
-                // the phone keyboard stays up for it.
+                // Submitted: the TV keeps that text, the input starts afresh at once. On a "next" key
+                // the TV moves to the next field, so the phone keyboard stays up for it.
                 this._kb.value = this._kbWant = this._kbSent = '';
                 if (this._kbEnterKey !== 'next') this._kb.blur();
                 this._kbShowClear();
               }
               await this._hass.callWS({ type: 'webostv_keyboard/edit', entity_id: this._kbEntityId(), ...edit });
+              // Apps that keep the field on Enter leave the TV's keyboard up: Back closes it.
+              if (edit.enter && this._config.back_after_enter.includes(this._entity()?.attributes?.app_id)) {
+                await this._call('webostv', 'button', { button: 'BACK' });
+              }
             }
           } catch (err) {
             this._kbSent = this._kbWant;
