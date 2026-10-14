@@ -14,3 +14,12 @@ resources:
   - networkpolicy.yaml
   - config-backup.yaml
   - restore-test.yaml
+configMapGenerator:
+  # Git-owned custom component, kept as real files (tests/ runs them in a real HA core);
+  # provision.py copies it into /config/custom_components. List every file of the component.
+  - name: home-assistant-webostv-keyboard
+    files:
+      - custom_components/webostv_keyboard/__init__.py
+      - custom_components/webostv_keyboard/binary_sensor.py
+      - custom_components/webostv_keyboard/const.py
+      - custom_components/webostv_keyboard/manifest.json

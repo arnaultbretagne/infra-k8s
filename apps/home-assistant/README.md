@@ -122,6 +122,31 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
   second press when iOS delivered the click late.
   Every control was checked in a phone-sized headless browser against a fake `hass` (one service
   call each, the right one).
+- **Typing from the phone (`webostv_keyboard`).** When the TV shows a text field, a text bar slides
+  over the top of the Télécommande; a tap opens the phone's keyboard and the text goes to the TV's
+  field as it is typed (Return = the field's Enter, × clears it). iOS opens a keyboard only on a
+  tap, so the bar cannot open it by itself. The TV side is a Git-owned custom component,
+  `custom_components/webostv_keyboard/` (enabled by `webostv_keyboard:` in `configuration.yaml`):
+  - It subscribes to the TV's *remote keyboard* API (SSAP
+    `com.webos.service.ime/registerRemoteKeyboard`, what LG's own phone app uses) on the webostv
+    integration's own connection, again after every reconnection, and exposes
+    `binary_sensor.salon_tv_keyboard` (named after the media player): on while a field is
+    focused, with `field` (a new number per field), `content_type`, `password`, `has_text`,
+    `capitalize` and `enter_key`. The TV never sends the field's text, only its length and cursor.
+  - Typing goes through its websocket command `webostv_keyboard/edit` (clear, Backspaces, text,
+    Enter, in that order, one at a time), **not** through `webostv.command`: the recorder stores
+    every service call with its data, so a password typed from the phone would land in the
+    database and its backups. Deletes are real Backspace presses (the IME's other delete mode
+    miscounts accented characters, per its source), and only while a field is focused (outside one,
+    some apps take Backspace for Back).
+  - It only sees fields that use the TV's own keyboard (the browser, the settings, most web apps).
+    An app that draws its own on-screen keyboard reports nothing (likely YouTube and Netflix; not
+    checked app by app).
+  - The component is real files here, shipped as a generated ConfigMap (hashed name, so a change
+    rolls the pod) that `provision.py` copies to `/config/custom_components/` at every start.
+    `tests/` runs it in a real HA core (see `tests/conftest.py` for the command), against a fake
+    TV; `tests/test_live_tv.py` runs it read-only against the real TV through the real webostv
+    integration when `WEBOSTV_HOST`/`WEBOSTV_KEY` are set (from g4).
 - **iPhone shortcut:** in the Shortcuts app, one action *Open URLs* with
   `homeassistant://navigate/telecommande-tv/tv?server=default`, added to the Home Screen. It opens
   the HA app straight on the full-screen remote, while the app's own icon keeps the normal
@@ -161,7 +186,7 @@ The Deployment reads its settings from ConfigMaps (`configmap.yaml`, `oidc-confi
 env and a mounted volume: Flux updates the ConfigMaps, but a ConfigMap change does not roll the
 Deployment. After merging such a change: `k0s kubectl -n home-assistant rollout restart
 deploy/home-assistant`. TODO: switch both to kustomize `configMapGenerator` (hashed names) so a
-change rolls the pod by itself.
+change rolls the pod by itself, as the custom components' ConfigMaps already do.
 
 ## Break-glass (native login)
 
