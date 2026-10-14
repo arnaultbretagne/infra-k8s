@@ -1,7 +1,7 @@
 {
   "upstream": "https://raw.githubusercontent.com/Tam-Taro/SEL-Filtering-and-Sorting/main/AIOStreams%20Templates/Tamtaro-complete-setup-template.json",
   "output": "tamtaro-fr-3vf-2vostfr.json",
-  "revision": 1,
+  "revision": 2,
   "services": ["torbox"],
   "tmdb": "none",
   "presets": ["stremthruTorz"],
@@ -12,7 +12,7 @@
     "sorting": { "selScore": "high" },
     "LanguagePassthrough": { "language": "none", "subLanguage": "none" },
     "filterLimit": { "topResOnly": false, "global": 0 },
-    "bitrate": { "bitrateCap": "100" },
+    "bitrate": { "bitrateCap": "60" },
     "misc": { "addonName": "Tam-Taro FR" }
   },
   "selection": {
@@ -26,7 +26,7 @@
     "name": "Tam-Taro FR · 3 VF + 2 VO-STFR",
     "author": "Arnault · Tam-Taro",
     "category": "Debrid",
-    "description": "Classement Tam-Taro (Complete SEL Setup {upstreamVersion}), préférence française, source StremThru Torz seule, TorBox. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français mais avec des sous-titres français signalés. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Sans plafond de débit.",
+    "description": "Classement Tam-Taro (Complete SEL Setup {upstreamVersion}), préférence française, source StremThru Torz seule, TorBox. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français mais avec des sous-titres français signalés. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 60 Mb/s pour le port réseau 100 Mb/s de la TV.",
     "notice": "Remplace les addons et les filtres du profil. Seule votre clé TorBox est demandée ; tous les réglages de Tam-Taro sont déjà posés."
   }
 }

@@ -37,14 +37,20 @@ the overlay:
 - Two expressions added after his own keep at most 3 videos with a French audio track,
   pinned first, then at most 2 without French audio but with French subtitles reported.
   Each group keeps 4K when it has some, else 1080p. Nothing else is shown.
-- No bitrate cap. Torz reports subtitle languages without per-track detail, so a
-  French track that is only forced cannot be told apart.
+- Average bitrate capped at 60 Mb/s (`bitrate.bitrateCap`; Tam-Taro treats 100 and above
+  as no cap). The TV's built-in port is 100 Mb/s: it receives about 90 Mb/s from TorBox.
+  UHD remuxes average 87 to 94 Mb/s and peak around 105 over a minute, so they stutter.
+  4K encodes peak up to twice their average over a minute; below about 60 Mb/s most of
+  them stay under 88. A stream whose bitrate is unknown (never probed, and no TMDB
+  runtime) is not capped.
+- Torz reports subtitle languages without per-track detail, so a French track that is
+  only forced cannot be told apart.
 - `tmdb: "none"` turns off what needs a TMDB key (title, year and digital-release checks,
   bitrate from runtime) so a profile saves with the TorBox key alone. With a key set on the
   instance (`TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`), `tmdb: "instance"` keeps them on.
 
-The version is Tam-Taro's with `patch × 100 + overlay revision` as its patch (3.2.9 with
-revision 1 is 3.2.901), so AIOStreams flags an update whenever either side changes.
+The version is Tam-Taro's with `patch × 100 + overlay revision` as its patch (3.2.10 with
+revision 2 is 3.2.1002), so AIOStreams flags an update whenever either side changes.
 Bump `revision` in the overlay for every overlay change.
 
 ```sh
