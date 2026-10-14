@@ -28,6 +28,8 @@ class FakeTv:
         self.subscriptions = {}
         self.subscribe_calls = 0
         self.requests = []
+        self.buttons = []
+        self.on_enter = None  # what the app does when Enter reaches it
         self.subscribe_error = None
 
     async def register_state_update_callback(self, callback):
@@ -50,7 +52,12 @@ class FakeTv:
 
     async def request(self, uri, payload=None):
         self.requests.append((uri, payload))
+        if uri == ENTER and self.on_enter:
+            await self.on_enter()
         return {"returnValue": True}
+
+    async def button(self, name):
+        self.buttons.append(name)
 
     async def connect(self):
         """Like aiowebostv: a fresh connection without subscriptions, then the state callbacks."""
@@ -99,6 +106,7 @@ async def tvs(hass: HomeAssistant):
     with (
         patch("homeassistant.components.webostv.async_setup_entry", setup_entry),
         patch("homeassistant.components.webostv.async_unload_entry", unload_entry),
+        patch("custom_components.webostv_keyboard.binary_sensor.CLOSE_AFTER_ENTER", 0),
     ):
         assert await async_setup_component(hass, "webostv_keyboard", {"webostv_keyboard": {}})
         await hass.async_block_till_done()
@@ -216,7 +224,26 @@ async def test_edit_reaches_the_tv_in_order_and_is_not_recorded(hass, tvs, hass_
         (INSERT, {"text": "Amélie", "replace": False}),
         (ENTER, None),
     ]
+    # The app kept the field (Nuvio TV searches as you type): Back closes the TV's keyboard.
+    assert tv.buttons == ["BACK"]
     assert service_calls == []  # nothing typed lands in the recorder's events
+
+
+async def test_no_back_when_the_app_leaves_the_field_on_enter(hass, tvs, hass_ws_client) -> None:
+    (tv,), _ = tvs
+    await _connect(hass, tv)
+    await tv.keyboard(focusChanged=True, currentWidget={"focus": True})
+    # A page that loads on Enter: the field goes, and so does the TV's keyboard.
+    tv.on_enter = lambda: tv.keyboard(focusChanged=True, currentWidget={"focus": False})
+    assert (await _edit(hass, hass_ws_client, enter=True))["success"]
+    assert tv.buttons == []
+
+    # A form that moves to its next field on Enter: the keyboard stays up for it.
+    await tv.keyboard(focusChanged=True, currentWidget={"focus": True})
+    tv.on_enter = lambda: tv.keyboard(focusChanged=True, currentWidget={"focus": True, "hiddenText": True})
+    assert (await _edit(hass, hass_ws_client, enter=True))["success"]
+    assert tv.buttons == []
+    assert hass.states.get(ENTITY).attributes["password"] is True
 
 
 async def test_clearing_a_password_replaces_its_text(hass, tvs, hass_ws_client) -> None:

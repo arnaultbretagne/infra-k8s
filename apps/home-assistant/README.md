@@ -139,6 +139,14 @@ it with the built-in **LG webOS TV** integration over the SSAP WebSocket, `wss:/
     database and its backups. Deletes are real Backspace presses (the IME's other delete mode
     miscounts accented characters, per its source), and only while a field is focused (outside one,
     some apps take Backspace for Back).
+  - **Enter, then Back if the field is still up.** A remote keyboard's Enter only reaches the app;
+    the TV's on-screen keyboard closes on its own Enter key and otherwise stays up. Nuvio TV searches
+    as you type, so its Enter changes nothing and the keyboard stayed (seen 2026-10-14). So 0.8 s
+    after Enter, if the same field is still focused, the component presses Back, which the TV's
+    keyboard takes for itself while it shows. An app that leaves the field on Enter (a page loading,
+    the next field of a form) gets no Back. Residual risk: an app that keeps the field focused with
+    its keyboard already hidden gets that Back (it may go back a screen). There is no SSAP call to
+    close the keyboard or to read whether it shows (checked in the TV's SSAP interfaces).
   - It only sees fields that use the TV's own keyboard (the browser, the settings, most web apps).
     An app that draws its own on-screen keyboard reports nothing (likely YouTube and Netflix; not
     checked app by app).

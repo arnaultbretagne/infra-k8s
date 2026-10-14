@@ -488,7 +488,8 @@ data:
      *
      * While the TV shows a text field (`keyboard`, from the webostv_keyboard custom component), a text
      * bar slides over the top: a tap opens the phone's keyboard and what is typed goes to the TV's
-     * field as it is typed, Return presses the field's Enter, × clears it. iOS opens the keyboard
+     * field as it is typed, Return presses the field's Enter (and closes the TV's keyboard if the
+     * app keeps the field), × clears it. iOS opens the keyboard
      * only on a tap, so the bar cannot open it by itself. Typing goes through that component's
      * websocket command, which the recorder does not store (a service call would be, with its data).
      *
@@ -998,14 +999,15 @@ data:
               this._kbBack = 0;
               this._kbClear = false;
               this._kbEnter = false;
-              await this._hass.callWS({ type: 'webostv_keyboard/edit', entity_id: this._kbEntityId(), ...edit });
               if (edit.enter) {
-                // Submitted: the TV keeps that text, the input starts afresh. On a "next" key the TV
-                // moves to the next field, so the phone keyboard stays up for it.
+                // Submitted: the TV keeps that text, the input starts afresh at once (the TV's own
+                // keyboard closes a moment later). On a "next" key the TV moves to the next field, so
+                // the phone keyboard stays up for it.
                 this._kb.value = this._kbWant = this._kbSent = '';
                 if (this._kbEnterKey !== 'next') this._kb.blur();
                 this._kbShowClear();
               }
+              await this._hass.callWS({ type: 'webostv_keyboard/edit', entity_id: this._kbEntityId(), ...edit });
             }
           } catch (err) {
             this._kbSent = this._kbWant;
