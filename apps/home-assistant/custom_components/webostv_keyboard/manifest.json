@@ -1,0 +1,10 @@
+{
+  "domain": "webostv_keyboard",
+  "name": "LG webOS TV keyboard",
+  "codeowners": [],
+  "dependencies": ["webostv", "websocket_api"],
+  "documentation": "https://github.com/arnaultbretagne/infra-k8s/blob/main/apps/home-assistant/README.md",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}

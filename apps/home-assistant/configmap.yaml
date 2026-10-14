@@ -2,7 +2,8 @@
 # `provision.py` runs as an initContainer before EVERY start and is the idempotent provisioning
 # layer: it pins the hass-oidc-auth custom component and the kiosk-mode frontend module (tag +
 # sha256), pre-installs the component's Python requirements into /config/deps, and re-seeds
-# configuration.yaml, the dashboard-*.yaml dashboards and the *.js frontend modules (www/) from here
+# configuration.yaml, the dashboard-*.yaml dashboards, the *.js frontend modules (www/) from here and
+# the Git-owned custom components from ../custom_components (one generated ConfigMap each)
 # (Git is the source of truth for the YAML; the UI owns .storage/, automations.yaml, scripts.yaml,
 # scenes.yaml and the dashboards it creates).
 apiVersion: v1
@@ -83,6 +84,11 @@ data:
               broadcast_port: 9
         mode: single
 
+    # Git-owned custom component (custom_components/webostv_keyboard, copied by provision.py): one
+    # binary_sensor.<tv>_keyboard per LG TV, on while the TV shows a text field, and the websocket
+    # command the Télécommande types with (README.md "LG TV remote").
+    webostv_keyboard:
+
     # Frontend modules loaded on every page, served from www/ (= /local/) by provision.py: kiosk-mode
     # (pinned; hides the header and sidebar on the dashboards that ask for it) and tv-remote-card (the
     # Télécommande, key tv-remote-card.js below). provision.py replaces each @@<file>@@ with a hash of
@@ -138,6 +144,9 @@ data:
        pending trial that must be promoted by an admin within 5 minutes or HA reverts + restarts —
        useless for an unattended, Git-owned config. Writing `stable` directly (same layout HA itself
        writes, storage v2.2) makes the config active from the first request, no trial, no promotion.
+    6. The Git-owned custom components (apps/home-assistant/custom_components/, one generated
+       ConfigMap each, mounted under /etc/home-assistant-components/<domain>) replace their copy in
+       custom_components/ at every start.
     """
     import hashlib, importlib.metadata as md, io, json, os, re, shutil, subprocess, sys, tarfile
     import urllib.request
@@ -318,6 +327,25 @@ data:
         os.chmod(tmp, 0o600)
         os.replace(tmp, store_path)
         log("HTTP config written as stable (pending cleared)")
+
+    # --- 6. Git-owned custom components -------------------------------------------------------
+    OWN = "/etc/home-assistant-components"
+    for domain in sorted(os.listdir(OWN)) if os.path.isdir(OWN) else []:
+        src = os.path.join(OWN, domain)
+        if domain.startswith(".") or not os.path.isdir(src):
+            continue
+        dest = os.path.join(CONFIG, "custom_components", domain)
+        tmp = dest + ".new"
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        for name in sorted(os.listdir(src)):   # a ConfigMap volume also holds ..data symlinks
+            if not name.startswith(".") and os.path.isfile(os.path.join(src, name)):
+                shutil.copyfile(os.path.join(src, name), os.path.join(tmp, name))
+        if not os.path.exists(os.path.join(tmp, "manifest.json")):
+            sys.exit(f"[provision] FATAL {src} has no manifest.json")
+        shutil.rmtree(dest, ignore_errors=True)
+        os.rename(tmp, dest)
+        log(f"custom component {domain} seeded")
     log("done")
 
   onboard.py: |
@@ -447,6 +475,7 @@ data:
      *   haptic: selection       # companion app haptic on keys and tiles (default selection)
      *   haptic_power: selection # ... on power (default selection)
      *   haptic_off: failure     # ... on a key while the TV is off, which does nothing (default failure)
+     *   keyboard: binary_sensor.salon_tv_keyboard  # default: binary_sensor.<entity's object id>_keyboard
      *   tiles:                  # the bottom row, in order
      *     - {name: Accueil, key: HOME, icon: home}                       # a remote key
      *     - {name: Netflix, app: netflix, source: Netflix, label: N, color: "#e50914"}
@@ -456,6 +485,12 @@ data:
      * the highlighted tile, the title and the tint. Keys go through webostv.button, apps and inputs
      * through webostv.command system.launcher/launch, power through media_player.toggle (on = the
      * Wake-on-LAN automation). Taps fire the companion app's haptics.
+     *
+     * While the TV shows a text field (`keyboard`, from the webostv_keyboard custom component), a text
+     * bar slides over the top: a tap opens the phone's keyboard and what is typed goes to the TV's
+     * field as it is typed, Return presses the field's Enter, × clears it. iOS opens the keyboard
+     * only on a tap, so the bar cannot open it by itself. Typing goes through that component's
+     * websocket command, which the recorder does not store (a service call would be, with its data).
      *
      * The card covers the whole screen (position: fixed, under the status bar and the home indicator)
      * and takes no height in the page, so the view cannot scroll; only the tile row pans, sideways.
@@ -479,7 +514,12 @@ data:
         plus: '<path d="M12 6v12M6 12h12"/>',
         home: '<path d="M4 11 12 4l8 7"/><path d="M6 10v10h12V10"/>',
         tile_play: '<path d="M9 7.5v9l7.5-4.5z"/>',
+        keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M8 14h8"/>',
+        clear: '<circle cx="12" cy="12" r="8.5"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/>',
       };
+      // The TV field's Enter key (webostv_keyboard `enter_key`) as the phone keyboard's Return label.
+      const ENTER_HINTS = { done: 'done', go: 'go', send: 'send', search: 'search', next: 'next', previous: 'previous' };
+      const INPUT_MODES = { number: 'decimal', phonenumber: 'tel', email: 'email', url: 'url' };
       const FILLED = new Set(['rewind', 'play', 'pause', 'forward', 'tile_play']);
       const svg = (name) => `<svg viewBox="0 0 24 24" class="${FILLED.has(name) ? 'fill' : ''}" aria-hidden="true">${ICONS[name] || ''}</svg>`;
       const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -578,6 +618,28 @@ data:
       .transport button + button::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 1px; background: var(--hairline); }
       .transport button:active { background: rgba(255,255,255,.12); }
       .transport svg { width: 20px; height: 20px; }
+
+      /* Text bar: over the now-playing card while the TV shows a text field. */
+      .kb {
+        position: absolute; z-index: 4; left: 20px; right: 20px; top: calc(var(--sat) + 12px);
+        height: 60px; border-radius: 30px; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 18px;
+        opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-14px) scale(.97);
+        transition: opacity .2s, transform .32s cubic-bezier(.2,.9,.25,1), visibility 0s .32s;
+      }
+      .remote.kb-open .kb { opacity: 1; visibility: visible; pointer-events: auto; transform: none; transition-delay: 0s; animation: kb-glow 1.4s ease-out; }
+      @keyframes kb-glow { 0% { box-shadow: inset 0 1px .5px rgba(255,255,255,.5), 0 0 0 0 rgba(255,255,255,.35); } 100% { box-shadow: inset 0 1px .5px rgba(255,255,255,.5), 0 0 0 16px rgba(255,255,255,0); } }
+      .remote.kb-open .now { opacity: 0; visibility: hidden; }
+      .kb-icon { flex: none; display: grid; place-items: center; color: var(--text-dim); }
+      .kb-icon svg { width: 22px; height: 22px; stroke-width: 1.6; }
+      .remote .kb input {
+        flex: 1; min-width: 0; height: 100%; margin: 0 0 0 10px; padding: 0; border: 0; outline: 0; background: none;
+        color: var(--text); caret-color: var(--text); font: 400 17px/1.2 -apple-system, system-ui, sans-serif;
+        -webkit-user-select: text; user-select: text; touch-action: manipulation;
+      }
+      .remote .kb input::placeholder { color: var(--text-dim); }
+      .remote .kb-clear { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: var(--text-dim); visibility: hidden; }
+      .remote .kb-clear:active { color: var(--text); background: rgba(255,255,255,.12); }
+      .remote.kb-text .kb-clear { visibility: visible; }
 
       /* The wheel */
       .pad { flex: none; position: relative; height: 256px; margin-top: auto; }
@@ -701,6 +763,11 @@ data:
           <button data-key="FASTFORWARD" aria-label="Avance rapide">${svg('forward')}</button>
         </div>
       </section>
+      <section class="kb glass">
+        <span class="kb-icon">${svg('keyboard')}</span>
+        <input type="text" autocomplete="off" spellcheck="false" aria-label="Texte pour la TV">
+        <button class="kb-clear" data-action="kb-clear" aria-label="Effacer le texte de la TV">${svg('clear')}</button>
+      </section>
       <section class="pad dimmable">
         <div class="wheel glass">
           <i></i>
@@ -733,6 +800,10 @@ data:
             title: this._root.querySelector('.now-title'),
             sub: this._root.querySelector('.now-sub'),
           };
+          this._kb = this._root.querySelector('.kb input');
+          this._kbReset();
+          this._kb.addEventListener('input', () => { this._kbWant = this._kb.value; this._kbShowClear(); this._kbPump(); });
+          this._kb.addEventListener('keydown', (e) => this._kbKey(e));
           this._shown = {};
           this._root.addEventListener('click', (e) => this._onClick(e));
           this._root.addEventListener('pointerdown', (e) => this._onPointerDown(e));
@@ -746,10 +817,14 @@ data:
 
         _isOn() { const st = this._entity(); return !!st && !OFF_STATES.has(st.state); }
 
+        _kbEntityId() { return this._config.keyboard || `binary_sensor.${this._config.entity.split('.').pop()}_keyboard`; }
+
         _update() {
           if (!this._root || !this._hass) return;
           const st = this._entity();
           const on = this._isOn();
+          const kb = this._hass.states?.[this._kbEntityId()];
+          const field = on && kb?.state === 'on' ? kb.attributes : null;
           const source = on ? st.attributes?.source : null;
           const idx = source == null ? -1 : this._tiles.findIndex((t) => t.source === source);
           const tile = idx >= 0 ? this._tiles[idx] : null;
@@ -761,8 +836,12 @@ data:
             title: !st ? 'TV introuvable' : !on ? 'TV éteinte' : (tile?.name || source || 'TV'),
             sub: !st ? this._config.entity : !on ? 'Appuie sur le bouton pour l’allumer' : input ? 'Source en cours' : 'Appli en cours',
             icon: !on ? svg('power') : tile?.icon ? svg(tile.icon === 'play' ? 'tile_play' : tile.icon) : esc(tile?.label || initials(source)),
+            field: field ? field.field : null,
+            fieldText: !!field?.has_text,
           };
           const was = this._shown;
+          if (was.field !== view.field) this._kbOpen(field, was.field != null);
+          if (was.fieldText !== view.fieldText) this._kbShowClear(view.fieldText);
           if (was.on !== view.on) {
             this._root.classList.toggle('is-on', on);
             this._root.classList.toggle('is-off', !on);
@@ -792,6 +871,14 @@ data:
           if (!b) return;
           const { action, key, app } = b.dataset;
           if (action === 'close-volume') return this._closeVolume();
+          if (action === 'kb-clear') {
+            this._haptic(this._config.haptic);
+            this._kbClear = true;
+            this._kb.value = this._kbWant = this._kbSent = '';
+            this._kbBack = 0;
+            this._kbShowClear(false);
+            return this._kbPump();
+          }
           if (action === 'volume') {
             this._haptic('selection');
             this._root.classList.toggle('vol-open');
@@ -808,6 +895,8 @@ data:
 
         // Arrows and volume repeat while held, like a real remote.
         _onPointerDown(e) {
+          // A touch outside the text bar puts the phone keyboard away, so the wheel is reachable.
+          if (this.shadowRoot.activeElement === this._kb && !e.target.closest('.kb')) this._kb.blur();
           const b = e.target.closest('[data-key]');
           if (!b || !REPEAT_KEYS.has(b.dataset.key)) return;
           if (!this._isOn()) return;
@@ -843,6 +932,87 @@ data:
           this._root.classList.remove('nudge');
           void this._root.offsetWidth;
           this._root.classList.add('nudge');
+        }
+
+        // --- Text bar: mirrors the phone's input into the TV's focused field. -------------------
+
+        // A new field (or none): start from an empty input, shaped for that field.
+        _kbOpen(field, wasOpen) {
+          this._kbReset();
+          this._root.classList.toggle('kb-open', !!field);
+          if (!field) { this._kb.blur(); return; }
+          const kb = this._kb;
+          kb.type = field.password ? 'password' : 'text';
+          kb.inputMode = INPUT_MODES[field.content_type] || 'text';
+          kb.enterKeyHint = ENTER_HINTS[field.enter_key] || 'enter';
+          kb.autocapitalize = field.capitalize ? 'sentences' : 'off';
+          kb.setAttribute('autocorrect', field.password || INPUT_MODES[field.content_type] ? 'off' : 'on');
+          kb.placeholder = field.password ? 'Mot de passe pour la TV' : 'Écrire sur la TV';
+          this._kbEnterKey = field.enter_key;
+          if (!wasOpen) this._haptic(this._config.haptic);
+        }
+
+        _kbReset() {
+          this._kb.value = '';
+          this._kbWant = '';   // what the input holds
+          this._kbSent = '';   // what the TV got from this input
+          this._kbBack = 0;    // Backspaces typed in an empty input (they delete the TV's own text)
+          this._kbClear = false;
+          this._kbEnter = false;
+        }
+
+        _kbShowClear(fieldText = this._shown?.fieldText) {
+          this._root.classList.toggle('kb-text', !!fieldText || this._kb.value !== '');
+        }
+
+        _kbKey(e) {
+          if (e.isComposing) return;
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this._kbEnter = true;
+            this._kbPump();
+          } else if (e.key === 'Backspace' && this._kb.value === '' && this._shown.fieldText) {
+            this._kbBack += 1;
+            this._kbPump();
+          }
+        }
+
+        // One edit in flight at a time; what was typed meanwhile goes out as one diff, in order.
+        async _kbPump() {
+          if (this._kbBusy || !this._hass?.callWS) return;
+          this._kbBusy = true;
+          try {
+            for (;;) {
+              const sent = Array.from(this._kbSent);
+              const want = Array.from(this._kbWant);
+              let same = 0;
+              while (same < sent.length && same < want.length && sent[same] === want[same]) same += 1;
+              const edit = {
+                clear: this._kbClear,
+                delete: this._kbBack + sent.length - same,
+                text: want.slice(same).join(''),
+                enter: this._kbEnter,
+              };
+              if (!edit.clear && !edit.delete && !edit.text && !edit.enter) break;
+              this._kbSent = this._kbWant;
+              this._kbBack = 0;
+              this._kbClear = false;
+              this._kbEnter = false;
+              await this._hass.callWS({ type: 'webostv_keyboard/edit', entity_id: this._kbEntityId(), ...edit });
+              if (edit.enter) {
+                // Submitted: the TV keeps that text, the input starts afresh. On a "next" key the TV
+                // moves to the next field, so the phone keyboard stays up for it.
+                this._kb.value = this._kbWant = this._kbSent = '';
+                if (this._kbEnterKey !== 'next') this._kb.blur();
+                this._kbShowClear();
+              }
+            }
+          } catch (err) {
+            this._kbSent = this._kbWant;
+            this._notify(err?.message || String(err));
+          } finally {
+            this._kbBusy = false;
+          }
         }
 
         _call(domain, service, data = {}) {
