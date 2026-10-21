@@ -5,6 +5,7 @@ metadata:
   namespace: agora-system
 spec:
   schedule: "45 5 * * *"
+  timeZone: Etc/UTC   # same clock as the CNPG ScheduledBackups; unset = the node's zone (g4: Europe/Zurich)
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3

@@ -65,8 +65,8 @@ found its requirements already in the image; `onboard` created the owner and rev
 6. **Companion app:** device-code login. Add server `https://ha.bretagne.dev`, choose Pocket-ID, the
    app shows a code; open `https://ha.bretagne.dev/auth/oidc/welcome` in any browser, sign in, enter
    the code. Once per phone.
-7. Backups: `Backup` objects `completed` for `ha-pg`, `ha-pg-restore-test` `PASSED` (05:45),
-   `ha-config-backup` `DONE` (04:15). Restore of `/config` = untar the latest archive onto the PVC.
+7. Backups: `Backup` objects `completed` for `ha-pg`, `ha-pg-restore-test` `PASSED` (05:45 UTC),
+   `ha-config-backup` `DONE` (04:15 UTC). Restore of `/config` = untar the latest archive onto the PVC.
 
 ## LG TV remote (webostv)
 
