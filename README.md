@@ -132,8 +132,10 @@ sudo -n env PUBLIC_IP="<static-node-ip>" ./bootstrap/host-network.sh
 ```
 
 Applying bounces the interface for a few seconds, from a transient systemd unit, so a dropped SSH
-session does not stop it halfway. If the gateway does not answer within 60 s, the previous files are
-put back and the interface comes up again with them; they stay under `/var/lib/host-network/`.
+session does not stop it halfway. If the network is not reachable within 60 s — netguard's test: the
+gateway, two public addresses or a public TCP port, since a router may refuse ping — the previous
+files are put back and the interface comes up again with them; they stay under
+`/var/lib/host-network/`. The same test must pass before the change, or nothing is changed.
 
 ## Secrets
 
