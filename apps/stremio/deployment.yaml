@@ -133,6 +133,10 @@ spec:
               mountPath: /app/data/templates/tamtaro-fr-3vf-2vostfr.json
               subPath: tamtaro-fr-3vf-2vostfr.json
               readOnly: true
+            - name: templates
+              mountPath: /app/data/templates/tamtaro-fr-lg-stremio.json
+              subPath: tamtaro-fr-lg-stremio.json
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:

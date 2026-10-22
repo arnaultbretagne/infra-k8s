@@ -1,5 +1,5 @@
-# Regenerates apps/stremio/templates/tamtaro-fr-3vf-2vostfr.json from Tam-Taro's latest
-# template (see apps/stremio/templates/README.md). When the result changed, it opens or
+# Regenerates the Tam-Taro templates (apps/stremio/templates/tamtaro-fr-*.json, one per
+# overlay in tamtaro-fr/) from Tam-Taro's latest template (see apps/stremio/templates/README.md). When the result changed, it opens or
 # updates one pull request with TEMPLATES_PR_TOKEN: a fine-grained token on this
 # repository with "Contents" and "Pull requests" read and write. Without that secret the
 # run fails instead, so an upstream change is still noticed. Nothing is merged here.
@@ -19,6 +19,7 @@ concurrency:
 
 env:
   TEMPLATE: apps/stremio/templates/tamtaro-fr-3vf-2vostfr.json
+  TEMPLATES: apps/stremio/templates/tamtaro-fr-*.json
   BRANCH: auto/tamtaro-template
   HAS_TOKEN: ${{ secrets.TEMPLATES_PR_TOKEN != '' }}
 
@@ -41,12 +42,12 @@ jobs:
       - name: Detect a change
         id: diff
         run: |
-          if git diff --quiet -- "$TEMPLATE"; then
+          if git diff --quiet -- $TEMPLATES; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Template already up to date."
+            echo "Templates already up to date."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --stat -- "$TEMPLATE"
+            git diff --stat -- $TEMPLATES
           fi
 
       - name: Report a change without a token
@@ -64,12 +65,12 @@ jobs:
           git config user.name "tamtaro-template"
           git config user.email "tamtaro-template@users.noreply.github.com"
           git switch -C "$BRANCH"
-          git add "$TEMPLATE"
-          git commit -m "chore(stremio): regenerate the Tam-Taro FR template ($version)"
+          git add $TEMPLATES
+          git commit -m "chore(stremio): regenerate the Tam-Taro FR templates ($version)"
           git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
           if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
             gh pr create --base main --head "$BRANCH" \
-              --title "chore(stremio): regenerate the Tam-Taro FR template ($version)" \
+              --title "chore(stremio): regenerate the Tam-Taro FR templates ($version)" \
               --body "Tam-Taro's template changed upstream; this is the regenerated instance template (version $version). Before merging, run \`check-live.mjs\` against an AIOStreams instance (apps/stremio/templates/README.md)."
           else
             echo "Open pull request updated."
