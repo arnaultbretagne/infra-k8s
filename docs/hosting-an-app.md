@@ -553,8 +553,9 @@ manifest for one preview.
      identical.
    - A Secret, NetworkPolicy, PVC, HTTPRoute, ServiceAccount or RBAC object inside `workload/` makes
      every preview fail, because the preview's applier cannot create them.
-   - Every container needs a memory limit of at least 64 Mi. Under Kata a smaller one never starts,
-     so the preview's admission policy refuses it.
+   - Every container needs a memory limit of at least 64 Mi: Kata sizes the VM at the Pod's limits
+     + 32 Mi, so a smaller one gives a VM too small to boot, and the preview's admission policy
+     refuses it. The guest system lives inside that budget too, so size small apps with margin.
 2. **Read configuration from the environment.**
    - The public URL comes from one environment variable.
    - The database comes from the CNPG `-app` Secret, mounted or as variables: `uri`, or `host` with

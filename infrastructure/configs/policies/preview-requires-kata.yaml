@@ -2,11 +2,12 @@
 # else: no gVisor, no CNPG exception (preview databases live in preview-system). Stricter than
 # untrusted-compute-requires-sandbox, which still applies to these namespaces too.
 #
-# The memory floor: under Kata, a container whose memory limit is 32 Mi never starts — the guest
-# agent hangs creating it (ttrpc "Receive packet timeout") — while 64 Mi starts (measured
-# 2026-10-23, whoami). A hung Kata VM also stalls the kubelet's stats endpoint, which took
-# metrics-server down for the whole node. Refusing such a Pod at admission, with a clear message,
-# is the cheap guard. Containers without a limit get the LimitRange's 256 Mi before this runs.
+# The memory floor: Kata here sizes each VM at the Pod's memory limits + 32 Mi (static sandbox
+# sizing), so a 32 Mi container gets a 64 Mi VM, in which the guest's systemd never reaches the Kata
+# agent (ttrpc "Receive packet timeout"); 64 Mi gives a 96 Mi VM, which starts (measured
+# 2026-10-23). A hung Kata VM also stalls the kubelet's stats endpoint, which took metrics-server
+# down for the whole node. Refusing such a Pod at admission, with a clear message, is the cheap
+# guard. Containers without a limit get the LimitRange's 256 Mi before this runs.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
