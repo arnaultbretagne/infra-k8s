@@ -1,0 +1,38 @@
+# preview-system's ceiling (ADR 0017 v4 §10): the gates and the preview databases of every preview
+# together. The storage line bounds what the databases declare; local-path does not enforce a PVC's
+# size, so the disk itself is watched node-wide.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: previews
+  namespace: preview-system
+spec:
+  hard:
+    requests.memory: 2Gi
+    limits.memory: 4Gi
+    requests.storage: 20Gi
+    persistentvolumeclaims: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+  namespace: preview-system
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 25m, memory: 64Mi }
+      default: { memory: 256Mi }
+---
+# Default-deny both ways; each gate and each database gets its own allow-list from the ResourceSet.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+  namespace: preview-system
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}

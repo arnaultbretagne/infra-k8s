@@ -503,7 +503,7 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
 - [ ] Verified out-of-band, then `200` on its hostname; kustomizations green
 - [ ] Image pinned (no `:latest`); Renovate / Image-Automation wired for updates
 - [ ] Previewable, unless excluded (§14.3): `workload/` split with an unchanged `kustomize build`,
-      URL from one variable, database from `uri`, catalogue entry — §14.2
+      URL from one variable, database from the CNPG `-app` Secret, catalogue entry — §14.2
 
 ---
 
@@ -555,8 +555,9 @@ manifest for one preview.
      every preview fail, because the preview's applier cannot create them.
 2. **Read configuration from the environment.**
    - The public URL comes from one environment variable.
-   - The database comes from the CNPG Secret's `uri` key (mounted or as a variable), never from
-     `host`: `host` is the short Service name, which does not resolve from a preview namespace.
+   - The database comes from the CNPG `-app` Secret, mounted or as variables: `uri`, or `host` with
+     `port` and `dbname`. A preview writes that Secret under the same name, pointing at its own
+     database.
    - No other production host name is written into the workload.
 3. **Add the catalogue entry** (fields: ADR 0017 v4 §2). Choose `data`:
 

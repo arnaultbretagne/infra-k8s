@@ -1,0 +1,41 @@
+# Catalogue entry (ADR 0017 v4 §2): Miniflux and RSSHub, on a copy of the latest production backup.
+# Label an infra-k8s PR `preview/rss` to get https://pr-<n>-rss.preview.bretagne.dev, e.g. to try a
+# Miniflux bump that migrates the schema before merging it.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-rss
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview/rss"]
+    limit: 2
+  defaultValues:
+    _comment: >-
+      restore + internet: Miniflux fetches feeds, so the PR's code could send the copy out. Accepted:
+      the data is feed subscriptions and reading history, nothing that grants access to anything.
+    app: rss
+    repo: https://github.com/arnaultbretagne/infra-k8s
+    source: pr
+    path: apps/rss/workload
+    image: ""
+    service: miniflux
+    port: "8080"
+    urlDeployment: miniflux
+    urlContainer: miniflux
+    urlEnv: BASE_URL
+    internet: true
+    data: restore
+    dbCluster: miniflux-pg
+    dbName: miniflux
+    dbOwner: miniflux
+    backupPath: miniflux
+    dbSize: 2Gi

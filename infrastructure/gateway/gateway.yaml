@@ -193,3 +193,22 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Previews (ADR 0017 v4 §7): pr-<n>-<app>.preview.bretagne.dev. Its own wildcard certificate
+    # (gateway-shim issues it like bretagne-tls), and routes from preview-system only: every route
+    # there is the preview template's, in front of an SSO gate; no PR can create one, and no other
+    # listener admits a route from a preview.
+    - name: https-preview
+      port: 8443
+      protocol: HTTPS
+      hostname: "*.preview.bretagne.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-preview-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: preview-system

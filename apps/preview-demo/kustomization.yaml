@@ -1,5 +1,6 @@
-# Preview-machinery demo app (ADR 0017 v3). NOT listed in apps/kustomization.yaml on purpose:
-# this path is only ever built by per-PR preview Kustomizations (targetNamespace: preview).
+# The previews' smoke test (ADR 0017 v4): a whoami, catalogue entry preview-demo. NOT listed in
+# apps/kustomization.yaml on purpose: this folder is only ever applied by a preview, from the PR's
+# commit, into pv-preview-demo-pr<n>.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

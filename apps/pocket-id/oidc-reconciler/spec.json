@@ -102,6 +102,13 @@
       "callbackURLs": ["https://rss.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin"],
       "pkceEnabled": false
+    },
+    {
+      "_comment": "Previews (ADR 0017 v4 §7): one client for every preview gate, each an oauth2-proxy in preview-system at pr-<n>-<app>.preview.bretagne.dev. The single-label wildcard matches exactly one DNS label under preview.bretagne.dev (Pocket-ID >= 2.4.0 closed the userinfo bypass, CVE-2026-28512). Created directly against the API on 2026-10-23 like 'onecli', but Pocket-ID v2 renamed the secret route: POST /oidc/clients/{id}/secrets (plural); v2 also auto-creates a first secret at client creation, which was deleted since its value was never kept. The secret lives only in preview-system/preview-gate.",
+      "name": "preview",
+      "callbackURLs": ["https://*.preview.bretagne.dev/oidc/callback"],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
     }
   ]
 }

@@ -1,8 +1,9 @@
 # ADR 0027 §4 — untrusted-compute pods must be sandboxed. CNPG-managed pods exempt
-# (trusted upstream software; future preview db-clones). The binding selects ONLY namespaces
-# carrying the untrusted-compute profile label: today that is `preview`, `agora-runs` and
-# `agora-sandboxes` (infra-k8s ADR 0028 — run namespaces are labelled from birth, no "label later"
-# debt). Two runtimes qualify as a sandbox: `sandboxed` (gVisor) and `kata` (one VM per Pod).
+# (trusted upstream software). The binding selects ONLY namespaces carrying the untrusted-compute
+# profile label: today that is `agora-runs`, `agora-sandboxes` (infra-k8s ADR 0028 — run namespaces
+# are labelled from birth, no "label later" debt) and every preview namespace `pv-<app>-pr<n>`,
+# which preview-requires-kata.yaml further narrows to Kata alone. Two runtimes qualify as a
+# sandbox: `sandboxed` (gVisor) and `kata` (one VM per Pod).
 #
 # `agent-runs` carried the label too until the channels-era system was decommissioned
 # (2026-08-07); `agora-runs` inherited both the label and this binding unchanged.

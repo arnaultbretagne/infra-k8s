@@ -1,0 +1,37 @@
+# Catalogue entry (ADR 0017 v4 §2): the whoami demo, the primitive's smoke test. Stateless, no
+# Internet. Label an infra-k8s PR `preview/preview-demo` to get https://pr-<n>-preview-demo.preview.bretagne.dev.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-demo
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview/preview-demo"]
+    limit: 1
+  defaultValues:
+    app: preview-demo
+    repo: https://github.com/arnaultbretagne/infra-k8s
+    source: pr
+    path: apps/preview-demo
+    image: ""
+    service: preview-demo
+    port: "8080"
+    urlDeployment: ""
+    urlContainer: ""
+    urlEnv: ""
+    internet: false
+    data: none
+    dbCluster: ""
+    dbName: ""
+    dbOwner: ""
+    backupPath: ""
+    dbSize: ""

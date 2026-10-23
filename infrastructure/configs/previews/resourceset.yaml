@@ -1,0 +1,561 @@
+# The preview primitive (ADR 0017 v4). One input per labelled PR of a catalogued app: the PR's id,
+# sha, branch, author and title, plus the app's entry (the provider's defaultValues, catalogue/).
+# This template is main-reviewed and applied by the flux-operator with platform authority; the PR's
+# own content is applied only by the inner Kustomization, impersonating <app>-pr<n>-applier.
+#
+# Per preview it renders:
+#   pv-<app>-pr<n>    the namespace that runs the PR's workload: Kata only, quota, default-deny,
+#                     the applier's RoleBinding, the database credentials the workload mounts
+#   preview-system    GitRepository + Kustomization + applier ServiceAccount, the gate (oauth2-proxy)
+#                     and its HTTPRoute, the database (data: empty | restore)
+#   flux-system       the comment and the commit status on the PR
+# When the PR is closed or merged, or loses its label, its input disappears and the flux-operator
+# garbage-collects every object below.
+#
+# Kept in step by hand (Renovate does not read inside the template): the oauth2-proxy image, which
+# follows the apps' gates (apps/*/oauth2-proxy.yaml).
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSet
+metadata:
+  name: previews
+  namespace: flux-system
+spec:
+  inputsFrom:
+    - kind: ResourceSetInputProvider
+      selector:
+        matchLabels:
+          preview.bretagne.dev/catalogue: "true"
+  resourcesTemplate: |
+    <<- $p := printf "%s-pr%s" inputs.app inputs.id >>
+    <<- $ns := printf "pv-%s" $p >>
+    <<- $host := printf "pr-%s-%s.preview.bretagne.dev" inputs.id inputs.app >>
+    <<- $db := printf "%s-pg" $p >>
+    <<- /* The database answers only its own workload (network policies below) and holds nothing
+           that workload cannot already read, so its password needs no secrecy: it is derived, which
+           keeps every render identical and spares a copy of a CNPG-generated Secret. */ ->>
+    <<- $pw := printf "preview/%s/%s" inputs.app inputs.id | sha256sum | trunc 32 >>
+    ---
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: << $ns >>
+      labels:
+        platform.bretagne.dev/profile: untrusted-compute
+        pod-security.kubernetes.io/enforce: restricted
+        preview.bretagne.dev/preview: "true"
+        preview.bretagne.dev/name: << $p >>
+    ---
+    apiVersion: v1
+    kind: ResourceQuota
+    metadata:
+      name: preview
+      namespace: << $ns >>
+    spec:
+      hard:
+        requests.cpu: 500m
+        requests.memory: 1Gi
+        limits.memory: 2Gi
+        pods: "6"
+        persistentvolumeclaims: "0"
+        services.loadbalancers: "0"
+        services.nodeports: "0"
+    ---
+    apiVersion: v1
+    kind: LimitRange
+    metadata:
+      name: defaults
+      namespace: << $ns >>
+    spec:
+      limits:
+        - type: Container
+          defaultRequest: { cpu: 25m, memory: 64Mi }
+          default: { memory: 256Mi }
+          max: { memory: 1Gi }
+    ---
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: default-deny
+      namespace: << $ns >>
+    spec:
+      endpointSelector: {}
+      ingress:
+        - {}
+      egress:
+        - {}
+    ---
+    # In: the preview's gate on the entry's port, the workload's own pods, kubelet probes.
+    # Out: DNS, the workload's own pods, its database, the Internet when the entry says so.
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: workload
+      namespace: << $ns >>
+    spec:
+      endpointSelector: {}
+      ingress:
+        - fromEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: preview-system
+                app: << $p >>-gate
+          toPorts:
+            - ports: [{ port: "<< inputs.port >>", protocol: TCP }]
+        - fromEndpoints:
+            - {}
+        - fromEntities: [host]
+      egress:
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: kube-system
+                k8s:k8s-app: kube-dns
+          toPorts:
+            - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+        - toEndpoints:
+            - {}
+        <<- if ne inputs.data "none" >>
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: preview-system
+                cnpg.io/cluster: << $db >>
+          toPorts:
+            - ports: [{ port: "5432", protocol: TCP }]
+        <<- end >>
+        <<- if inputs.internet >>
+        - toCIDRSet:
+            - cidr: 0.0.0.0/0
+              except:
+                - 10.0.0.0/8
+                - 100.64.0.0/10
+                - 169.254.0.0/16
+                - 172.16.0.0/12
+                - 192.168.0.0/16
+          toPorts:
+            - ports: [{ port: "80", protocol: TCP }, { port: "443", protocol: TCP }]
+        <<- end >>
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: << $p >>-applier
+      namespace: preview-system
+    automountServiceAccountToken: false
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: preview-applier
+      namespace: << $ns >>
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: preview-applier
+    subjects:
+      - kind: ServiceAccount
+        name: << $p >>-applier
+        namespace: preview-system
+    ---
+    apiVersion: source.toolkit.fluxcd.io/v1
+    kind: GitRepository
+    metadata:
+      name: << $p >>
+      namespace: preview-system
+    spec:
+      interval: 10m
+      <<- if eq inputs.source "pr" >>
+      url: << inputs.repo >>
+      ref:
+        commit: "<< inputs.sha >>"
+      <<- else >>
+      url: https://github.com/arnaultbretagne/infra-k8s
+      ref:
+        branch: main
+      <<- end >>
+    ---
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: << $p >>
+      namespace: preview-system
+      annotations:
+        event.toolkit.fluxcd.io/change_request: "<< inputs.id >>"
+        event.toolkit.fluxcd.io/commit: "<< inputs.sha >>"
+        event.toolkit.fluxcd.io/preview-url: "https://<< $host >>"
+    spec:
+      interval: 10m
+      retryInterval: 2m
+      timeout: 5m
+      wait: true
+      prune: true
+      serviceAccountName: << $p >>-applier
+      sourceRef:
+        kind: GitRepository
+        name: << $p >>
+      path: ./<< inputs.path >>
+      targetNamespace: << $ns >>
+      <<- if eq inputs.source "main" >>
+      images:
+        - name: << inputs.image >>
+          newTag: "<< inputs.sha >>"
+      <<- end >>
+      patches:
+        - target:
+            group: apps
+            kind: Deployment
+          patch: |
+            - op: add
+              path: /spec/template/spec/runtimeClassName
+              value: kata
+            - op: add
+              path: /spec/template/spec/automountServiceAccountToken
+              value: false
+            - op: add
+              path: /spec/template/spec/priorityClassName
+              value: bretagne-low
+        <<- if inputs.urlEnv >>
+        - target:
+            group: apps
+            kind: Deployment
+            name: << inputs.urlDeployment >>
+          patch: |
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: << inputs.urlDeployment >>
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: << inputs.urlContainer >>
+                      env:
+                        - name: << inputs.urlEnv >>
+                          value: https://<< $host >>
+        <<- end >>
+    ---
+    # The gate: oauth2-proxy as in apps/*/oauth2-proxy.yaml (ADR 0021), in front of the entry's
+    # Service. Its client and cookie secrets (preview-gate) never enter the preview namespace.
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: << $p >>-gate
+      namespace: preview-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: << $p >>-gate
+      template:
+        metadata:
+          labels:
+            app: << $p >>-gate
+            preview.bretagne.dev/name: << $p >>
+        spec:
+          automountServiceAccountToken: false
+          priorityClassName: bretagne-low
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: oauth2-proxy
+              image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+              args:
+                - --http-address=0.0.0.0:4180
+              securityContext:
+                runAsUser: 2000
+                runAsGroup: 2000
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
+                - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: https://id.bretagne.dev }
+                - { name: OAUTH2_PROXY_REDIRECT_URL, value: "https://<< $host >>/oidc/callback" }
+                - { name: OAUTH2_PROXY_PROXY_PREFIX, value: /oidc }
+                - { name: OAUTH2_PROXY_UPSTREAMS, value: "http://<< inputs.service >>.<< $ns >>.svc.cluster.local:<< inputs.port >>" }
+                - { name: OAUTH2_PROXY_SCOPE, value: openid email profile groups }
+                - { name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM, value: groups }
+                - { name: OAUTH2_PROXY_ALLOWED_GROUPS, value: admin }
+                - { name: OAUTH2_PROXY_EMAIL_DOMAINS, value: "*" }
+                - { name: OAUTH2_PROXY_COOKIE_SECURE, value: "true" }
+                - { name: OAUTH2_PROXY_COOKIE_DOMAINS, value: "<< $host >>" }
+                - { name: OAUTH2_PROXY_WHITELIST_DOMAINS, value: "<< $host >>" }
+                - { name: OAUTH2_PROXY_REVERSE_PROXY, value: "true" }
+                - { name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON, value: "true" }
+                # Pocket-ID does not emit email_verified (known upstream gap, ADR 0021)
+                - { name: OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL, value: "true" }
+              envFrom:
+                - secretRef:
+                    name: preview-gate
+              ports:
+                - containerPort: 4180
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 128Mi }
+              readinessProbe:
+                httpGet: { path: /ping, port: 4180 }
+                periodSeconds: 10
+              livenessProbe:
+                httpGet: { path: /ping, port: 4180 }
+                periodSeconds: 30
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: << $p >>-gate
+      namespace: preview-system
+    spec:
+      selector:
+        app: << $p >>-gate
+      ports:
+        - { port: 4180, targetPort: 4180 }
+    ---
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: << $p >>-gate
+      namespace: preview-system
+    spec:
+      endpointSelector:
+        matchLabels:
+          app: << $p >>-gate
+      ingress:
+        - fromEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: traefik
+          toPorts:
+            - ports: [{ port: "4180", protocol: TCP }]
+        - fromEntities: [host] # kubelet probes
+          toPorts:
+            - ports: [{ port: "4180", protocol: TCP }]
+      egress:
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: kube-system
+                k8s:k8s-app: kube-dns
+          toPorts:
+            - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: << $ns >>
+          toPorts:
+            - ports: [{ port: "<< inputs.port >>", protocol: TCP }]
+        # -> id.bretagne.dev: the public IP resolves to the node, then reaches Traefik (as the apps' gates).
+        - toEntities: [world, host]
+          toPorts:
+            - ports: [{ port: "443", protocol: TCP }]
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: traefik
+          toPorts:
+            - ports: [{ port: "8443", protocol: TCP }]
+    ---
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: << $p >>
+      namespace: preview-system
+    spec:
+      parentRefs:
+        - name: bretagne-gateway
+          namespace: traefik
+          sectionName: https-preview
+      hostnames:
+        - << $host >>
+      rules:
+        - filters:
+            - type: ResponseHeaderModifier
+              responseHeaderModifier:
+                set:
+                  - name: Strict-Transport-Security
+                    value: "max-age=86400; includeSubDomains"
+          backendRefs:
+            - name: << $p >>-gate
+              port: 4180
+    <<- if ne inputs.data "none" >>
+    ---
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: << $db >>-owner
+      namespace: preview-system
+    type: kubernetes.io/basic-auth
+    stringData:
+      username: << inputs.dbOwner >>
+      password: "<< $pw >>"
+    ---
+    # What the workload mounts, under the name its production manifests use. host carries the
+    # namespace, so both the uri and host+port reach the database from the preview namespace.
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: << inputs.dbCluster >>-app
+      namespace: << $ns >>
+    type: Opaque
+    stringData:
+      username: << inputs.dbOwner >>
+      user: << inputs.dbOwner >>
+      password: "<< $pw >>"
+      dbname: << inputs.dbName >>
+      host: << $db >>-rw.preview-system
+      port: "5432"
+      uri: postgresql://<< inputs.dbOwner >>:<< $pw >>@<< $db >>-rw.preview-system:5432/<< inputs.dbName >>
+    ---
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata:
+      name: << $db >>
+      namespace: preview-system
+    spec:
+      instances: 1
+      priorityClassName: bretagne-low
+      storage:
+        size: << inputs.dbSize >>
+        storageClass: local-path
+      resources:
+        requests: { cpu: 20m, memory: 128Mi }
+        limits: { memory: 512Mi }
+      # No plugins entry: a preview database never archives (ADR 0017 v4 §9). The read-only token is
+      # the second lock.
+      bootstrap:
+        <<- if eq inputs.data "empty" >>
+        initdb:
+          database: << inputs.dbName >>
+          owner: << inputs.dbOwner >>
+          secret:
+            name: << $db >>-owner
+        <<- else >>
+        recovery:
+          source: << inputs.dbCluster >>
+          database: << inputs.dbName >>
+          owner: << inputs.dbOwner >>
+          secret:
+            name: << $db >>-owner
+      externalClusters:
+        - name: << inputs.dbCluster >>
+          plugin:
+            name: barman-cloud.cloudnative-pg.io
+            parameters:
+              barmanObjectName: << $p >>-backup
+              serverName: << inputs.dbCluster >>
+        <<- end >>
+    ---
+    # The database: its one client is the preview's workload; then the CNPG operator, its own
+    # instances and the kubelet. Out: R2 for the restore, the API server for the instance manager.
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: << $db >>
+      namespace: preview-system
+    spec:
+      endpointSelector:
+        matchLabels:
+          cnpg.io/cluster: << $db >>
+      ingress:
+        - fromEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: << $ns >>
+          toPorts:
+            - ports: [{ port: "5432", protocol: TCP }]
+        - fromEndpoints:
+            - matchLabels:
+                k8s:app.kubernetes.io/name: cloudnative-pg
+                k8s:io.kubernetes.pod.namespace: cnpg-system
+          toPorts:
+            - ports: [{ port: "8000", protocol: TCP }, { port: "5432", protocol: TCP }]
+        - fromEndpoints:
+            - matchLabels:
+                cnpg.io/cluster: << $db >>
+          toPorts:
+            - ports: [{ port: "5432", protocol: TCP }, { port: "8000", protocol: TCP }]
+        - fromEntities: [host]
+          toPorts:
+            - ports: [{ port: "8000", protocol: TCP }]
+      egress:
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: kube-system
+                k8s:k8s-app: kube-dns
+          toPorts:
+            - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+        - toEntities: [world]
+          toPorts:
+            - ports: [{ port: "443", protocol: TCP }]
+        - toEndpoints:
+            - matchLabels:
+                cnpg.io/cluster: << $db >>
+        - toEntities: [kube-apiserver]
+    <<- end >>
+    <<- if eq inputs.data "restore" >>
+    ---
+    apiVersion: barmancloud.cnpg.io/v1
+    kind: ObjectStore
+    metadata:
+      name: << $p >>-backup
+      namespace: preview-system
+    spec:
+      configuration:
+        destinationPath: s3://bretagne-pg-backups/<< inputs.backupPath >>
+        endpointURL: https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com
+        s3Credentials:
+          accessKeyId: { name: preview-r2-ro, key: ACCESS_KEY_ID }
+          secretAccessKey: { name: preview-r2-ro, key: SECRET_ACCESS_KEY }
+        wal:
+          compression: snappy
+      instanceSidecarConfiguration:
+        resources:
+          requests: { cpu: 10m, memory: 64Mi }
+          limits: { memory: 256Mi }
+    <<- end >>
+    ---
+    # Feedback on the PR (ADR 0017 v4 §11): one comment kept up to date, and a commit status. The
+    # token stays in flux-system; the Alerts read the preview's Kustomization across namespaces.
+    apiVersion: notification.toolkit.fluxcd.io/v1beta3
+    kind: Provider
+    metadata:
+      name: preview-<< $p >>-comment
+      namespace: flux-system
+    spec:
+      type: githubpullrequestcomment
+      address: << inputs.repo >>
+      secretRef:
+        name: preview-github
+    ---
+    apiVersion: notification.toolkit.fluxcd.io/v1beta3
+    kind: Provider
+    metadata:
+      name: preview-<< $p >>-status
+      namespace: flux-system
+    spec:
+      type: github
+      address: << inputs.repo >>
+      secretRef:
+        name: preview-github
+    ---
+    apiVersion: notification.toolkit.fluxcd.io/v1beta3
+    kind: Alert
+    metadata:
+      name: preview-<< $p >>-comment
+      namespace: flux-system
+    spec:
+      providerRef:
+        name: preview-<< $p >>-comment
+      eventSeverity: info
+      eventSources:
+        - kind: Kustomization
+          name: << $p >>
+          namespace: preview-system
+    ---
+    apiVersion: notification.toolkit.fluxcd.io/v1beta3
+    kind: Alert
+    metadata:
+      name: preview-<< $p >>-status
+      namespace: flux-system
+    spec:
+      providerRef:
+        name: preview-<< $p >>-status
+      eventSeverity: info
+      eventSources:
+        - kind: Kustomization
+          name: << $p >>
+          namespace: preview-system

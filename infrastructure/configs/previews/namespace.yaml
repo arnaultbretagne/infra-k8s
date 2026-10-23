@@ -1,0 +1,11 @@
+# The trusted half of the previews (ADR 0017 v4 §4): everything PR code must not read lives here —
+# per preview its GitRepository, Kustomization, applier ServiceAccount, gate, HTTPRoute and
+# database; once for all, the gate's OIDC secret and the read-only R2 token. No PR code runs here:
+# the PR's workload runs in its own pv-<app>-pr<n> namespace, which the ResourceSet creates.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: preview-system
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: restricted

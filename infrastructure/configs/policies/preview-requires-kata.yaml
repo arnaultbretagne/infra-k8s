@@ -1,0 +1,30 @@
+# ADR 0017 v4 §6 — a preview namespace runs the PR's code under Kata, one VM per Pod, and nothing
+# else: no gVisor, no CNPG exception (preview databases live in preview-system). Stricter than
+# untrusted-compute-requires-sandbox, which still applies to these namespaces too.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: preview-requires-kata
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  validations:
+    - expression: has(object.spec.runtimeClassName) && object.spec.runtimeClassName == 'kata'
+      message: Pods in preview namespaces must set runtimeClassName kata (ADR 0017 v4).
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: preview-requires-kata
+spec:
+  policyName: preview-requires-kata
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        preview.bretagne.dev/preview: "true"
