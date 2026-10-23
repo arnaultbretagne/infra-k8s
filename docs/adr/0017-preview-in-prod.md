@@ -447,9 +447,18 @@ Pod; g4 has KVM), the class Agora's sandboxes use.
 
 - **The cost.** `kata` declares 100m CPU and 256 Mi per Pod, which quotas count. It is enough: the
   whoami preview's whole Pod cgroup (VM, guest and app) peaked at 135 Mi.
-- **A memory floor per container.** Under Kata, a container whose memory limit is 32 Mi never
-  starts: the guest agent hangs creating it (`ttrpc err: Receive packet timeout`), with 288 Mi or
-  416 Mi around the VM alike. 64 Mi starts. Measured on 2026-10-23 with the first preview.
+- **A memory floor per container.** Kata here sizes each VM at its Pod's memory limits plus
+  32 Mi (`static_sandbox_resource_mgmt = true`; `default_memory = 1024` is not added). Read from the
+  guest kernel and Cloud Hypervisor on 2026-10-23, with debug on the unused `kata-study` handler:
+
+  | Container limit | VM RAM | Outcome |
+  |---|---|---|
+  | 32 Mi | 64 Mi (32 Mi available after the kernel) | The Ubuntu guest's systemd never reaches the Kata agent; every agent call times out (`ttrpc err: Receive packet timeout`) |
+  | 64 Mi | 96 Mi | Starts |
+  | 256 Mi | 288 Mi | Starts |
+
+  - The guest system lives inside that budget, so a small app gets less than its limit; for
+    Agora's 1 Gi sandboxes it is noise.
   - The hang reached beyond the preview: the kubelet's stats endpoint timed out on the hung VM,
     which left metrics-server with nothing to serve for the whole node.
   - The same policy therefore refuses any preview container below 64 Mi, with a clear message. A
@@ -574,6 +583,11 @@ By the operator's choice (2026-10-23), that PAT is the agents' gateway PAT. Prob
 anything: it may set commit statuses on `infra-k8s` and `agora` and comment on `infra-k8s` PRs. It
 also grants contents write on both repositories, which is why it stays in `flux-system`, never in a
 namespace with a workload (ADR 0026).
+
+**Alerts too.** A failing preview also raises the platform's usual alerts by e-mail
+(`KubePodNotReady`, `KubePodCrashLooping`, `KubeDeploymentRolloutStuck`…), like any workload.
+Operator decision, 2026-10-23: they stay, because the operator wants to know when a preview breaks.
+The PR's comment and status say which one.
 
 ### 12. Lifecycle
 

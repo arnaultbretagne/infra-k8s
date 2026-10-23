@@ -5,6 +5,11 @@
 #
 # The overhead is the one measured on this host (docs/agent-sandbox-evaluation.md): the scheduler and
 # the namespace quota count it on top of the Pod's own requests.
+#
+# The VM itself is sized from the Pod's memory limits, not from this overhead: Kata gives each VM
+# the limits + 32 MiB (static sandbox sizing; the config's default_memory is not added). The guest
+# system runs inside that, so a small limit starves the guest: 32 Mi never boots, 64 Mi does
+# (measured 2026-10-23, ADR 0017 v4 §6). Agora's 1 Gi sandboxes are far from it.
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
