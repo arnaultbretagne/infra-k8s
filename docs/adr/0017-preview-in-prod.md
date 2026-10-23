@@ -614,7 +614,7 @@ This is done once per app, as an `infra-k8s` PR, and then never again per previe
 3. **The catalogue entry.**
 4. **For `source: main`:** the app's CI pushes `<image>:<full commit SHA>` for every PR commit.
 
-### 14. Status, and what is left to prove
+### 14. Status
 
 **Built on 2026-10-23** (branch `feat/previews`):
 - `infrastructure/configs/previews/`: the namespace `preview-system` and its guardrails, the
@@ -641,12 +641,29 @@ Certificates must never write the same Secret.
 `preview-r2-ro` in `preview-system`. It was probed before sealing: it lists `miniflux/`, and a write
 under `preview-ro-probe/` is refused with `AccessDenied`.
 
-**To prove on the first runs:**
-- that `defaultValues` ride on the PR inputs;
-- that removal follows a closed PR;
-- that the recovery applies the owner's password;
-- that the commit status lands on the PR's SHA through the `commit` metadata;
-- that the Kata pods fit their quota.
+**Proven live on 2026-10-23** (test PR #286, closed unmerged; fixes #287, #288, #289):
+- `defaultValues` ride on the PR inputs.
+- Each preview gets its namespace and quota, with Kata's overhead counted. Its pods run under
+  `kata`, at `bretagne-low`, without a ServiceAccount token.
+- The gate, route and wildcard certificate serve
+  `https://pr-286-preview-demo.preview.bretagne.dev` and `https://pr-286-rss.preview.bretagne.dev`
+  behind Pocket-ID, client `preview`; the operator opened both.
+- The `rss` restore works: the read-only token restores the latest backup into the production
+  image (`postgresql:17.4`), the owner's password is applied (Miniflux connects), and the copy
+  matches production (1 user, 1 feed, 1218 entries).
+- Flux keeps one comment per preview on the PR and sets a commit status on the PR's SHA.
+- Removal follows both an unlabelled PR and a closed one: namespaces, databases with their volumes,
+  gates, Providers and Alerts all went, and the URL answered 404.
+- The memory floor refuses a 32 Mi container at admission and admits a 64 Mi one.
+
+**Found on those runs, and fixed:**
+- the VM sizing behind the memory floor (§6);
+- the production PostgreSQL image (`dbImage`, §2);
+- the per-preview quota raised to 2 Gi requests and 3 Gi limits, so a rolling update fits.
+
+A failing preview's hung Kata VM stalled the kubelet's stats endpoint, and with it metrics-server,
+for the whole node until the preview was removed. The floor guards the known trigger; another
+cause of a hung VM would have the same effect.
 
 **Still open:**
 - how test agents reach previews (§7);

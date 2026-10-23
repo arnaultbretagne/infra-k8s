@@ -509,10 +509,8 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
 
 ## 14. Previews — a live URL for a pull request (ADR 0017 v4)
 
-> **Status 2026-10-23: designed, not live.** Until the build listed in ADR 0017 v4 §14 lands, the
-> catalogue is empty and no label starts anything: do not label PRs for previews yet. The older v3
-> objects still watch `infra-k8s` PRs labelled exactly `preview` and deploy a whoami demo; do not use
-> that label either.
+> **Status: live since 2026-10-23,** proven end to end on a test PR. The catalogue holds
+> `preview-demo` and `rss`. The bare label `preview` starts nothing in `infra-k8s`.
 
 A preview is an environment for one pull request, at `https://pr-<n>-<app>.preview.bretagne.dev`,
 behind Pocket-ID (group `admin`). Flux creates it when the PR carries the app's label, re-renders it
