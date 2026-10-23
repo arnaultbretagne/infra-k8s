@@ -39,3 +39,4 @@ spec:
     dbOwner: miniflux
     backupPath: miniflux
     dbSize: 2Gi
+    dbImage: ghcr.io/cloudnative-pg/postgresql:17.4

@@ -1,0 +1,16 @@
+# Kata for previews (ADR 0017 v4 §6): the same handler and VM as `kata`, with the overhead a VM
+# really costs here. Measured on 2026-10-23: an idle Kata Pod's cgroup holds 308-312 Mi (Agora's
+# mock sandboxes) before its own workload. With `kata`'s 256 Mi, a small app (whoami, 32 Mi limit,
+# so a 288 Mi cgroup) cannot boot its guest: the agent times out (ttrpc "Receive packet timeout")
+# and the container never starts. Agora's sandboxes escape it with their 1 Gi limit; previews run
+# whatever small app a PR brings, so their class declares 384 Mi. The scheduler and the preview
+# namespace's quota count it on top of the Pod's own requests and limits.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-preview
+handler: kata
+overhead:
+  podFixed:
+    memory: 384Mi
+    cpu: 100m

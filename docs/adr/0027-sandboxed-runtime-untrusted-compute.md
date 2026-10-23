@@ -112,7 +112,9 @@ they'll feel inside an inference-dominated agent session. Re-measure with a real
 ## Amendment 2026-10-23 — previews run under Kata
 
 The decision table's row "Preview app pods (ADR 0017 v3) — mandatory `sandboxed`" is superseded:
-preview workloads run under the `kata` RuntimeClass only (one VM per Pod; the cluster now runs on g4,
-which has KVM), enforced by a policy binding on the preview namespaces (ADR 0017 v4 §6). The CNPG row
+preview workloads run under Kata only (one VM per Pod; the cluster now runs on g4, which has KVM),
+through the RuntimeClass `kata-preview` — `kata`'s handler with a 384 Mi overhead, since an idle Kata
+Pod was measured at 308–312 Mi — enforced by a policy binding on the preview namespaces (ADR 0017
+v4 §6). The CNPG row
 stands, with one change of place: preview databases run in the trusted `preview-system` namespace, not
 next to the PR code, so the preview namespaces need no CNPG exception.

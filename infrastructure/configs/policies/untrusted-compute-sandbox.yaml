@@ -22,10 +22,10 @@ spec:
   validations:
     - expression: >-
         (has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels)
-        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName in ['sandboxed', 'kata'])
+        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName in ['sandboxed', 'kata', 'kata-preview'])
       message: >-
-        Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (gVisor) or kata
-        (VM) (ADR 0027).
+        Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (gVisor), kata or
+        kata-preview (VM) (ADR 0027).
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
