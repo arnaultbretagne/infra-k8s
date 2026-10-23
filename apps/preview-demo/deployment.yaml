@@ -1,3 +1,4 @@
+# Smoke test of the preview primitive (do not merge).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
