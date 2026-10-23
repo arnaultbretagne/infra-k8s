@@ -367,6 +367,7 @@ single-app case, and nothing here is code of ours.
 | `dbName`, `dbOwner` | `miniflux`, `miniflux` | The database and its owner; the preview's `-app` Secret is generated for them |
 | `backupPath` | `miniflux` | With `restore`, the folder under `s3://bretagne-pg-backups/` |
 | `dbSize` | `2Gi` | Storage of the preview's database |
+| `dbImage` | `ghcr.io/cloudnative-pg/postgresql:17.4` | The production cluster's PostgreSQL image. A base backup only restores into the same major version: the first `restore` preview, left on the operator's default (18), failed with "control file appears to be corrupt" |
 | `_comment` | | Why the entry is acceptable; mandatory when `data: restore` and `internet: true` are combined (§9) |
 
 Every entry declares every field, empty when unused, so the template never meets a missing key.

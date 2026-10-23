@@ -408,6 +408,9 @@ spec:
       namespace: preview-system
     spec:
       instances: 1
+      # The production cluster's image: a base backup only restores into the same PostgreSQL major
+      # (a 17 backup under the operator's default 18 fails with "control file appears to be corrupt").
+      imageName: << inputs.dbImage >>
       priorityClassName: bretagne-low
       storage:
         size: << inputs.dbSize >>
