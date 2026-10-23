@@ -612,8 +612,9 @@ Certificates must never write the same Secret.
 - the rss workload simulated with the template's patches (Kata, no token, low priority, `BASE_URL`
   on Miniflux only).
 
-**Before the first `restore` preview:** the operator's R2 token, *Object Read only* on
-`bretagne-pg-backups`, sealed as `preview-r2-ro` in `preview-system`.
+**The R2 token** (the operator's, *Object Read only* on `bretagne-pg-backups`) is sealed as
+`preview-r2-ro` in `preview-system`. It was probed before sealing: it lists `miniflux/`, and a write
+under `preview-ro-probe/` is refused with `AccessDenied`.
 
 **To prove on the first runs:**
 - that `defaultValues` ride on the PR inputs;

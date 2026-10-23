@@ -9,5 +9,6 @@ resources:
   - rbac.yaml
   - gate.secrets.yaml
   - github.secrets.yaml
+  - r2-ro.secrets.yaml
   - resourceset.yaml
   - catalogue
