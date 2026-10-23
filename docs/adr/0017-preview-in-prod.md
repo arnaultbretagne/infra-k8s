@@ -4,6 +4,11 @@
 
 Accepted (April 2026). Hardened design for single-node (v2). **Amended 2026-07-04 (v3)** — pre-implementation review: applier authority, dedicated preview hosts, IdP exclusion, data mechanisms, quotas, honest tier-2 scope. Where the amendment contradicts the body, the amendment wins.
 
+**Amended 2026-10-23 (v4) — read v4 first.** The preview becomes an autonomous primitive: a catalogue of
+previewable apps on `main`, one namespace per preview, a trusted `preview-system` namespace for
+everything PR code must not read, Kata only, three data modes, and feedback on the PR. v4 is
+self-contained; where it differs from the body or from v3, v4 wins. The body and v3 stay as history.
+
 ## Context
 
 CI tests (unit, integration) validate that code compiles and passes automated checks. They do not validate that a service behaves correctly in its real production context — with real dependencies, real networking, real data. A separate staging environment does not solve this either: it is a degraded copy of production that gives a false sense of confidence.
@@ -302,3 +307,295 @@ Preview app pods now run under the `sandboxed` RuntimeClass (gVisor, ADR 0027): 
 container escape from preview code additionally has to defeat the sandbox. This upgrades the caveat,
 it does not void it — no hardware isolation on this substrate (no KVM); the microVM path and its
 triggers live in ADR 0027 §7.
+
+## Amendment 2026-10-23 — v4: the preview primitive
+
+Designed with the operator between 2026-10-12 and 2026-10-23, on g4 (6 cores, 31 GiB, KVM) rather than
+the VPS the body and v3 were written for. Nothing of v4 is built yet; §14 says what is live and what is
+left. Where v4 differs from the body or from v3, v4 wins.
+
+What stands from earlier versions: the CI tier stays the default for most PRs (body); `main`-reviewed
+templates apply with platform authority and PR content only under impersonation, with no SOPS
+decryption (v3 §1); the IdP is never previewed (v3 §4); a clone protects integrity, not
+confidentiality, and previews never receive the production R2 key (v3 §5).
+
+### 1. The primitive
+
+A preview is started by a label on a pull request, and nothing else. The Flux Operator creates it,
+re-renders it on every push, and removes it when the PR is closed, merged or unlabelled. No agent and
+no human deploys anything.
+
+**Who may set the label is deliberately open** (operator decision, 2026-10-21): an agent, for example a
+judge deciding that a change needs a live test, may set it. The control is the envelope that `main`
+puts around every preview (§4 to §10), not the identity of whoever labels. Narrowing who may label
+later is a credential change (the agents' GitHub grants), never a change to the primitive.
+
+### 2. The catalogue: what can be previewed, and how
+
+An app is previewable only if `main` holds a catalogue entry for it. No entry, no preview, whatever
+the PR or its labels say: the catalogue fails closed.
+
+An entry is one `ResourceSetInputProvider` in `flux-system`, of type `GitHubPullRequest`, carrying the
+label `preview.bretagne.dev/catalogue: "true"`, one file per app in
+`infrastructure/configs/previews/catalogue/`:
+
+- `url` is the repository whose PRs can be previewed.
+- `filter.labels` is `preview/<app>` in the `infra-k8s` monorepo, where one PR may touch several apps,
+  or `preview` in a repository that holds a single app.
+- `filter.limit` is how many previews of that app may run at once (§10).
+- `defaultValues` is the app's entry itself.
+
+The provider exports only `id`, `sha`, `branch`, `author` and `title` for each PR; `defaultValues`
+"populate the inputs when the provider response does not contain them", so every PR input of that
+provider carries its app's entry. One `ResourceSet` named `previews` selects every catalogue provider
+through `inputsFrom.selector` and holds the only template, which branches on the entry with
+`<< if >>`. These are documented Flux Operator fields, combined; the official guide shows the
+single-app case, and nothing here is code of ours.
+
+| Entry field | Example (Miniflux) | Meaning |
+|---|---|---|
+| `app` | `rss` | Short name, used in the namespace and the host name |
+| `source` | `pr` | `pr`: the workload manifests come from the PR commit (infra-k8s apps: version bumps, configuration). `main`: they come from infra-k8s `main` and only the image tag comes from the PR (app repositories) |
+| `path` | `apps/rss/workload` | The workload folder the preview applies (§13) |
+| `image` | — | With `source: main`, the image whose tag becomes the PR's full commit SHA |
+| `service`, `port` | `miniflux`, `8080` | What the preview's gate forwards to |
+| `urlContainer`, `urlEnv` | `miniflux`, `BASE_URL` | The container and variable that carry the app's public URL; the template sets it to the preview's URL |
+| `internet` | `true` | Whether the workload may reach the Internet (Miniflux fetches feeds) |
+| `data` | `restore` | `none`, `empty` or `restore` (§9) |
+| `dbCluster` | `miniflux-pg` | The production CNPG cluster: its `-app` Secret name, and its barman `serverName` |
+| `dbName`, `dbOwner` | `miniflux`, `miniflux` | The database and its owner; the preview's `-app` Secret is generated for them |
+| `backupPath` | `miniflux` | With `restore`, the folder under `s3://bretagne-pg-backups/` |
+| `dbSize` | `2Gi` | Storage of the preview's database |
+| `_comment` | | Why the entry is acceptable; mandatory when `data: restore` and `internet: true` are combined (§9) |
+
+The catalogue lives on `main` only. Adding, widening or removing an entry is an `infra-k8s` PR that the
+operator merges (ADR 0026). A PR that adds its own entry previews nothing before that merge, because
+the providers Flux runs are the ones on `main`.
+
+A PR labelled for one app applies only that app's `path`, even if it also changes other apps.
+
+### 3. Never previewed
+
+These apps never get an entry:
+
+| App | Why |
+|---|---|
+| `pocket-id` | Its database holds the OIDC signing keys and every session (v3 §4) |
+| `home-assistant` | Bound to the Zigbee stick, the LAN and the TV; its data holds tokens to real devices |
+| `terminal`, `code-server`, any `host-admin` surface | Administrative by design |
+| `agora-gateway` | Holds every upstream credential of the agents |
+| Controllers and every `infra`-profile namespace | Cluster-wide by nature (body, Open Questions §1) |
+
+Agora is not excluded but deferred: besides its gate's, its server holds four SOPS secrets (signing
+key, grants key, log, registry pull) and creates executions in `agora-sandboxes`. Its entry needs its
+own design.
+
+### 4. One namespace per preview, and `preview-system`
+
+Operator decision, 2026-10-23: one namespace per preview instead of the shared `preview` namespace.
+v4 adds a trusted namespace beside them.
+
+| Namespace | Profile | Holds |
+|---|---|---|
+| `pv-<app>-pr<n>` | `untrusted-compute`, PSS `restricted`, label `preview.bretagne.dev/preview: "true"` | The PR's workload, and from the template only: ResourceQuota, LimitRange, network policies, the applier's RoleBinding, and a copy of the preview database's credentials |
+| `preview-system` | `private-app`, PSS `restricted` | Everything PR code must not read: per preview its GitRepository, Kustomization, applier ServiceAccount, gate and HTTPRoute, database, Alert; and once for all the gate's OIDC secret, the read-only R2 token, the GitHub token for notifications |
+
+Why the split:
+
+- **The workload keeps its production names.** Services, Secrets and ConfigMaps are named as in
+  production, so the manifests apply unchanged: no name suffix, and no broken references to Secrets
+  that CNPG generates.
+- **A pod can mount any Secret of its namespace,** whatever its RBAC. Nothing that PR code must not
+  read may therefore sit in a preview namespace. That is why the gate's secret, the R2 token, the
+  GitHub token and the databases themselves live in `preview-system`.
+- **Each preview is isolated from the others,** which the shared namespace could not give.
+- **Removal is total.** The ResourceSet removes what it generated for an input that has disappeared:
+  the namespace, the database and its volume, the gate.
+
+Objects in `preview-system` are named `<app>-pr<n>-<role>` (for example `rss-pr42-pg`).
+
+### 5. Applier authority (refines v3 §1)
+
+- **Who applies.** Per preview, a ServiceAccount `<app>-pr<n>-applier` in `preview-system`, bound in
+  `pv-<app>-pr<n>` to the ClusterRole `preview-applier`. That role grants every verb on Deployments,
+  Services and ConfigMaps, and read access to ReplicaSets (Flux's health check needs it).
+- **What it cannot create.** No HTTPRoute (v3 allowed them; exposure is now template-only, §7), no
+  Secret, NetworkPolicy, PersistentVolumeClaim, ServiceAccount, Role or binding, and nothing
+  cluster-scoped. Anything else in the PR fails the apply at the API server.
+- **The Kustomization.** It lives in `preview-system`, with `targetNamespace: pv-<app>-pr<n>`,
+  `serviceAccountName` set to that applier, `prune: true`, `wait: true` and no `decryption`.
+- **What the template injects** into whatever the PR contains: `runtimeClassName: kata` (§6),
+  `automountServiceAccountToken: false`, `priorityClassName: bretagne-low`, and the entry's URL
+  variable.
+- **Where the workload comes from:**
+  - with `source: pr`, a GitRepository on the PR's repository at `<< inputs.sha >>`;
+  - with `source: main`, a GitRepository on `infra-k8s` `main`, whose Kustomization `images` sets the
+    entry's image tag to `<< inputs.sha >>`. The app's CI must push `<image>:<full commit SHA>`.
+- **Every new push re-renders the preview,** because the provider reports the new SHA: the label
+  authorizes the branch, not one commit. The v3 template's comment saying "the polled label
+  authorizes THIS commit" was wrong. This is accepted because the envelope bounds every commit alike.
+
+### 6. Kata only (supersedes v3 §1's `sandboxed` and ADR 0027's preview row)
+
+Operator decision, 2026-10-21: preview workloads run under the `kata` RuntimeClass (one VM per Pod;
+g4 has KVM).
+
+- **The cost.** `kata` declares a pod overhead of 100m CPU and 256 Mi, which quotas count.
+- **Enforcement.** A ValidatingAdmissionPolicy binding on namespaces labelled
+  `preview.bretagne.dev/preview: "true"` requires exactly `kata`, with no CNPG exception, since no
+  database runs there.
+- **Databases do not run under Kata.** Preview databases run in `preview-system` under the default
+  runtime: the installed CNPG `Cluster` CRD has no `runtimeClassName` field. ADR 0027 already draws
+  that line: sandbox the PR code, not the trusted software it uses.
+- **The shared-kernel caveat (v3 §8) is lifted for PR code,** which now has a VM boundary. It remains
+  for the databases, which run trusted software on copied data.
+
+### 7. Exposure and the SSO gate (settles v3 §3's "mechanism chosen at implementation")
+
+- **The listener.** A Gateway listener `https-preview`, hostname `*.preview.bretagne.dev`, serves the
+  certificate `bretagne-preview-wildcard-tls` (Ready). Its `allowedRoutes` admit routes from
+  `preview-system` only. No PR can create a route, and production listeners never admit one from a
+  preview.
+- **The host name.** Each preview is served at `pr-<n>-<app>.preview.bretagne.dev`: one DNS label,
+  covered by the wildcard certificate and the wildcard DNS record that already resolve.
+- **The gate.** Per preview, an oauth2-proxy in `preview-system` with the standard configuration of
+  ADR 0021 (`ALLOWED_GROUPS=admin`). Its upstream is
+  `http://<service>.pv-<app>-pr<n>.svc.cluster.local:<port>` and its cookie domain is the preview's
+  host. It costs about 20 Mi per preview.
+- **One Pocket-ID client** named `preview` in the reconciler's `spec.json`:
+  - its callback is `https://*.preview.bretagne.dev/oidc/callback`, using Pocket-ID's single-label
+    wildcard (installed v2.18.0; the userinfo bypass CVE-2026-28512 was fixed in 2.4.0);
+  - `allowedGroups` is `[admin]`;
+  - its client secret and the cookie secret sit in one SOPS Secret in `preview-system`, never in a
+    preview namespace.
+- **Test agents** cannot pass a browser gate. How they reach previews is decided together with "who
+  may use previews". The intended direction is through the agents' gateway, never with a browser
+  session.
+
+### 8. Network
+
+| From → to | Allowed |
+|---|---|
+| Traefik → a gate | The gate's port |
+| A gate → Pocket-ID | HTTPS |
+| A gate → its own workload | The entry's `port` |
+| The host (kubelet) → a workload | Its probe ports |
+| A workload → DNS | Always |
+| A workload → its own database | 5432, selected by the cluster's `cnpg.io/cluster` label |
+| A workload → the Internet | Only when the entry says `internet: true` |
+| A workload → anything else | Denied: production namespaces, `flux-system`, the API server, other previews, other preview databases |
+| A preview database → R2 | 443, for the restore |
+| Anything but its own workload → a preview database | Denied |
+
+### 9. Data modes (operator decision, 2026-10-23)
+
+| Mode | What the template creates in `preview-system` |
+|---|---|
+| `none` | Nothing |
+| `empty` | A CNPG cluster `<app>-pr<n>-pg` with `initdb` for `dbName` and `dbOwner`; the app migrates itself |
+| `restore` | A CNPG cluster `<app>-pr<n>-pg` bootstrapped with `bootstrap.recovery` from the app's latest backup, through the Barman Cloud plugin: an ObjectStore on `s3://bretagne-pg-backups/<backupPath>` with the read-only token, `serverName` set to the production cluster's |
+
+`restore` is the nightly restore drill, kept alive for the life of the PR. What the preview writes into
+its copy never reaches production.
+
+- **Wiring.** The template copies the preview cluster's generated `-app` Secret into the preview
+  namespace under the production name (`<dbCluster>-app`), through `copyFrom`. Its `uri` key carries
+  the full address including the namespace (`<app>-pr<n>-pg-rw.preview-system:5432`; checked on
+  `miniflux-pg-app`), whereas its `host` key is the short name. Apps must therefore read `uri` (§13).
+- **A preview database never archives.** The template sets no WAL archiver on it. The read-only token
+  is the second lock: a template mistake fails closed instead of writing into a production backup
+  chain.
+- **The token can read the whole bucket.** R2 scopes tokens per bucket, not per prefix, and
+  `pocket-id`'s backups sit in the same bucket as every other app's. That is why the token exists only
+  in `preview-system` and never in a namespace that runs PR code. v3 §5 called its exposure "equivalent
+  to the clone's own content"; that was wrong.
+- **What `restore` exposes.** PR code reads all of that app's production data, and an agent may set
+  the label (§1). Combined with `internet: true`, it can also send that data anywhere. An entry that
+  combines both therefore carries a written justification in `_comment`. Miniflux's data is feed
+  subscriptions and reading history, which is accepted.
+- **Disk.** The preview database's PVC is sized from the entry's `dbSize`, and local-path does not
+  enforce PVC sizes (playbook gotcha). Disk is watched node-wide; 312 GB were free at the time of
+  writing.
+
+### 10. Quotas and caps (supersedes v3 §7's numbers)
+
+| Guardrail | Value |
+|---|---|
+| ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu: 500m`, `requests.memory: 1Gi`, `limits.memory: 2Gi`, `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
+| LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi`, max limit `1Gi` |
+| ResourceQuota, `preview-system` | `requests.memory: 2Gi`, `limits.memory: 4Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "4"` |
+| Per entry | `filter.limit: 2` |
+| Whole catalogue | The sum of all entries' `filter.limit` stays at 4 or below |
+| Priority | `bretagne-low` for workloads, gates and preview databases: they are evicted first |
+
+With Kata's overhead counted, a preview realistically runs two or three pods. The node was at 51 %
+memory when this was written.
+
+### 11. Feedback on the PR
+
+Per preview, an Alert in `preview-system` on its Kustomization feeds two notification Providers,
+both present in the installed notification controller:
+
+- `githubpullrequestcomment` keeps one comment on the PR up to date, with the preview's URL and state;
+- `github` sets a commit status on the PR's SHA.
+
+The template sets the event metadata `event.toolkit.fluxcd.io/change_request`,
+`event.toolkit.fluxcd.io/commit` and `event.toolkit.fluxcd.io/preview-url`.
+
+Both providers use one fine-grained PAT with *Pull requests* and *Commit statuses* read and write on
+the catalogued repositories. It is kept once in `flux-system` and copied into `preview-system`. The
+catalogue providers use it too: authenticated, the poll interval drops from 10 to 2 minutes.
+
+### 12. Lifecycle
+
+| Event | What happens |
+|---|---|
+| The label is set | Within two minutes, the ResourceSet renders the namespace, the gate, the database, then the workload; the PR gets its comment with the URL |
+| A push | The new SHA re-renders the workload; the database is kept, since nothing in it depends on the SHA |
+| The label is removed, or the PR is closed or merged | The input disappears and the ResourceSet removes everything it generated for it |
+
+The removal path is documented as the ResourceSet's garbage collection of "resources … no longer
+present in the current revision". It is to be proven on the first real run.
+
+### 13. Making an app previewable
+
+This is done once per app, as an `infra-k8s` PR, and then never again per preview:
+
+1. **The workload folder.** `apps/<app>/workload/` holds only Deployments, Services and ConfigMaps.
+   `apps/<app>/kustomization.yaml` lists `workload` beside the production-only objects (namespace,
+   SOPS secrets, CNPG cluster, backups, drill, gate, route, network policies), so production renders
+   exactly as before. An empty diff of `kustomize build apps/<app>` is the proof.
+2. **Configuration from the environment.** The public URL comes from one environment variable. The
+   database comes from the CNPG Secret's `uri` key, never from `host`. No other production host name
+   is written into the workload.
+3. **The catalogue entry.**
+4. **For `source: main`:** the app's CI pushes `<image>:<full commit SHA>` for every PR commit.
+
+### 14. Status on 2026-10-23, and build order
+
+**Live:**
+- Flux Operator v0.61.0;
+- the wildcard certificate and DNS;
+- the ValidatingAdmissionPolicy accepting `kata`;
+- the v3 objects: namespace `preview`, provider `preview-infra-prs` and ResourceSet `preview`, wired to
+  the `apps/preview-demo` whoami. No listener exposes them.
+
+**To build, in one `infra-k8s` PR:**
+- namespace `preview-system` with its quota and policies;
+- ClusterRole `preview-applier`;
+- ResourceSet `previews` with its first entries, `preview-demo` (`none`) and `rss` (`restore`);
+- the split of `apps/rss/workload`;
+- listener `https-preview`, client `preview` and the gate's Secret;
+- the Kata-only policy binding;
+- the notification providers;
+- retiring the v3 objects.
+
+**What the operator provides:**
+- an R2 API token, *Object Read only*, on `bretagne-pg-backups`;
+- the fine-grained GitHub PAT of §11;
+- the `preview` client's secret once the reconciler has minted it.
+
+**Still open:**
+- how test agents reach previews (§7);
+- whether to narrow who may set the label (§1);
+- Agora's entry (§3).

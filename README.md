@@ -24,7 +24,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Observability | Prometheus + Loki + Grafana + Alloy | [0014](docs/adr/0014-observability-stack.md) |
 | CI/CD | Flux Image Automation + Renovate | [0015](docs/adr/0015-ci-cd-image-updates.md) |
 | Access boundaries | Deploy key; AI agent excluded from infra-k8s | [0016](docs/adr/0016-access-boundaries.md) |
-| Preview / QA | Preview-in-prod (ephemeral, in-cluster) | [0017](docs/adr/0017-preview-in-prod.md) |
+| Preview / QA | Preview-in-prod: a PR label starts a Flux Operator preview of a catalogued app, one namespace per preview, Kata only | [0017](docs/adr/0017-preview-in-prod.md) |
 | Storage class | local-path-provisioner | [0018](docs/adr/0018-local-path-provisioner.md) |
 | Repo strategy | Monorepo | [0019](docs/adr/0019-monorepo-gitops.md) |
 | Network guardrails | Default-deny + per-namespace allow-lists (Cilium) | [0020](docs/adr/0020-network-policy-guardrails.md) |
