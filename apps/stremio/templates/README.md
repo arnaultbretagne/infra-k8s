@@ -92,5 +92,14 @@ player draws embedded subtitles itself:
 - Stremio hides PGS and VobSub tracks. A video without French audio counts as VO-STFR
   unless its probed French subtitles are only PGS or VobSub, with no full SRT/ASS track.
   Videos StremThru has not probed have no track detail and stay in.
+- Average bitrate capped at 75 Mb/s instead of 60. Internet now reaches the TV over Wi-Fi
+  (about 240 Mb/s), but Stremio plays HTTPS directly and the webOS 5 pipeline decrypts it in
+  software: on the same 92 Mb/s remux, 98–102 Mb/s stretches stalled 17–19 times in 120 s,
+  through Stremio's local relay none did. Remuxes peak about 13 % above their average, so
+  75 keeps them near 85 Mb/s. Without Dolby Vision, few candidates exceed 60 anyway: on six
+  titles checked on 2026-10-23 only HDR10 remuxes of Interstellar (65–66) and Oppenheimer
+  (66–71) did.
 
-Not checked against a live instance: `check-live.mjs` only replays `overlay.json`.
+`check-live.mjs` only replays `overlay.json`. The variant was checked on 2026-10-23 against
+a disposable instance (no Dolby Vision kept, 3 VF + 2 VO-STFR on six titles); most Torz
+streams carried no per-track subtitle detail, so the PGS rule rarely applies.
