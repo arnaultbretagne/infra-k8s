@@ -428,7 +428,7 @@ Objects in `preview-system` are named `<app>-pr<n>-<role>` (for example `rss-pr4
   cluster-scoped. Anything else in the PR fails the apply at the API server.
 - **The Kustomization.** It lives in `preview-system`, with `targetNamespace: pv-<app>-pr<n>`,
   `serviceAccountName` set to that applier, `prune: true`, `wait: true` and no `decryption`.
-- **What the template injects** into whatever the PR contains: `runtimeClassName: kata` (§6),
+- **What the template injects** into whatever the PR contains: `runtimeClassName: kata-preview` (§6),
   `automountServiceAccountToken: false`, `priorityClassName: bretagne-low`, and the entry's URL
   variable.
 - **Where the workload comes from:**
@@ -441,13 +441,17 @@ Objects in `preview-system` are named `<app>-pr<n>-<role>` (for example `rss-pr4
 
 ### 6. Kata only (supersedes v3 §1's `sandboxed` and ADR 0027's preview row)
 
-Operator decision, 2026-10-21: preview workloads run under the `kata` RuntimeClass (one VM per Pod;
-g4 has KVM).
+Operator decision, 2026-10-21: preview workloads run under Kata (one VM per Pod; g4 has KVM),
+through the RuntimeClass `kata-preview`: the same handler as `kata`, with an honest overhead.
 
-- **The cost.** `kata` declares a pod overhead of 100m CPU and 256 Mi, which quotas count.
+- **The cost.** `kata-preview` declares 100m CPU and 384 Mi per Pod, which quotas count. Measured
+  on 2026-10-23: an idle Kata Pod's cgroup holds 308–312 Mi before its workload. With `kata`'s
+  256 Mi, the first preview (whoami, 32 Mi limit, so a 288 Mi cgroup) never started: the guest
+  starved, and the Kata agent timed out on every call. Agora's sandboxes escape it with their 1 Gi
+  limit; `kata` keeps its 256 Mi for them.
 - **Enforcement.** A ValidatingAdmissionPolicy binding on namespaces labelled
-  `preview.bretagne.dev/preview: "true"` requires exactly `kata`, with no CNPG exception, since no
-  database runs there.
+  `preview.bretagne.dev/preview: "true"` requires exactly `kata-preview`, with no CNPG exception,
+  since no database runs there.
 - **Databases do not run under Kata.** Preview databases run in `preview-system` under the default
   runtime: the installed CNPG `Cluster` CRD has no `runtimeClassName` field. ADR 0027 already draws
   that line: sandbox the PR code, not the trusted software it uses.
@@ -531,7 +535,7 @@ its copy never reaches production.
 
 | Guardrail | Value |
 |---|---|
-| ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu: 500m`, `requests.memory: 1Gi`, `limits.memory: 2Gi`, `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
+| ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu: 500m`, `requests.memory: 2Gi`, `limits.memory: 3Gi`, `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
 | LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi`, max limit `1Gi` |
 | ResourceQuota, `preview-system` | `requests.memory: 2Gi`, `limits.memory: 4Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "4"` |
 | Per entry | `filter.limit: 2` |

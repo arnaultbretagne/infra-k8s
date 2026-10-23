@@ -53,8 +53,8 @@ spec:
     spec:
       hard:
         requests.cpu: 500m
-        requests.memory: 1Gi
-        limits.memory: 2Gi
+        requests.memory: 2Gi
+        limits.memory: 3Gi
         pods: "6"
         persistentvolumeclaims: "0"
         services.loadbalancers: "0"
@@ -204,7 +204,7 @@ spec:
           patch: |
             - op: add
               path: /spec/template/spec/runtimeClassName
-              value: kata
+              value: kata-preview
             - op: add
               path: /spec/template/spec/automountServiceAccountToken
               value: false

@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - runtimeclass.yaml
   - runtimeclass-kata.yaml
+  - runtimeclass-kata-preview.yaml
