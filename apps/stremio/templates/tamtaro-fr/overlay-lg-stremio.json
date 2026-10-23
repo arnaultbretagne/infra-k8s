@@ -1,0 +1,35 @@
+{
+  "upstream": "https://raw.githubusercontent.com/Tam-Taro/SEL-Filtering-and-Sorting/main/AIOStreams%20Templates/Tamtaro-complete-setup-template.json",
+  "output": "tamtaro-fr-lg-stremio.json",
+  "revision": 1,
+  "services": ["torbox"],
+  "tmdb": "none",
+  "presets": ["stremthruTorz"],
+  "answers": {
+    "languages": ["French", "English"],
+    "subtitles": ["French"],
+    "variants": "retain",
+    "sorting": { "selScore": "high" },
+    "LanguagePassthrough": { "language": "none", "subLanguage": "none" },
+    "filterLimit": { "topResOnly": false, "global": 0 },
+    "bitrate": { "bitrateCap": "60" },
+    "misc": { "addonName": "Tam-Taro FR LG" }
+  },
+  "selection": {
+    "french": "merge(language(streams, 'French'), regexMatched(streams, 'VFF', 'VFQ', 'VFI', 'VF2', 'VOF', 'VOQ', 'VQ', 'VFB'))",
+    "frenchSubtitles": "negate(negate(subtitleTrack(streams, 'lang=French', 'codec=subrip|ass|ssa|webvtt|mov_text', '!forced'), subtitleTrack(streams, 'lang=French', 'codec~pgs|dvd')), subtitles(streams, 'French'))",
+    "frenchCount": 3,
+    "originalCount": 2
+  },
+  "exclude": {
+    "visualTags": ["DV", "HDR+DV", "DV Only"]
+  },
+  "metadata": {
+    "id": "arnault.tamtaro-fr-lg-stremio",
+    "name": "Tam-Taro FR · LG Stremio (sans DV ni PGS)",
+    "author": "Arnault · Tam-Taro",
+    "category": "Debrid",
+    "description": "Variante du classement Tam-Taro FR (Complete SEL Setup {upstreamVersion}) pour Stremio sur TV LG, dont le lecteur n'affiche ni les sous-titres intégrés d'une vidéo Dolby Vision, ni le PGS. Dolby Vision exclu. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français avec des sous-titres français signalés, en écartant celles dont les sous-titres français sondés ne sont qu'en PGS ou VobSub. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 60 Mb/s.",
+    "notice": "Remplace les addons et les filtres du profil. Seule votre clé TorBox est demandée ; tous les réglages de Tam-Taro sont déjà posés."
+  }
+}

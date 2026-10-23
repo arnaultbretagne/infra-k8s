@@ -1,22 +1,25 @@
 #!/usr/bin/env node
-// Builds the instance template described in overlay.json from Tam-Taro's latest
-// "Complete SEL Setup". His template is resolved with our answers by AIOStreams' own
-// template resolver (the module its web UI runs at import time, fetched at the tag of
-// the image in ../../deployment.yaml), then our overlay is applied: sources, the strict
-// French / original-with-French-subtitles selection, and metadata.
+// Builds one instance template per overlay file (overlay.json, overlay-*.json) from
+// Tam-Taro's latest "Complete SEL Setup". His template is resolved with the overlay's
+// answers by AIOStreams' own template resolver (the module its web UI runs at import
+// time, fetched at the tag of the image in ../../deployment.yaml), then the overlay is
+// applied: sources, the strict French / original-with-French-subtitles selection,
+// excluded visual tags, and metadata.
 //
-//   node apps/stremio/templates/tamtaro-fr/generate.mjs           write the template
-//   node apps/stremio/templates/tamtaro-fr/generate.mjs --check   exit 1 if it is stale
+//   node apps/stremio/templates/tamtaro-fr/generate.mjs           write the templates
+//   node apps/stremio/templates/tamtaro-fr/generate.mjs --check   exit 1 if one is stale
 //
 // Needs Node 22.18+ (TypeScript type stripping) and network access to raw.githubusercontent.com.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const overlay = JSON.parse(readFileSync(join(here, 'overlay.json'), 'utf8'));
-const outFile = join(here, '..', overlay.output);
+const overlays = readdirSync(here)
+  .filter((name) => /^overlay(-[a-z0-9-]+)?\.json$/.test(name))
+  .sort()
+  .map((name) => JSON.parse(readFileSync(join(here, name), 'utf8')));
 
 async function get(url) {
   const res = await fetch(url);
@@ -66,7 +69,7 @@ function selectionExpressions({ french, frenchSubtitles, frenchCount, originalCo
   ];
 }
 
-async function build() {
+async function build(overlay) {
   const deployment = readFileSync(join(here, '..', '..', 'deployment.yaml'), 'utf8');
   const aioTag = deployment.match(/viren070\/aiostreams:(v\d+\.\d+\.\d+)/)?.[1];
   if (!aioTag) throw new Error('AIOStreams image tag not found in deployment.yaml');
@@ -106,6 +109,13 @@ async function build() {
       ...selectionExpressions(overlay.selection),
     ];
 
+    // Visual tags the overlay rules out: excluded, and no longer preferred.
+    const excludedTags = overlay.exclude?.visualTags ?? [];
+    if (excludedTags.length) {
+      config.excludedVisualTags = [...new Set([...(config.excludedVisualTags ?? []), ...excludedTags])];
+      config.preferredVisualTags = (config.preferredVisualTags ?? []).filter((tag) => !excludedTags.includes(tag));
+    }
+
     const leftover = JSON.stringify(config).match(/\{\{inputs\.[^}]*\}\}|"__(if|switch|value|remove)"|template_placeholder/);
     if (leftover) throw new Error(`unresolved template directive: ${leftover[0]}`);
 
@@ -133,16 +143,22 @@ async function build() {
   }
 }
 
-const text = `${JSON.stringify(await build(), null, 2)}\n`;
-if (process.argv.includes('--check')) {
-  let current = '';
-  try { current = readFileSync(outFile, 'utf8'); } catch {}
-  if (current !== text) {
-    console.error(`${overlay.output} is stale: run generate.mjs`);
-    process.exit(1);
+let stale = false;
+for (const overlay of overlays) {
+  const outFile = join(here, '..', overlay.output);
+  const text = `${JSON.stringify(await build(overlay), null, 2)}\n`;
+  if (process.argv.includes('--check')) {
+    let current = '';
+    try { current = readFileSync(outFile, 'utf8'); } catch {}
+    if (current !== text) {
+      console.error(`${overlay.output} is stale: run generate.mjs`);
+      stale = true;
+    } else {
+      console.log(`${overlay.output} is up to date`);
+    }
+  } else {
+    writeFileSync(outFile, text);
+    console.log(`wrote ${overlay.output}`);
   }
-  console.log(`${overlay.output} is up to date`);
-} else {
-  writeFileSync(outFile, text);
-  console.log(`wrote ${overlay.output}`);
 }
+if (stale) process.exit(1);

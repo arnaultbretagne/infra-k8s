@@ -19,3 +19,4 @@ configMapGenerator:
     files:
       - templates/knaben-stfr-top5-torbox-v2.26.json
       - templates/tamtaro-fr-3vf-2vostfr.json
+      - templates/tamtaro-fr-lg-stremio.json
