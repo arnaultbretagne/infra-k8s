@@ -9,8 +9,7 @@ resources:
   - postgres.yaml
   - restore-test.yaml
   - oauth2-proxy.secrets.yaml
-  - miniflux.yaml
-  - rsshub.yaml
+  - workload
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml

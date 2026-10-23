@@ -1,0 +1,19 @@
+# What a PR's content may create in its preview namespace (ADR 0017 v4 §5). Each preview's
+# Kustomization impersonates its own ServiceAccount in preview-system, bound to this role in that
+# preview's namespace only. No Secrets, NetworkPolicies, PVCs, routes, ServiceAccounts or RBAC:
+# anything else in the PR fails the apply at the API server.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: preview-applier
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["*"]
+  # Read-only: Flux's health check (kstatus) reads a Deployment's ReplicaSets to compute its rollout.
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]

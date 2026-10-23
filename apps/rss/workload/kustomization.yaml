@@ -1,0 +1,9 @@
+# The workload alone — Deployments and Services, nothing else (ADR 0017 v4 §13). Production lists it
+# beside its own objects (../kustomization.yaml, which sets the namespace); a preview applies this
+# folder as-is, from the PR's commit, into pv-rss-pr<n>. Miniflux reads its database from the
+# miniflux-pg-app Secret's uri and its address from BASE_URL, both of which a preview provides.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - miniflux.yaml
+  - rsshub.yaml

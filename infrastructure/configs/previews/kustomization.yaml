@@ -1,0 +1,14 @@
+# Previews (ADR 0017 v4): a label on a PR of a catalogued app starts a preview at
+# https://pr-<n>-<app>.preview.bretagne.dev. The listener https-preview lives in infrastructure/gateway;
+# the Kata-only policy in ../policies.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - guardrails.yaml
+  - rbac.yaml
+  - gate.secrets.yaml
+  - github.secrets.yaml
+  - r2-ro.secrets.yaml
+  - resourceset.yaml
+  - catalogue
