@@ -222,7 +222,8 @@ Traefik CRDs). To serve `myapp.bretagne.dev`:
 3. **DNS**: point `myapp.bretagne.dev` at the public IP forwarded to the cluster.
 4. **TLS is automatic**: cert-manager issues and renews the multi-SAN certificate through Cloudflare
    DNS-01 and `letsencrypt-prod`. Dynamic previews use the separate
-   `*.preview.bretagne.dev` wildcard certificate.
+   `*.preview.bretagne.dev` wildcard certificate and their own listener; you never add a listener or
+   a route for a preview (§14).
 
 **HTTP→HTTPS is redirected globally** (S8): a catch-all `RequestRedirect` HTTPRoute on the `http`
 listener 301s every plaintext request to HTTPS. You don't add anything — it just works. ACME
@@ -289,9 +290,10 @@ path we deliberately block.
         defaultRequest: { cpu: 25m, memory: 64Mi }
         default:        { memory: 256Mi }
   ```
-- **`ResourceQuota`**: required for the `preview` namespace (bounds untrusted PR code); optional but
-  encouraged for apps. Size **above current usage + headroom**, pair with the LimitRange so every pod
-  satisfies it, and verify a rollout still schedules before committing.
+- **`ResourceQuota`**: every preview namespace gets one from the preview template (ADR 0017 v4 §10),
+  so you never write it; optional but encouraged for apps. Size **above current usage + headroom**,
+  pair with the LimitRange so every pod satisfies it, and verify a rollout still schedules before
+  committing.
 - Assign a **PriorityClass** (§4.4).
 
 ---
@@ -491,7 +493,7 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
 - [ ] `startupProbe` + `readinessProbe` + `livenessProbe`
 - [ ] `resources` (requests + memory limit; **no** cpu limit)
 - [ ] `priorityClassName` decided; `strategy: Recreate` if single-instance
-- [ ] `LimitRange` present; `ResourceQuota` if warranted / for preview
+- [ ] `LimitRange` present; `ResourceQuota` if warranted
 - [ ] Secrets **SOPS-encrypted**; shared secrets via ResourceSet `copyFrom`
 - [ ] `HTTPRoute` + Gateway listener; DNS record; TLS via cert-manager (automatic); **HSTS filter**
 - [ ] `CiliumNetworkPolicy` default-deny + allow-list (DNS always; no flux-system/apiserver egress)
@@ -500,3 +502,84 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
       enforcement point chosen per §10.3; a **non-member is actually denied** (not just you let in)
 - [ ] Verified out-of-band, then `200` on its hostname; kustomizations green
 - [ ] Image pinned (no `:latest`); Renovate / Image-Automation wired for updates
+- [ ] Previewable, unless excluded (§14.3): `workload/` split with an unchanged `kustomize build`,
+      URL from one variable, database from `uri`, catalogue entry — §14.2
+
+---
+
+## 14. Previews — a live URL for a pull request (ADR 0017 v4)
+
+> **Status 2026-10-23: designed, not live.** Until the build listed in ADR 0017 v4 §14 lands, the
+> catalogue is empty and no label starts anything: do not label PRs for previews yet. The older v3
+> objects still watch `infra-k8s` PRs labelled exactly `preview` and deploy a whoami demo; do not use
+> that label either.
+
+A preview is an environment for one pull request, at `https://pr-<n>-<app>.preview.bretagne.dev`,
+behind Pocket-ID (group `admin`). Flux creates it when the PR carries the app's label, re-renders it
+on every push, and removes it when the PR is closed or merged, or the label is removed. **Nobody
+deploys a preview**: you never `kubectl apply` into `pv-*` or `preview-system`, and you never write a
+manifest for one preview.
+
+### 14.1 Asking for a preview
+
+- **Label the PR** `preview/<app>` in `infra-k8s`, or `preview` in a repository that holds a single
+  app. Only apps in the catalogue (`infrastructure/configs/previews/catalogue/`, one file per app) can
+  be previewed. Any agent may set the label, for example a judge that decides a change needs a live
+  test.
+- **Within about two minutes**, Flux comments on the PR with the URL and sets a commit status. Every
+  push updates the preview. Remove the label once the test is done, rather than leaving the preview
+  running until the merge.
+- **What you get:**
+  - the PR's workload, under Kata;
+  - its own database: none, empty, or a restored copy of the app's latest production backup,
+    depending on the entry;
+  - no production secret and no route to production services.
+  
+  What the preview writes never reaches production.
+- **What you do not get:**
+  - a preview of a cluster-wide change (controllers, Traefik, Cilium, CRDs);
+  - a preview of an excluded app (§14.3);
+  - more previews of one app at once than its entry allows.
+- **If it fails**, the commit status says so. The Kustomization `<app>-pr<n>` in `preview-system`
+  holds the error.
+
+### 14.2 Making an app previewable — once per app, as an `infra-k8s` PR
+
+1. **Split the workload.** `apps/<app>/workload/` holds only Deployments, Services and ConfigMaps.
+   - Everything else stays outside it: namespace, SOPS secrets, CNPG cluster, backups and drill,
+     oauth2-proxy, HTTPRoute, network policies.
+   - The app's `kustomization.yaml` lists `workload` beside them.
+   - Prove that production does not change: `kustomize build apps/<app>` before and after must be
+     identical.
+   - A Secret, NetworkPolicy, PVC, HTTPRoute, ServiceAccount or RBAC object inside `workload/` makes
+     every preview fail, because the preview's applier cannot create them.
+2. **Read configuration from the environment.**
+   - The public URL comes from one environment variable.
+   - The database comes from the CNPG Secret's `uri` key (mounted or as a variable), never from
+     `host`: `host` is the short Service name, which does not resolve from a preview namespace.
+   - No other production host name is written into the workload.
+3. **Add the catalogue entry** (fields: ADR 0017 v4 §2). Choose `data`:
+
+   | Mode | When |
+   |---|---|
+   | `none` | Stateless app |
+   | `empty` | The app creates its schema at start |
+   | `restore` | The test needs real data, e.g. a version bump that migrates the schema |
+
+   `restore` copies the app's latest production backup and exposes all of that data to the PR's
+   code. Set `internet: true` only if the app needs it. An entry that combines `restore` and
+   `internet: true` explains in `_comment` why its data may be exposed.
+4. **App repositories** (`source: main`): the app's CI pushes `<image>:<full commit SHA>` for every
+   PR commit.
+5. **Keep the cap.** The `filter.limit` values of all entries add up to 4 at most.
+
+### 14.3 Never in the catalogue
+
+Do not propose an entry for:
+- `pocket-id`;
+- `home-assistant`;
+- `terminal`, `code-server`, or any `host-admin` surface;
+- `agora-gateway`;
+- controllers, or any `infra`-profile namespace.
+
+Agora is deferred until it has its own design (ADR 0017 v4 §3).
