@@ -4,9 +4,9 @@
     "name": "Tam-Taro FR · LG Stremio (sans DV ni PGS)",
     "author": "Arnault · Tam-Taro",
     "source": "external",
-    "version": "3.2.1301",
+    "version": "3.2.1302",
     "category": "Debrid",
-    "description": "Variante du classement Tam-Taro FR (Complete SEL Setup 3.2.13) pour Stremio sur TV LG, dont le lecteur n'affiche ni les sous-titres intégrés d'une vidéo Dolby Vision, ni le PGS. Dolby Vision exclu. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français avec des sous-titres français signalés, en écartant celles dont les sous-titres français sondés ne sont qu'en PGS ou VobSub. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 60 Mb/s.",
+    "description": "Variante du classement Tam-Taro FR (Complete SEL Setup 3.2.13) pour Stremio sur TV LG, dont le lecteur n'affiche ni les sous-titres intégrés d'une vidéo Dolby Vision, ni le PGS. Dolby Vision exclu. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français avec des sous-titres français signalés, en écartant celles dont les sous-titres français sondés ne sont qu'en PGS ou VobSub. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 75 Mb/s : la TV déchiffre le HTTPS en logiciel et sature vers 85 Mb/s, et les pointes d'un remux dépassent sa moyenne d'environ 13 %.",
     "services": [
       "torbox"
     ],
@@ -265,7 +265,7 @@
         "enabled": true
       },
       {
-        "expression": "/*60 Mbps Bitrate Cap (Static)*/ bitrate(streams, 60*1000000)",
+        "expression": "/*75 Mbps Bitrate Cap (Static)*/ bitrate(streams, 75*1000000)",
         "enabled": true
       },
       {
