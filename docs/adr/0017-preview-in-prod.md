@@ -429,7 +429,7 @@ Objects in `preview-system` are named `<app>-pr<n>-<role>` (for example `rss-pr4
   cluster-scoped. Anything else in the PR fails the apply at the API server.
 - **The Kustomization.** It lives in `preview-system`, with `targetNamespace: pv-<app>-pr<n>`,
   `serviceAccountName` set to that applier, `prune: true`, `wait: true` and no `decryption`.
-- **What the template injects** into whatever the PR contains: `runtimeClassName: kata-preview` (§6),
+- **What the template injects** into whatever the PR contains: `runtimeClassName: kata` (§6),
   `automountServiceAccountToken: false`, `priorityClassName: bretagne-low`, and the entry's URL
   variable.
 - **Where the workload comes from:**
@@ -442,17 +442,23 @@ Objects in `preview-system` are named `<app>-pr<n>-<role>` (for example `rss-pr4
 
 ### 6. Kata only (supersedes v3 §1's `sandboxed` and ADR 0027's preview row)
 
-Operator decision, 2026-10-21: preview workloads run under Kata (one VM per Pod; g4 has KVM),
-through the RuntimeClass `kata-preview`: the same handler as `kata`, with an honest overhead.
+Operator decision, 2026-10-21: preview workloads run under the `kata` RuntimeClass (one VM per
+Pod; g4 has KVM), the class Agora's sandboxes use.
 
-- **The cost.** `kata-preview` declares 100m CPU and 384 Mi per Pod, which quotas count. Measured
-  on 2026-10-23: an idle Kata Pod's cgroup holds 308–312 Mi before its workload. With `kata`'s
-  256 Mi, the first preview (whoami, 32 Mi limit, so a 288 Mi cgroup) never started: the guest
-  starved, and the Kata agent timed out on every call. Agora's sandboxes escape it with their 1 Gi
-  limit; `kata` keeps its 256 Mi for them.
+- **The cost.** `kata` declares 100m CPU and 256 Mi per Pod, which quotas count. It is enough: the
+  whoami preview's whole Pod cgroup (VM, guest and app) peaked at 135 Mi.
+- **A memory floor per container.** Under Kata, a container whose memory limit is 32 Mi never
+  starts: the guest agent hangs creating it (`ttrpc err: Receive packet timeout`), with 288 Mi or
+  416 Mi around the VM alike. 64 Mi starts. Measured on 2026-10-23 with the first preview.
+  - The hang reached beyond the preview: the kubelet's stats endpoint timed out on the hung VM,
+    which left metrics-server with nothing to serve for the whole node.
+  - The same policy therefore refuses any preview container below 64 Mi, with a clear message. A
+    container without a limit gets the LimitRange's 256 Mi first.
+  - A `kata-preview` class with a larger overhead was tried first, on a wrong diagnosis, and
+    removed.
 - **Enforcement.** A ValidatingAdmissionPolicy binding on namespaces labelled
-  `preview.bretagne.dev/preview: "true"` requires exactly `kata-preview`, with no CNPG exception,
-  since no database runs there.
+  `preview.bretagne.dev/preview: "true"` requires exactly `kata`, with no CNPG exception since no
+  database runs there, and the memory floor.
 - **Databases do not run under Kata.** Preview databases run in `preview-system` under the default
   runtime: the installed CNPG `Cluster` CRD has no `runtimeClassName` field. ADR 0027 already draws
   that line: sandbox the PR code, not the trusted software it uses.
