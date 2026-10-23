@@ -473,6 +473,11 @@ else
   # The guest image runs chrony with Ubuntu's NTS pools: every VM would keep opening TCP 4460 to
   # ntp.ubuntu.com and flood the sandboxes' default-deny policies with drops. Masked; the guest
   # clock comes from kvm-clock, which follows the host.
+  # VM size: with static_sandbox_resource_mgmt = true (the template's default), runtime-rs sizes
+  # each VM at the Pod's memory limits + 32 MiB, and default_memory below is NOT added (measured
+  # 2026-10-23 from the guest kernel and Cloud Hypervisor). The guest system therefore lives inside
+  # the Pod's own limit: a 32 Mi container gets a 64 MiB VM that never boots, 64 Mi gets 96 MiB and
+  # boots (ADR 0017 v4 §6).
   sed -e 's/^default_memory = 2048$/default_memory = 1024/' \
       -e 's/^disable_guest_seccomp = true$/disable_guest_seccomp = false/' \
       -e 's/^kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1"$/kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1 systemd.mask=chrony.service"/' \

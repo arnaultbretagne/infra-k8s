@@ -584,6 +584,11 @@ anything: it may set commit statuses on `infra-k8s` and `agora` and comment on `
 also grants contents write on both repositories, which is why it stays in `flux-system`, never in a
 namespace with a workload (ADR 0026).
 
+**Alerts too.** A failing preview also raises the platform's usual alerts by e-mail
+(`KubePodNotReady`, `KubePodCrashLooping`, `KubeDeploymentRolloutStuck`…), like any workload.
+Operator decision, 2026-10-23: they stay, because the operator wants to know when a preview breaks.
+The PR's comment and status say which one.
+
 ### 12. Lifecycle
 
 | Event | What happens |
