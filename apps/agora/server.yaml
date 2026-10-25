@@ -101,12 +101,10 @@ spec:
             - { name: GATEWAY_CA_FILE, value: /etc/agora/gateway-ca/ca.pem }
             # Agora's docs/specs/flows.md, "Launching from Agora": a team picked in the client starts the
             # flow `lead` on Prefect (apps/prefect), in-cluster; the members' Workstreams go to the
-            # agents' account, which the person may switch the list to (docs/specs/log.md, "HTTP").
+            # person's own agents folder (docs/specs/log.md, "HTTP").
             - { name: TEAM_PREFECT_API, value: "http://prefect-server.prefect.svc.cluster.local:4200/api" }
             - { name: TEAM_DEPLOYMENT, value: lead/design-agora-foundations }
-            - { name: TEAM_AGENTS, value: agents@agora.bretagne.dev }
             - { name: TEAM_PREFECT_UI, value: "https://prefect.bretagne.dev" }
-            - { name: ACCOUNTS, value: "arnault.bretagne@gmail.com=agents@agora.bretagne.dev" }
           # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL.
           envFrom:
             - secretRef:
