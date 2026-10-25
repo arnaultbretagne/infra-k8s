@@ -32,6 +32,14 @@ spec:
     - fromEntities: [host] # kubelet probes
       toPorts:
         - ports: [{ port: "4200", protocol: TCP }]
+    # Agora's server starts a team's run (Agora's flows.md, "Launching from Agora"). The API has no
+    # authentication of its own in-cluster: this rule is what bounds who may start runs.
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
   egress:
     - toEndpoints:
         - matchLabels:
