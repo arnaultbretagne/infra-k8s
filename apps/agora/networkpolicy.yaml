@@ -74,6 +74,14 @@ spec:
             app: gateway
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
+    # Prefect's API, to start a team's run (Agora's flows.md, "Launching from Agora"); the other half
+    # is apps/prefect/networkpolicy.yaml.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: prefect
+            app.kubernetes.io/name: prefect-server
+      toPorts:
+        - ports: [{ port: "4200", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
