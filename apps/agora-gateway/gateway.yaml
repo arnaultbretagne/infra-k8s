@@ -138,13 +138,12 @@ data:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
                         # and some grant of the JWT covers this host, path and query, and method.
                         - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
-                    # Which tools a grant opens, read or write: the contract of the `vault` profiles
-                    # (docs/specs/credentials.md, branch flow/2f42be87/vault-profile on arnaultbretagne/agora)
-                    # was not published when this route was written. Until its rule replaces this one, no
-                    # tool, prompt or resource is open: tools/list is empty and every call is refused.
+                    # Read or write (Agora's packages/credentials, `Grant.tools`): a vault grant without
+                    # `tools` (vault:write) opens the whole server; with `tools` (vault:read), only those tools,
+                    # and no prompt or resource. What no grant opens is left out of the lists and refused.
                     mcpAuthorization:
                       rules:
-                        - allow: 'false'
+                        - allow: 'jwt.grants.exists(g, g.host == "vault.bretagne.dev" && (!has(g.tools) || (has(mcp.tool) && mcp.tool.name in g.tools)))'
                 # ChatGPT, for codex: the cluster's own session (chatgpt-refresher.yaml keeps it alive). The
                 # sandbox's auth.json is a placeholder; its account id is dropped, the token alone names
                 # the account.
