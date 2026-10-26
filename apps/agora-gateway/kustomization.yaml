@@ -11,5 +11,7 @@ resources:
   - upstream-credentials.secrets.yaml
   - chatgpt-refresher.yaml
   - claude-refresher.yaml
+  - vault-client.secrets.yaml
+  - vault-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml

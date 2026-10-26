@@ -112,6 +112,39 @@ data:
                       key:
                         value: { file: /etc/agentgateway/credentials/zai }
                         location: { header: { name: authorization, prefix: "Bearer " } }
+                # The vault's MCP server (apps/obsidian), for `vault:read` and `vault:write`. agentgateway
+                # speaks MCP here: it opens its own session with the server, so it reads each tools/list and
+                # tools/call and applies mcpAuthorization to them — a tool the grants do not cover is left
+                # out of tools/list and refused on tools/call. The bearer is the cluster's own Pocket-ID
+                # machine client (`agora_gateway_vault`), minted by vault-refresher.yaml; the sandbox's
+                # Authorization never reaches the server. Straight to the Service, not through Traefik: the
+                # gateway reaches nothing else in the cluster (networkpolicy.yaml).
+                - name: vault
+                  hostnames: [vault.bretagne.dev]
+                  backends:
+                    - mcp:
+                        targets:
+                          - name: vault
+                            mcp:
+                              host: http://obsidian-mcp.obsidian.svc.cluster.local:4000/mcp
+                            policies:
+                              backendAuth:
+                                key:
+                                  value: { file: /etc/agentgateway/vault/access_token }
+                                  location: { header: { name: authorization, prefix: "Bearer " } }
+                  policies:
+                    authorization:
+                      rules:
+                        # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                        # and some grant of the JWT covers this host, path and query, and method.
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    # Which tools a grant opens, read or write: the contract of the `vault` profiles
+                    # (docs/specs/credentials.md, branch flow/2f42be87/vault-profile on arnaultbretagne/agora)
+                    # was not published when this route was written. Until its rule replaces this one, no
+                    # tool, prompt or resource is open: tools/list is empty and every call is refused.
+                    mcpAuthorization:
+                      rules:
+                        - allow: 'false'
                 # ChatGPT, for codex: the cluster's own session (chatgpt-refresher.yaml keeps it alive). The
                 # sandbox's auth.json is a placeholder; its account id is dropped, the token alone names
                 # the account.
@@ -302,6 +335,8 @@ spec:
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
+            # The vault's bearer, rewritten by vault-refresher every 15 minutes: watched the same way.
+            - { name: vault, mountPath: /etc/agentgateway/vault, readOnly: true }
       volumes:
         - name: config
           configMap:
@@ -329,6 +364,14 @@ spec:
         - name: claude
           secret:
             secretName: claude-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
+        # Created empty by Flux, filled by vault-refresher (vault-refresher.yaml).
+        - name: vault
+          secret:
+            secretName: vault-session
             optional: true
             defaultMode: 0440
             items:

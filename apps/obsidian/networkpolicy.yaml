@@ -84,12 +84,15 @@ spec:
     - fromEntities: [host]
       toPorts:
         - ports: [{ port: "4000", protocol: TCP }]
-    # The channels-era broker's vault adapter held the Pocket-ID machine client and injected that
-    # bearer server-side, so a loge reached the vault WITHOUT ever holding a vault credential.
-    # Removed with that system on 2026-08-07. The new platform's own vault equipment is not wired
-    # yet; when it is, its rule belongs here. Note what such a rule does and does not do: it opens
-    # the pod, not the auth — the MCP server still demands a valid bearer whose `aud` binds it to
-    # this resource (and see the standing gap: that check is still missing, obsidian-mcp-auth-gap).
+    # Agora's gateway (apps/agora-gateway, route `vault`): it sets its own Pocket-ID machine client's
+    # bearer, so a sandbox reaches the vault without ever holding a vault credential. This opens the
+    # pod, not the auth: the server still demands that bearer (aud + MCP_ALLOWED_CLIENT_IDS).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-gateway
+            app: gateway
+      toPorts:
+        - ports: [{ port: "4000", protocol: TCP }]
   egress:
     - toEndpoints:
         - matchLabels:

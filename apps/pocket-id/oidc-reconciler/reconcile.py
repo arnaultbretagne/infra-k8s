@@ -111,6 +111,10 @@ for name, want in want_clients.items():
             # actual gate — without it Pocket-ID ignores allowedUserGroups and lets ANY user in.
             "isGroupRestricted": bool(want.get("allowedGroups")),
         }
+        # A client may pin its id: what its consumers list (a machine client's sub = client-<id>) is
+        # then known before it exists, and recreating it keeps it. Pocket-ID mints one otherwise.
+        if want.get("id"):
+            body["id"] = want["id"]
         if ENFORCE:
             st, res = api("POST", "/oidc/clients", body)
             if st in (200, 201) and res:
@@ -120,6 +124,9 @@ for name, want in want_clients.items():
                 log(f"         ERROR create client {name}: {st} {res}"); errors += 1; continue
     else:
         cid = cur["id"]
+        if want.get("id") and want["id"] != cid:
+            # The id is fixed at creation: only deleting the client changes it, and that is for a human.
+            log(f"         ERROR client {name}: id {cid} is not the spec's {want['id']}"); errors += 1
         st, detail = api("GET", f"/oidc/clients/{cid}")
         if st != 200 or not detail:
             log(f"         ERROR get client {name}: {st} {detail}"); errors += 1; continue
