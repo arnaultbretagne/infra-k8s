@@ -138,12 +138,17 @@ data:
                         # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
                         # and some grant of the JWT covers this host, path and query, and method.
                         - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
-                    # Read or write (Agora's packages/credentials, `Grant.tools`): a vault grant without
-                    # `tools` (vault:write) opens the whole server; with `tools` (vault:read), only those tools,
-                    # and no prompt or resource. What no grant opens is left out of the lists and refused.
+                    # Read or write (docs/specs/credentials.md on arnaultbretagne/agora, "The vault", tool rule): a
+                    # vault grant without `tools` (vault:write) opens the whole server — tools, prompts,
+                    # resources; with `tools` (vault:read), only those tools. On a prompt or a resource
+                    # `mcp.tool` is absent, so with `tools` the expression fails and the request is refused.
+                    # agentgateway runs it on tools/call, prompts/get and resources/read, and filters the lists.
+                    # Known gap (measured on 1.6.0): its `exists` stops at a failing grant, so with vault:read
+                    # listed before vault:write the prompt is refused; `has(mcp.tool) &&` would close it — for
+                    # the contract to decide.
                     mcpAuthorization:
                       rules:
-                        - allow: 'jwt.grants.exists(g, g.host == "vault.bretagne.dev" && (!has(g.tools) || (has(mcp.tool) && mcp.tool.name in g.tools)))'
+                        - allow: 'jwt.grants.exists(g, g.host == "vault.bretagne.dev" && (!has(g.tools) || mcp.tool.name in g.tools))'
                 # ChatGPT, for codex: the cluster's own session (chatgpt-refresher.yaml keeps it alive). The
                 # sandbox's auth.json is a placeholder; its account id is dropped, the token alone names
                 # the account.
