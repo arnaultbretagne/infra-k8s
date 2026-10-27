@@ -245,8 +245,9 @@ function served(mark) {
 }
 /** One line for a kubectl run: its exit code, who answered, and what the API server's audit shows. */
 function outcome(r, events) {
-  const by = refusedByGateway(r) ? 'the gateway (authorization failed)' : r.code === 0 ? 'the API server (success)' : `the API server: ${(r.err.split('\n').find((l) => /Error|error/.test(l)) ?? r.err).trim().slice(0, 160)}`
-  return `exit ${r.code}, answered by ${by}; API server audit: ${events.length ? events.join(', ') : 'nothing received'}`
+  const message = (r.err.split('\n').find((l) => /Error|error/.test(l)) ?? r.err).trim().slice(0, 160)
+  const by = refusedByGateway(r) ? 'refused by the gateway (authorization failed)' : r.code === 0 ? 'succeeded' : `failed, kubectl says: ${message}`
+  return `exit ${r.code}, ${by}; API server audit: ${events.length ? events.join(', ') : 'nothing received'}`
 }
 
 const refusedByGateway = (r) => r.code !== 0 && /authorization failed/.test(r.err)
@@ -356,7 +357,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     assert.ok(seen.length > 0 && seen.every((e) => e.user.username === SA && e.responseStatus?.code === 403), JSON.stringify(seen.map((e) => e.responseStatus)))
   })
 
-  it('every write, a token, auth can-i: refused by the gateway, the API server receiving none', async (t) => {
+  it('every write, a token, auth can-i: refused by the gateway; no write reaches the API server (kubectl\'s preliminary reads do)', async (t) => {
     const mark = audit().count
     const s = await sandbox(['kubernetes:read'])
     const cases = {
@@ -488,7 +489,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     t.diagnostic(`with ${ctx.repoRbac} RBAC objects of this repository applied (layers: ${ctx.layers.join(', ')})`)
   })
 
-  it('the internet route cannot reach the API server anonymously: its certificate is not a public one', async () => {
+  it('the internet route cannot reach the API server anonymously: its certificate is not a public one', async (t) => {
     const mark = audit().count
     const s = await sandbox(['internet'])
     // A name resolving to the API server's address, on 443, through the route that sets no credential.
@@ -496,7 +497,8 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     try {
       const response = await s.http.request({ origin: 'https://localhost', path: '/api/v1/namespaces', method: 'GET' })
       failed = response.statusCode
-      await response.body.text()
+      const body = await response.body.text()
+      t.diagnostic(`internet route to localhost:443 (kind's API server): ${response.statusCode} ${body.trim().slice(0, 200)}`)
     } catch (error) {
       failed = error.code ?? error.message
     }
