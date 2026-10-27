@@ -14,6 +14,9 @@ it('the expiry check: a date far enough passes; near, past, unset or malformed f
   assert.equal(check(secret('2026-10-01'), now).ok, false, 'past')
   assert.equal(check(secret('unset'), now).ok, false)
   assert.equal(check(secret('2027-13-45'), now).ok, false)
+  assert.equal(check(secret('2027-02-30'), now).ok, false, 'no 30 February')
+  assert.equal(check(secret('2027-04-31'), now).ok, false, 'no 31 April')
+  assert.equal(check(secret('2028-02-29'), now).ok, true, 'a leap day')
   assert.equal(check('apiVersion: v1\nkind: Secret\nmetadata:\n  name: vault-token\n', now).ok, false, 'no annotation')
 })
 

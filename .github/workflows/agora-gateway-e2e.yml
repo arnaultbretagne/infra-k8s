@@ -43,6 +43,8 @@ env:
   # Agora's packages/credentials: the vault profiles (docs/specs/credentials.md, "The vault"), branch
   # flow/2f42be87/vault-profile. Moved by hand when the contract moves.
   AGORA_REF: 929f96b3dee23ed3a5899bd4b76e42359611b032
+  # obsidian-mcp's own config.ts and auth.ts, at the tag of the image apps/obsidian deploys (0.4.0).
+  OBSIDIAN_STACK_REF: 8b31791b8b936a46d2abe5fbe9f870d189f7ca40 # v0.4.0
 
 jobs:
   e2e:
@@ -60,6 +62,17 @@ jobs:
           ref: ${{ env.AGORA_REF }}
           path: .agora
           sparse-checkout: packages/credentials/src
+          persist-credentials: false
+
+      - name: obsidian-mcp's token checks, at the tag deployed
+        uses: actions/checkout@v5
+        with:
+          repository: arnaultbretagne/obsidian-stack
+          ref: ${{ env.OBSIDIAN_STACK_REF }}
+          # Under the test's directory: its imports of jose and zod resolve to the test's node_modules, pinned to
+          # the versions obsidian-mcp 0.4.0 locks.
+          path: tests/agora-gateway/.obsidian-stack
+          sparse-checkout: mcp-server/src
           persist-credentials: false
 
       - uses: actions/setup-node@v5
@@ -98,12 +111,13 @@ jobs:
         env:
           AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
           AGORA_GRANTS: ${{ github.workspace }}/.agora/packages/credentials/src/grants.ts
+          OBSIDIAN_MCP_SRC: ${{ github.workspace }}/tests/agora-gateway/.obsidian-stack/mcp-server/src
         run: |
           npm ci --no-audit --no-fund
           set -o pipefail
           npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
           {
-            echo '### The vault route on agentgateway 1.6.0'
+            echo '### The vault route on agentgateway 1.6.0, and obsidian-mcp 0.4.0 token checks'
             echo '```'
             grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
             echo '```'

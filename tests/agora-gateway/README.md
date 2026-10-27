@@ -29,6 +29,14 @@ What it asserts:
 | Upstream sessions | Every session the gateway opens on the server (stateless: one per message), it closes with a DELETE: none left open. |
 | The gateway's log | Route `vault`, the execution, the tool. |
 
+`vault-auth.test.mjs` runs obsidian-mcp v0.4.0's own `config.ts` and `auth.ts` (obsidian-stack at its tag) on the
+environment `apps/obsidian` deploys. Its tokens have the shape Pocket-ID v2.18.0 gives them. It checks that:
+- both tokens `agora_gateway_vault` can obtain are accepted: client_credentials, and device_code approved by an admin
+  user (accepted on its audience alone);
+- another client's token is refused;
+- taking the id out of `MCP_ALLOWED_CLIENT_IDS` alone leaves the device_code token accepted;
+- the documented revocation, the id out of both lists, refuses both tokens, and the server still starts.
+
 `vault-token-expiry.test.mjs` checks the expiry check run each day by
 `.github/workflows/agora-gateway-vault-token.yml` (`vault-token-expiry.mjs`). The same workflow, job
 `reconciler`, runs `tests/pocket-id-reconciler`: `reconcile.py` against a simulated Pocket-ID, every write
