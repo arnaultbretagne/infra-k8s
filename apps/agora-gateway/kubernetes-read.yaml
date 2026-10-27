@@ -1,0 +1,121 @@
+# The gateway's own identity on the cluster, for the `kubernetes` route (docs/specs/credentials.md on
+# arnaultbretagne/agora, "Kubernetes"): an execution given `kubernetes:read` reads the cluster with kubectl, and
+# the gateway sets this ServiceAccount's token, projected into its Pod only (gateway.yaml). What may be read is
+# this role: get, list and watch, written out in every rule; every resource and API group named.
+#
+# Never here: a `*` anywhere; any other verb (no impersonate: kubectl's --as is refused); `secrets`;
+# `pods/exec`, `pods/attach`, `pods/portforward` (kubectl may send them as a WebSocket GET, which the grant lets
+# through: this role is what refuses them — `pods` never stands for its subresources); `pods/proxy`,
+# `services/proxy`, `nodes/proxy`; `serviceaccounts/token`, `pods/ephemeralcontainers`.
+#
+# The cluster's own custom resources are those infra-k8s's manifests use, minus `resourcesets`
+# (fluxcd.controlplane.io): the previews' ResourceSet templates each preview database's password, derived from
+# inputs any reader sees (infrastructure/configs/previews/resourceset.yaml, `$pw`). Reading it is reading that
+# credential.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gateway
+# Its token reaches the gateway through a projected volume (gateway.yaml), never by the automatic mount.
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agora-kubernetes-read
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/status
+      - services
+      - endpoints
+      - events
+      - namespaces
+      - nodes
+      - configmaps
+      - serviceaccounts
+      - persistentvolumes
+      - persistentvolumeclaims
+      - replicationcontrollers
+      - resourcequotas
+      - limitranges
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets, controllerrevisions]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list, watch]
+  - apiGroups: [metrics.k8s.io]
+    resources: [pods, nodes]
+    verbs: [get, list, watch]
+  # The cluster's own custom resources, as infra-k8s's manifests use them (resourcesets excepted, above).
+  - apiGroups: [barmancloud.cnpg.io]
+    resources: [objectstores]
+    verbs: [get, list, watch]
+  - apiGroups: [cert-manager.io]
+    resources: [clusterissuers]
+    verbs: [get, list, watch]
+  - apiGroups: [cilium.io]
+    resources: [ciliumnetworkpolicies, ciliuml2announcementpolicies, ciliumloadbalancerippools]
+    verbs: [get, list, watch]
+  - apiGroups: [extensions.agents.x-k8s.io]
+    resources: [sandboxtemplates, sandboxwarmpools]
+    verbs: [get, list, watch]
+  - apiGroups: [fluxcd.controlplane.io]
+    resources: [resourcesetinputproviders]
+    verbs: [get, list, watch]
+  - apiGroups: [gateway.networking.k8s.io]
+    resources: [gateways, httproutes]
+    verbs: [get, list, watch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [get, list, watch]
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [get, list, watch]
+  - apiGroups: [monitoring.coreos.com]
+    resources: [podmonitors, probes, prometheusrules, servicemonitors]
+    verbs: [get, list, watch]
+  - apiGroups: [postgresql.cnpg.io]
+    resources: [clusters, scheduledbackups]
+    verbs: [get, list, watch]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, helmrepositories]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agora-kubernetes-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agora-kubernetes-read
+subjects:
+  - kind: ServiceAccount
+    name: gateway
+    namespace: agora-gateway

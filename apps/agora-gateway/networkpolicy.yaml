@@ -1,8 +1,9 @@
-# Default-deny. The gateway takes CONNECT from Agora's sandboxes and its server only, and goes out to the Internet on
-# 443 only: every upstream it serves is HTTPS (docs/specs/credentials.md on arnaultbretagne/agora). Its
-# `internet` route lets an execution name any host, so private addresses are cut here: the home network
-# (VLANs, router), Tailscale, the cluster's Pods and Services, link-local. Pods are IPv4 only. The other
-# half is apps/agora-sandboxes/networkpolicy.yaml (credential-gateway).
+# Default-deny. The gateway takes CONNECT from Agora's sandboxes and its server only. It goes out to the Internet
+# on 443 only — every upstream it serves is HTTPS (docs/specs/credentials.md on arnaultbretagne/agora) — and to
+# one private destination: the cluster's API server, on 6443, for the `kubernetes` route. Its `internet` route
+# lets an execution name any host, so every other private address is cut here: the home network (VLANs,
+# router), Tailscale, the cluster's Pods and Services, link-local. Pods are IPv4 only. The other half is
+# apps/agora-sandboxes/networkpolicy.yaml (credential-gateway).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -40,6 +41,11 @@ spec:
       toPorts:
         - ports: [{ port: "15021", protocol: TCP }]
   egress:
+    # The API server, route `kubernetes`: the one private destination, on the port it listens on behind
+    # the `kubernetes` Service (k0s: 6443, bootstrap/k0s.yaml).
+    - toEntities: [kube-apiserver]
+      toPorts:
+        - ports: [{ port: "6443", protocol: TCP }]
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system

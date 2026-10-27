@@ -1,0 +1,34 @@
+# The kind cluster the kubernetes route's e2e test reads (README.md): its API server on 127.0.0.1:443, as the
+# gateway dials the `kubernetes` Service on 443, and an audit log of every request, to see who the API server
+# took each one for. __POLICY__ is replaced by the absolute path of audit-policy.yaml.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  apiServerAddress: 127.0.0.1
+  apiServerPort: 443
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __POLICY__
+        containerPath: /etc/kubernetes/audit/policy.yaml
+        readOnly: true
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            - name: audit-policy-file
+              value: /etc/kubernetes/audit/policy.yaml
+            - name: audit-log-path
+              value: /var/log/kubernetes/audit.log
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/audit/policy.yaml
+              mountPath: /etc/kubernetes/audit/policy.yaml
+              readOnly: true
+              pathType: File
+            - name: audit-log
+              hostPath: /var/log/kubernetes
+              mountPath: /var/log/kubernetes
+              readOnly: false
+              pathType: DirectoryOrCreate
