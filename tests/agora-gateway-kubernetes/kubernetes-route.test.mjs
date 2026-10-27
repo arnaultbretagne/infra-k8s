@@ -368,6 +368,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       'create token': ['-n', 'agora-gateway', 'create', 'token', 'gateway'],
       'auth can-i': ['auth', 'can-i', 'get', 'secrets'],
       'auth whoami': ['auth', 'whoami'],
+      'auth can-i --list': ['auth', 'can-i', '--list'],
     }
     for (const [name, args] of Object.entries(cases)) {
       const before = audit().count
@@ -406,6 +407,35 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     }
   })
 
+  it('the ServiceAccount\'s permissions: the ClusterRole itself has get, list, watch only; the default roles add the rest', (t) => {
+    // The ClusterRole as the API server holds it.
+    const role = JSON.parse(admin(['get', 'clusterrole', 'agora-kubernetes-read', '-o', 'json']))
+    const verbs = [...new Set(role.rules.flatMap((r) => r.verbs))].sort()
+    const wildcard = role.rules.some((r) => [...r.verbs, ...(r.resources ?? []), ...(r.apiGroups ?? [])].includes('*'))
+    t.diagnostic(`ClusterRole agora-kubernetes-read on the API server: verbs ${verbs.join(',')}; a '*' anywhere: ${wildcard}; ${role.rules.length} rules`)
+    // Every ClusterRoleBinding that reaches the ServiceAccount: by its name, or by a group it belongs to.
+    const groups = ['system:authenticated', 'system:serviceaccounts', 'system:serviceaccounts:agora-gateway']
+    const bindings = JSON.parse(admin(['get', 'clusterrolebindings', '-o', 'json'])).items
+      .filter((b) => (b.subjects ?? []).some((x) => (x.kind === 'ServiceAccount' && x.name === 'gateway' && x.namespace === 'agora-gateway') || (x.kind === 'Group' && groups.includes(x.name))))
+    for (const b of bindings) {
+      const via = b.subjects.filter((x) => x.kind === 'ServiceAccount' ? x.name === 'gateway' : groups.includes(x.name)).map((x) => x.name).join(', ')
+      if (b.roleRef.name === 'agora-kubernetes-read') { t.diagnostic(`binding ${b.metadata.name} -> ${b.roleRef.name} (via ${via})`); continue }
+      const rules = JSON.parse(admin(['get', 'clusterrole', b.roleRef.name, '-o', 'json'])).rules ?? []
+      t.diagnostic(`binding ${b.metadata.name} -> ${b.roleRef.name} (via ${via}): ${rules.map((r) => `${r.verbs.join(',')} ${r.nonResourceURLs ? r.nonResourceURLs.join(' ') : (r.resources ?? []).map((x) => `${x}.${(r.apiGroups ?? [''])[0] || 'core'}`).join(' ')}`).join('; ')}`)
+    }
+    // The effective permissions, as the API server lists them (SelfSubjectRulesReview, impersonated by the admin).
+    const list = admin(['auth', 'can-i', '--list', `--as=${SA}`]).split('\n').filter((l) => l.trim())
+    const [header, ...rows] = list
+    const at = ['Non-Resource URLs', 'Resource Names', 'Verbs'].map((name) => header.indexOf(name))
+    const beyond = rows.filter((row) => !/^\[(get|list|watch)( (get|list|watch))*\]$/.test(row.slice(at[2]).trim()))
+    t.diagnostic(`auth can-i --list as the ServiceAccount: ${rows.length} rows; verbs other than get, list, watch: ${beyond.map((r) => `${r.slice(0, at[0]).trim() || r.slice(at[0], at[1]).trim()} ${r.slice(at[2]).trim()}`).join('; ') || 'none'}`)
+    t.diagnostic(`auth can-i --list, non-resource URLs: ${rows.filter((r) => r.slice(at[0], at[1]).trim()).map((r) => r.slice(at[0], at[1]).trim()).join(' ')}`)
+    assert.deepEqual(verbs, ['get', 'list', 'watch'])
+    assert.equal(wildcard, false)
+    // Beyond the role, the default roles grant only the self-reviews, which answer about the caller itself.
+    for (const row of beyond) assert.match(row.slice(0, at[0]).trim(), /^selfsubject(access|rules)?reviews\.authori[sz]ation\.k8s\.io$|^selfsubjectreviews\.authentication\.k8s\.io$/, row)
+  })
+
   it('without kubernetes:read — no profile, internet alone, anthropic alone — 403 from the gateway', async (t) => {
     const mark = audit().count
     for (const profiles of [[], ['internet'], ['anthropic']]) {
@@ -431,7 +461,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
 
   it('paths outside the grant and path tricks: 403 from the gateway', async (t) => {
     const s = await sandbox(['kubernetes:read'])
-    for (const path of ['/', '/healthz', '/livez', '/metrics', '/logs/', '/api/../healthz', '/api/v1/%2e%2e/%2e%2e/healthz', '/api%2fv1/pods']) {
+    for (const path of ['/', '/healthz', '/livez', '/metrics', '/logs/', '/api/../healthz', '/api/v1/%2e%2e/%2e%2e/healthz', '/api%2fv1/pods', '/.well-known/openid-configuration', '/openid/v1/jwks']) {
       const before = audit().count
       const response = await s.http.request({ origin: `https://${HOST}`, path, method: 'GET' })
       const body = await response.body.text()
