@@ -136,7 +136,7 @@ jobs:
             fi
             echo "MUTATE=$mutate: failed, as it must:"; grep -E '^ *✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u | head -20
             echo "MUTATE=$mutate: what each test observed (its diagnostics) and the failing assertions:"
-            grep -E '^ *(ℹ |AssertionError|Error \[)' "$RUNNER_TEMP/mutate-$mutate.txt" | head -120
+            grep -E '^ *(ℹ |AssertionError|Error \[|  (actual|expected):)' "$RUNNER_TEMP/mutate-$mutate.txt" | head -120
             {
               echo "- \`MUTATE=$mutate\` ($([ $mutate = route ] && echo "the route's rule set to 'true'" || echo "the role given secrets and pods/exec, get and create")): failed, as it must:"
               echo '```'
