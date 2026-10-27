@@ -217,7 +217,8 @@ async function sandbox(profiles, address = '127.0.0.1') {
       return state
     },
     /** A raw HTTP client through the bridge, keeping its tunnel. */
-    http: new ProxyAgent({ uri: outbound.url, requestTls: { ca: readFileSync(ctx.gatewayCa) } }),
+    // Idle connections kept 2 minutes, as a Go client keeps them 90 s (undici's default is 4 s).
+    http: new ProxyAgent({ uri: outbound.url, requestTls: { ca: readFileSync(ctx.gatewayCa) }, keepAliveTimeout: 120_000, keepAliveMaxTimeout: 120_000 }),
   }
 }
 
@@ -281,7 +282,9 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     }
     for (const [name, args] of Object.entries(cases)) {
       const r = await s.kubectl(args)
-      assert.ok(refusedByGateway(r), `${name}: ${r.code} ${r.err}`)
+      // kubectl auth whoami words a 403 its own way; the audit below shows the API server received nothing.
+      const whoami = name === 'auth whoami' && r.code !== 0 && /selfsubjectreviews API is not enabled in the cluster or you do not have permission/.test(r.err)
+      assert.ok(refusedByGateway(r) || whoami, `${name}: ${r.code} ${r.err}`)
     }
     assert.equal(admin(['-n', NS, 'get', 'configmap', 'readable', '-o', 'jsonpath={.data.a}']), 'b', 'the ConfigMap is untouched')
     const writes = audit(mark).events.filter((e) => e.user.username !== ctx.adminUser && !['get', 'list', 'watch'].includes(e.verb))
@@ -289,7 +292,11 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
   })
 
   it('the RBAC refuses the same on its own: the ServiceAccount\'s token straight to the API server', () => {
-    const can = (verb, resource, ns = NS) => admin(['auth', 'can-i', verb, resource, '-n', ns, `--as=${SA}`]).trim()
+    // A subresource is asked with --subresource: `can-i get pods/exec` would ask about a Pod named exec.
+    const can = (verb, resource, ns = NS) => {
+      const [name, sub] = resource.split('/')
+      return admin(['auth', 'can-i', verb, name, ...(sub ? [`--subresource=${sub}`] : []), '-n', ns, `--as=${SA}`]).trim()
+    }
     const ask = (verb, resource, ns = NS) => { try { return can(verb, resource, ns) } catch (error) { return String(error.stdout).trim() } }
     for (const [verb, resource] of [['get', 'secrets'], ['list', 'secrets'], ['watch', 'secrets'], ['create', 'pods/exec'], ['get', 'pods/exec'], ['create', 'pods/attach'], ['get', 'pods/attach'], ['create', 'pods/portforward'], ['get', 'pods/portforward'], ['get', 'pods/proxy'], ['get', 'services/proxy'], ['get', 'nodes/proxy'], ['create', 'serviceaccounts/token'], ['update', 'pods/ephemeralcontainers'], ['create', 'configmaps'], ['delete', 'configmaps'], ['patch', 'pods'], ['update', 'deployments.apps'], ['impersonate', 'users'], ['get', 'resourcesets.fluxcd.controlplane.io']]) {
       assert.equal(ask(verb, resource), 'no', `${verb} ${resource}`)
@@ -348,7 +355,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       failed = error.code ?? error.message
     }
     assert.notEqual(failed, 200, 'refused')
-    assert.deepEqual(audit(mark).events.filter((e) => /system:anonymous/.test(e.user.username)), [], 'no anonymous request reached the API server')
+    assert.deepEqual(audit(mark).events.filter((e) => /system:anonymous/.test(e.user.username) && !/^kube-probe\//.test(e.userAgent ?? '')).map((e) => e.requestURI), [], 'no anonymous request reached the API server')
   })
 
   it('the API server only ever saw the gateway\'s ServiceAccount: never the sandbox\'s Basic agora:, never anonymous', () => {
@@ -356,7 +363,9 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     const fromSandboxes = events.filter((e) => /^kubectl\//.test(e.userAgent ?? '') && e.user.username !== ctx.adminUser)
     assert.ok(fromSandboxes.length > 10, `${fromSandboxes.length} requests from the sandboxes`)
     assert.deepEqual([...new Set(fromSandboxes.map((e) => e.user.username))], [SA])
-    assert.deepEqual(events.filter((e) => ['system:anonymous', 'agora'].includes(e.user.username)).map((e) => e.requestURI), [])
+    // The kubelet's own probes of the API server are anonymous (kube-probe/…): they are not the sandboxes'.
+    const probe = (e) => /^kube-probe\//.test(e.userAgent ?? '')
+    assert.deepEqual(events.filter((e) => ['system:anonymous', 'agora'].includes(e.user.username) && !probe(e)).map((e) => `${e.user.username} ${e.userAgent} ${e.requestURI}`), [])
   })
 
   it('the ServiceAccount\'s token renewed, the old one revoked: the open tunnel and an open watch keep working', async () => {
