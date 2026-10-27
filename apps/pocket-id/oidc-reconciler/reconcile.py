@@ -86,6 +86,11 @@ for name, g in cur_groups.items():
 # ---------------- CLIENTS ----------------
 cur_clients = {c["name"]: c for c in list_all("/oidc/clients")}
 
+def group_restricted(client):
+    # Listing groups restricts to them. A client may also be restricted to none (`isGroupRestricted`
+    # with no group): then no user is allowed at all, as for a machine client nobody may sign in with.
+    return bool(client.get("isGroupRestricted", bool(client.get("allowedGroups"))))
+
 def group_ids_for(client):
     ids = []
     for gname in client.get("allowedGroups", []):
@@ -109,8 +114,14 @@ for name, want in want_clients.items():
             "requiresReauthentication": want.get("requiresReauthentication", False),
             # Derived, never declared: listing groups == restricting to them. This is the
             # actual gate — without it Pocket-ID ignores allowedUserGroups and lets ANY user in.
-            "isGroupRestricted": bool(want.get("allowedGroups")),
+            "isGroupRestricted": group_restricted(want),
         }
+        # A client may pin its id: what its consumers list (a machine client's sub = client-<id>) is
+        # then known before it exists, and recreating it keeps it. Pocket-ID mints one otherwise.
+        if want.get("id"):
+            body["id"] = want["id"]
+        if want.get("accessTokenDurationMinutes"):
+            body["accessTokenDurationMinutes"] = want["accessTokenDurationMinutes"]
         if ENFORCE:
             st, res = api("POST", "/oidc/clients", body)
             if st in (200, 201) and res:
@@ -120,6 +131,12 @@ for name, want in want_clients.items():
                 log(f"         ERROR create client {name}: {st} {res}"); errors += 1; continue
     else:
         cid = cur["id"]
+        if want.get("id") and want["id"] != cid:
+            # The id is fixed at creation: only deleting the client changes it, and that is for a human.
+            # Nothing is written to a client that is not the one the spec pins: no update, no groups.
+            log(f"[client] SKIP    {name}  (ERROR: id {cid} is not the spec's {want['id']}; nothing written)")
+            errors += 1
+            continue
         st, detail = api("GET", f"/oidc/clients/{cid}")
         if st != 200 or not detail:
             log(f"         ERROR get client {name}: {st} {detail}"); errors += 1; continue
@@ -131,8 +148,10 @@ for name, want in want_clients.items():
             drift.append("isPublic")
         if detail.get("pkceEnabled", False) != want.get("pkceEnabled", False):
             drift.append("pkceEnabled")
-        if detail.get("isGroupRestricted", False) != bool(want.get("allowedGroups")):
+        if detail.get("isGroupRestricted", False) != group_restricted(want):
             drift.append("isGroupRestricted")
+        if want.get("accessTokenDurationMinutes") and detail.get("accessTokenDurationMinutes") != want["accessTokenDurationMinutes"]:
+            drift.append("accessTokenDurationMinutes")
         if drift:
             log(f"[client] UPDATE  {name}  (drift: {', '.join(drift)})")
             if ENFORCE:
@@ -144,7 +163,10 @@ for name, want in want_clients.items():
                     "pkceEnabled": want.get("pkceEnabled", False),
                     "requiresReauthentication": detail.get("requiresReauthentication", False),
                     "isGroupRestricted": bool(want.get("allowedGroups")),
+                    # Pocket-ID resets an update without it to 60 minutes: the spec's, else the current one.
+                    "accessTokenDurationMinutes": want.get("accessTokenDurationMinutes") or detail.get("accessTokenDurationMinutes", 0),
                 }
+                body["isGroupRestricted"] = group_restricted(want)
                 st, res = api("PUT", f"/oidc/clients/{cid}", body)
                 if st == 200: changes += 1
                 else: log(f"         ERROR update client {name}: {st} {res}"); errors += 1
