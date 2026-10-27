@@ -115,11 +115,13 @@ before(async () => {
 
   // The stand-in issuer's key, and tokens shaped as Pocket-ID 2.18.0 issues a client-credentials token.
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
-  const jwks = { keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'e2e', alg: 'RS256', use: 'sig' }] }
+  // A key id of its own per run: the gates fetch the new key instead of trusting a cached one under the same id.
+  const issuerKid = `e2e-${randomUUID()}`
+  const jwks = { keys: [{ ...publicKey.export({ format: 'jwk' }), kid: issuerKid, alg: 'RS256', use: 'sig' }] }
   const mint = (claims, seconds = 900) => {
     const now = Math.floor(Date.now() / 1000)
     const enc = (v) => Buffer.from(JSON.stringify(v)).toString('base64url')
-    const data = `${enc({ alg: 'RS256', typ: 'JWT', kid: 'e2e' })}.${enc({ iss: ISSUER, iat: now, exp: now + seconds, jti: randomUUID(), scp: [], ...claims })}`
+    const data = `${enc({ alg: 'RS256', typ: 'JWT', kid: issuerKid })}.${enc({ iss: ISSUER, iat: now, exp: now + seconds, jti: randomUUID(), scp: [], ...claims })}`
     return `${data}.${sign('sha256', Buffer.from(data), privateKey).toString('base64url')}`
   }
   const gatewayToken = () => mint({ sub: IDENTITY, aud: [CLIENT.id] })
@@ -144,9 +146,9 @@ http.createServer((req, res) => {
   })
 }).listen(8080)`
   const restricted = { runAsNonRoot: true, runAsUser: 1000, allowPrivilegeEscalation: false, capabilities: { drop: ['ALL'] }, seccompProfile: { type: 'RuntimeDefault' } }
-  const node = (name, namespace, script) => [
+  const node = (name, namespace, script, annotations = {}) => [
     { apiVersion: 'v1', kind: 'ConfigMap', metadata: { name, namespace }, data: { 'main.js': script } },
-    { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name, namespace }, spec: { replicas: 1, selector: { matchLabels: { app: name } }, template: { metadata: { labels: { app: name } }, spec: { automountServiceAccountToken: false, containers: [{ name, image: NODE_IMAGE, command: ['node', '/app/main.js'], ports: [{ containerPort: 8080 }], securityContext: restricted, resources: { requests: { cpu: '10m', memory: '64Mi' }, limits: { memory: '128Mi' } }, volumeMounts: [{ name: 'app', mountPath: '/app' }] }], volumes: [{ name: 'app', configMap: { name } }] } } } },
+    { apiVersion: 'apps/v1', kind: 'Deployment', metadata: { name, namespace }, spec: { replicas: 1, selector: { matchLabels: { app: name } }, template: { metadata: { labels: { app: name }, annotations }, spec: { automountServiceAccountToken: false, containers: [{ name, image: NODE_IMAGE, command: ['node', '/app/main.js'], ports: [{ containerPort: 8080 }], securityContext: restricted, resources: { requests: { cpu: '10m', memory: '64Mi' }, limits: { memory: '128Mi' } }, volumeMounts: [{ name: 'app', mountPath: '/app' }] }], volumes: [{ name: 'app', configMap: { name } }] } } } },
     { apiVersion: 'v1', kind: 'Service', metadata: { name, namespace }, spec: { selector: { app: name }, ports: [{ port: 8080, targetPort: 8080 }] } },
   ]
 
@@ -173,7 +175,8 @@ http.createServer((req, res) => {
   apply(parseAllDocuments(readFileSync(join(REPO, 'infrastructure/configs/priorityclasses/priorityclasses.yaml'), 'utf8')).map((d) => d.toJS()).filter((o) => o?.kind === 'PriorityClass'))
   apply([systemNs, { apiVersion: 'v1', kind: 'Namespace', metadata: { name: 'e2e-idp' } }])
   apply([identities, { apiVersion: 'v1', kind: 'Secret', metadata: { name: 'preview-gate', namespace: 'preview-system' }, stringData: { OAUTH2_PROXY_CLIENT_ID: 'preview', OAUTH2_PROXY_CLIENT_SECRET: 'browser-secret', OAUTH2_PROXY_COOKIE_SECRET: randomBytes(16).toString('hex') } }])
-  apply([...node('issuer', 'e2e-idp', issuerScript)])
+  // The key's id on the Pod template: a new key per run rolls the issuer, which reads its script at start.
+  apply([...node('issuer', 'e2e-idp', issuerScript, { 'e2e/kid': issuerKid })])
   apply(keep.filter((o) => o.kind === 'Namespace'))
   apply(keep.filter((o) => o.kind !== 'Namespace'))
   apply(node(APP, NS, appScript))
@@ -315,11 +318,13 @@ describe('the previews route and the gateway gate: agentgateway 1.6.0, Traefik a
     const before = appSeen()
     const s = await sandbox(['previews'])
     for (const host of ['preview.bretagne.dev', 'x.preview.bretagne.dev', `a.${HOST}`, `pr-0-${APP}.preview.bretagne.dev`, `pr-${PR}-.preview.bretagne.dev`, `pr-${PR}-${APP}-.preview.bretagne.dev`, `pr-${PR}-a_b.preview.bretagne.dev`]) {
-      // A name that is not a valid DNS name never gets a certificate from the gateway: refused at TLS.
+      // A name that is not a valid DNS name never gets a certificate from the gateway: refused at TLS. One that
+      // Agora's bridge does not take as host:port is refused by the bridge, before the gateway (400 to the CONNECT).
       let r
-      try { r = await s.request(host) } catch (error) { r = { status: 'TLS', text: String(error.message).split('\n')[0] } }
-      t.diagnostic(`${host} with previews: ${r.status === 'TLS' ? `refused by the gateway at TLS (${r.text.slice(0, 90)})` : `${r.status} ${r.text.trim().slice(0, 60)}`}`)
-      assert.ok(r.status === 'TLS' || (r.status === 403 && /authorization failed/.test(r.text)), `${host}: ${r.status} ${r.text}`)
+      try { r = await s.request(host) } catch (error) { const m = String(error.message).split('\n')[0]; r = { status: /Proxy response \(400\)/.test(m) ? 'BRIDGE' : /alert|SSL|TLS/i.test(m) ? 'TLS' : 'ERROR', text: m } }
+      const said = { TLS: `refused by the gateway at TLS (${r.text.slice(0, 90)})`, BRIDGE: `refused by Agora's bridge before the gateway (${r.text.slice(0, 60)})`, ERROR: `failed: ${r.text.slice(0, 90)}` }[r.status] ?? `${r.status} ${r.text.trim().slice(0, 60)}`
+      t.diagnostic(`${host} with previews: ${said}`)
+      assert.ok(['TLS', 'BRIDGE'].includes(r.status) || (r.status === 403 && /authorization failed/.test(r.text)), `${host}: ${r.status} ${r.text}`)
     }
     for (const [profiles, address] of [[[], '127.0.0.1'], [['internet'], '127.0.0.1'], [['anthropic'], '127.0.0.1'], [['previews'], '10.244.0.99']]) {
       const other = await sandbox(profiles, address)
