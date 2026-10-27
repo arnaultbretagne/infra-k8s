@@ -219,6 +219,8 @@ async function sandbox(profiles, address = '127.0.0.1') {
     /** A raw HTTP client through the bridge, keeping its tunnel. */
     // Idle connections kept 2 minutes, as a Go client keeps them 90 s (undici's default is 4 s).
     http: new ProxyAgent({ uri: outbound.url, requestTls: { ca: readFileSync(ctx.gatewayCa) }, keepAliveTimeout: 120_000, keepAliveMaxTimeout: 120_000 }),
+    /** HTTP/1.1 only, as kubectl dials a WebSocket (an Upgrade, not HTTP/2's extended CONNECT). */
+    http1: new ProxyAgent({ uri: outbound.url, requestTls: { ca: readFileSync(ctx.gatewayCa), ALPNProtocols: ['http/1.1'] }, allowH2: false }),
   }
 }
 
@@ -281,7 +283,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       let upgraded = false
       let failure = ''
       try {
-        const { socket } = await s.http.upgrade({ origin: `https://${HOST}`, path, method: 'GET', protocol: 'websocket', headers: { 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-protocol': name === 'portforward' ? 'v4.channel.k8s.io' : 'v5.channel.k8s.io' } })
+        const { socket } = await s.http1.upgrade({ origin: `https://${HOST}`, path, method: 'GET', protocol: 'websocket', headers: { 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-protocol': name === 'portforward' ? 'v4.channel.k8s.io' : 'v5.channel.k8s.io' } })
         upgraded = true
         socket.destroy()
       } catch (error) {
