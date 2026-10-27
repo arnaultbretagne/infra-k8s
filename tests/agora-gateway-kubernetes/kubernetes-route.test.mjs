@@ -32,6 +32,8 @@ const NS = 'e2e'
 const KUBECTL = process.env.KUBECTL ?? 'kubectl'
 const MUTATE = process.env.MUTATE ?? ''
 const run = `${Date.now()}`
+/** The User-Agent of this test's own anonymous requests, which the identity check sets aside. */
+const ANONYMOUS_PROBE = 'agora-e2e-anonymous-probe'
 
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
 const admin = (args, input) => execFileSync(KUBECTL, args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -391,7 +393,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     const ca = readFileSync(ctx.kubeCa)
     const anonymous = new Agent({ connect: { ca } })
     const answer = async (path) => {
-      const response = await undiciFetch(`https://127.0.0.1:443${path}`, { dispatcher: anonymous })
+      const response = await undiciFetch(`https://127.0.0.1:443${path}`, { dispatcher: anonymous, headers: { 'user-agent': ANONYMOUS_PROBE } })
       await response.text()
       return response.status
     }
@@ -413,23 +415,22 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       if (allowed.test(path)) t.diagnostic(`${path}: ${status}`)
     }
     assert.deepEqual(open, [], 'nothing but version and health answers an anonymous request')
-    // The API server's own account of what an anonymous request may do.
-    const rules = admin(['auth', 'can-i', '--list', '--as=system:anonymous', '--as-group=system:unauthenticated'])
-    // Its columns: Resources, Non-Resource URLs, Resource Names, Verbs. Read by position.
-    const [header, ...rows] = rules.split('\n').filter((l) => l.trim())
-    const at = ['Non-Resource URLs', 'Resource Names', 'Verbs'].map((name) => header.indexOf(name))
-    assert.ok(at.every((n) => n > 0), header)
-    for (const row of rows) {
-      const resources = row.slice(0, at[0]).trim()
-      const urls = row.slice(at[0], at[1]).trim()
-      // Kubernetes lets anyone ask what they themselves may do: those reviews answer about the caller only.
-      if (resources) assert.match(resources, /^selfsubject(access|rules)?reviews\.authorization\.k8s\.io$|^selfsubjectreviews\.authentication\.k8s\.io$/, `an anonymous request may: ${row}`)
-      for (const url of urls.replace(/^\[|\]$/g, '').split(/\s+/).filter(Boolean)) {
-        assert.match(url, /^\/(version|healthz|livez|readyz)(\/\*?)?$/, `an anonymous request may: ${row}`)
-      }
+    // The authorizer's own answer, asked by the admin about system:anonymous (anonymous may not ask itself):
+    // every verb on every resource listed above, and the non-resource paths.
+    const verbs = ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete', 'impersonate', 'bind', 'escalate']
+    const reviews = []
+    for (const path of discovered) {
+      const [, group, , resource] = /^\/(?:api\/v1|apis\/([^/]+)\/([^/]+))\/([^/]+)$/.exec(path) ?? []
+      for (const verb of verbs) reviews.push({ resourceAttributes: { verb, group: group ?? '', resource } })
     }
+    for (const path of paths.filter((p) => !p.includes('/namespaces/'))) reviews.push({ nonResourceAttributes: { verb: 'get', path } })
+    const answers = JSON.parse(admin(['create', '-o', 'json', '-f', '-'], reviews.map((spec) => stringify({ apiVersion: 'authorization.k8s.io/v1', kind: 'SubjectAccessReview', spec: { user: 'system:anonymous', groups: ['system:unauthenticated'], ...spec } })).join('---\n')))
+    const items = answers.items ?? [answers]
+    assert.equal(items.length, reviews.length)
+    const granted = items.filter((a) => a.status.allowed).map((a) => a.spec.nonResourceAttributes?.path ?? `${a.spec.resourceAttributes.verb} ${a.spec.resourceAttributes.group}/${a.spec.resourceAttributes.resource}`)
+    assert.deepEqual(granted.filter((g) => !allowed.test(g)), [], 'the authorizer grants an anonymous request nothing but version and health')
+    t.diagnostic(`${reviews.length} SubjectAccessReviews for system:anonymous; allowed: ${granted.join(', ')}`)
     t.diagnostic(`with ${ctx.repoRbac} RBAC objects of this repository applied (layers: ${ctx.layers.join(', ')})`)
-    t.diagnostic(`auth can-i --list as system:anonymous:\n${rules}`)
   })
 
   it('the internet route cannot reach the API server anonymously: its certificate is not a public one', async () => {
@@ -454,7 +455,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     assert.ok(fromSandboxes.length > 10, `${fromSandboxes.length} requests from the sandboxes`)
     assert.deepEqual([...new Set(fromSandboxes.map((e) => e.user.username))], [SA])
     // The kubelet's own probes of the API server are anonymous (kube-probe/…): they are not the sandboxes'.
-    const probe = (e) => /^kube-probe\//.test(e.userAgent ?? '')
+    const probe = (e) => /^kube-probe\//.test(e.userAgent ?? '') || e.userAgent === ANONYMOUS_PROBE
     assert.deepEqual(events.filter((e) => ['system:anonymous', 'agora'].includes(e.user.username) && !probe(e)).map((e) => `${e.user.username} ${e.userAgent} ${e.requestURI}`), [])
   })
 
