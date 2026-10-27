@@ -169,13 +169,23 @@ http.createServer((req, res) => {
   const systemNs = previews.find((o) => o.kind === 'Namespace' && o.metadata.name === 'preview-system')
   const identities = previews.find((o) => o.kind === 'ConfigMap' && o.metadata.name === 'preview-gateway-identities')
   assert.equal(identities.data['gateway-identities'].trim(), IDENTITY, 'the ConfigMap names client-<id> alone')
+  // The cluster's PriorityClasses (infrastructure/configs/priorityclasses): the gates run at bretagne-low.
+  apply(parseAllDocuments(readFileSync(join(REPO, 'infrastructure/configs/priorityclasses/priorityclasses.yaml'), 'utf8')).map((d) => d.toJS()).filter((o) => o?.kind === 'PriorityClass'))
   apply([systemNs, { apiVersion: 'v1', kind: 'Namespace', metadata: { name: 'e2e-idp' } }])
   apply([identities, { apiVersion: 'v1', kind: 'Secret', metadata: { name: 'preview-gate', namespace: 'preview-system' }, stringData: { OAUTH2_PROXY_CLIENT_ID: 'preview', OAUTH2_PROXY_CLIENT_SECRET: 'browser-secret', OAUTH2_PROXY_COOKIE_SECRET: randomBytes(16).toString('hex') } }])
   apply([...node('issuer', 'e2e-idp', issuerScript)])
   apply(keep.filter((o) => o.kind === 'Namespace'))
   apply(keep.filter((o) => o.kind !== 'Namespace'))
   apply(node(APP, NS, appScript))
-  for (const [ns, name] of [['e2e-idp', 'issuer'], [NS, APP], ['preview-system', `${P}-gate`], ['preview-system', `${P}-gateway-gate`]]) admin(['-n', ns, 'rollout', 'status', `deployment/${name}`, '--timeout=240s'])
+  for (const [ns, name] of [['e2e-idp', 'issuer'], [NS, APP], ['preview-system', `${P}-gate`], ['preview-system', `${P}-gateway-gate`]]) {
+    try {
+      admin(['-n', ns, 'rollout', 'status', `deployment/${name}`, '--timeout=240s'])
+    } catch (error) {
+      let why = ''
+      try { why = admin(['-n', ns, 'describe', `deployment/${name}`]) + admin(['-n', ns, 'get', 'events', '--sort-by=.lastTimestamp']) + admin(['-n', ns, 'logs', `deployment/${name}`, '--tail=40']) } catch (e) { why += String(e.stderr ?? e) }
+      assert.fail(`${ns}/${name} did not roll out:\n${why}`)
+    }
+  }
 
   // This repository's Gateway (infrastructure/gateway), its https-preview listener among the others.
   const gatewayObj = parseAllDocuments(admin(['kustomize', join(REPO, 'infrastructure/gateway')])).map((d) => d.toJS()).find((o) => o?.kind === 'Gateway' && o.metadata.name === 'bretagne-gateway')
