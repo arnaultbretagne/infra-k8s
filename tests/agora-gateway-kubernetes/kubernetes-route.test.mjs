@@ -502,4 +502,41 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     assert.equal(r.code, 0, `a new session after the renewal: ${r.err}`)
     assert.equal(ctx.gateway.exitCode, null, 'the same gateway process: no restart')
   })
+  it('cutting reading off: the binding deleted refuses new requests, an open watch goes on; stopping the gateway closes it', async (t) => {
+    const s = await sandbox(['kubernetes:read'])
+    const watch = s.watch(['-n', NS, 'get', 'configmaps', '--watch', '-o', 'name'])
+    const event = async (name) => {
+      admin(['-n', NS, 'create', 'configmap', name])
+      for (const deadline = Date.now() + 20_000; !watch.out.includes(name); await sleep(200)) {
+        if (Date.now() > deadline) assert.fail(`the watch did not deliver ${name}: ${watch.out}`)
+      }
+    }
+    await sleep(2000)
+    await event(`before-cut-${run}`)
+
+    // 1. The ClusterRoleBinding deleted: the RBAC is checked when a request starts, so new requests are refused…
+    admin(['delete', 'clusterrolebinding', 'agora-kubernetes-read'])
+    for (const deadline = Date.now() + 20_000; ; await sleep(500)) {
+      const r = await s.kubectl(['-n', NS, 'get', 'configmap', 'readable'])
+      if (forbiddenBySA(r)) break
+      if (Date.now() > deadline) assert.fail(`a new request is still allowed: ${r.code} ${r.out} ${r.err}`)
+    }
+    // …but a watch it allowed before goes on delivering events: the binding alone does not cut it.
+    await event(`after-unbind-${run}`)
+    assert.equal(watch.child.exitCode, null, 'the watch opened before is still open')
+
+    // 2. The gateway stopped, as a rollout restart stops its old Pod (SIGTERM): every tunnel through it closes.
+    // agentgateway 1.6.0 drains for 5 s (no connectionTerminationDeadline, no TERMINATION_GRACE_PERIOD_SECONDS),
+    // then closes what remains; Kubernetes would SIGKILL it after the Pod's grace period, 30 s.
+    const stoppedAt = Date.now()
+    ctx.gateway.kill('SIGTERM')
+    const closed = new Promise((ok) => watch.child.on('exit', () => ok(Date.now() - stoppedAt)))
+    const within = await Promise.race([closed, sleep(30_000).then(() => null)])
+    assert.notEqual(within, null, `the watch is still open 30 s after the gateway's SIGTERM: ${watch.out}`)
+    t.diagnostic(`the watch closed ${(within / 1000).toFixed(1)} s after the gateway's SIGTERM`)
+    // Nothing more reaches the cluster through it: the next event is not delivered.
+    admin(['-n', NS, 'create', 'configmap', `after-stop-${run}`])
+    await sleep(2000)
+    assert.ok(!watch.out.includes(`after-stop-${run}`), watch.out)
+  })
 })
