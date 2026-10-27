@@ -501,6 +501,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       t.diagnostic(`internet route to localhost:443 (kind's API server): ${response.statusCode} ${body.trim().slice(0, 200)}`)
     } catch (error) {
       failed = error.code ?? error.message
+      t.diagnostic(`internet route to localhost:443 (kind's API server): the request failed, ${error.code ?? ''} ${error.message}`)
     }
     assert.notEqual(failed, 200, 'refused')
     assert.deepEqual(audit(mark).events.filter((e) => /system:anonymous/.test(e.user.username) && !/^kube-probe\//.test(e.userAgent ?? '')).map((e) => e.requestURI), [], 'no anonymous request reached the API server')
