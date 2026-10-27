@@ -9,7 +9,14 @@ Run by `.github/workflows/agora-gateway-kubernetes-e2e.yml`. Steps (details in t
   branch.
 - kubectl 1.36.5 as in a sandbox: the bridge's `kubeconfig.yaml`, no credential, `HTTPS_PROXY` the bridge.
 - Then the test runs twice more, with `MUTATE=route` (the route's rule set to `true`) and `MUTATE=role` (the role given
-  `secrets` and `pods/exec`). Both runs must fail.
+  `secrets` and `pods/exec`, `get` and `create`). Both runs must fail. The workflow prints each run's failing tests,
+  their assertion messages and the WebSocket diagnostics.
+  - `MUTATE=route`: the tests expecting the gateway's 403 fail. Writes, other address, no profile and paths now reach
+    the API server, and the RBAC refuses them instead.
+  - `MUTATE=role`: the tests on Secrets, the RBAC alone and the WebSocket handshakes fail. Straight to the API server,
+    the token now opens an exec: 101, and the command's output comes back. Through the gateway, the same handshake is
+    authorized but answered `400 Upgrade request required`: the gateway does not carry the WebSocket upgrade to the API
+    server. There is no 101 that way.
 
 What it asserts:
 
@@ -17,8 +24,9 @@ What it asserts:
 | --- | --- |
 | `kubernetes:read`: `version`, `get pods -A`, a Pod, nodes, a ConfigMap, `logs`, a watch | Answered by the API server. |
 | `get secrets` (one namespace and `-A`), a node's and a Pod's `proxy/`, `--as` | 403 from the API server, to `system:serviceaccount:agora-gateway:gateway`: the RBAC. |
-| WebSocket handshakes to `exec`, `attach`, `portforward`, over HTTP/1.1 as kubectl sends them (GETs the grant lets through) | They reach the API server; 403 there (RBAC); never upgraded. |
-| kubectl `exec`, `attach`, `port-forward` | Refused, nothing runs: kubectl 1.36.5 ends on its SPDY fallback, a POST, which the gateway refuses. |
+| WebSocket handshakes to `exec`, `attach`, `portforward` through the gateway, over HTTP/1.1 as kubectl sends them (GETs the grant lets through) | They reach the API server; 403 there (RBAC); never upgraded. Each run prints the audit's codes. |
+| The same exec handshake straight to the API server with the ServiceAccount's own token | 403 (RBAC), no 101. With `MUTATE=role`: 101 and the command runs. |
+| kubectl `exec`, `attach`, `port-forward` | Refused, nothing runs. kubectl's last error is the gateway's 403. Whatever reached the API server on the way is read in the audit, printed, and must be a 403. |
 | `create`, `delete`, `patch`, `label`, `create token`, `auth can-i`, `auth whoami` | 403 from the gateway (POST, PUT, PATCH, DELETE); the audit log shows none reached the API server; the ConfigMap is unchanged. |
 | The same refusals by the RBAC alone: the ServiceAccount's token straight to the API server; `auth can-i --as` for each forbidden verb and resource | Refused; only get, list and watch on the named resources are allowed. |
 | No profile, `internet` alone, `anthropic` alone; `kubernetes:read` from another address | 403 from the gateway; the API server receives nothing. |

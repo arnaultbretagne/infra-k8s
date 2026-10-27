@@ -274,14 +274,19 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       const r = await s.kubectl(args)
       assert.ok(forbiddenBySA(r), `${name}: ${r.code} ${r.err}`)
     }
-    // exec, attach and port-forward: kubectl tries a WebSocket (a GET the grant lets through, which the RBAC refuses),
-    // then SPDY (a POST the gateway refuses). Either way, refused; nothing ran.
+    // exec, attach and port-forward as kubectl runs them: refused, nothing ran. What reached the API server on the way
+    // (a WebSocket GET, which the grant lets through) is read in the audit and said, not assumed.
     for (const [name, args, timeout] of [['exec', ['-n', NS, 'exec', 'web', '--', 'echo', 'ran-in-the-pod'], 0], ['attach', ['-n', NS, 'attach', 'web'], 0], ['port-forward', ['-n', NS, 'port-forward', 'pod/web', `${await freePort()}:80`], 15_000]]) {
+      const mark = audit().count
       const r = await s.kubectl(args, { timeout })
+      await sleep(1000)
+      const sub = name === 'port-forward' ? 'portforward' : name
+      const reached = audit(mark).events.filter((e) => e.requestURI.includes(`/pods/web/${sub}`) && e.stage === 'ResponseComplete')
       assert.notEqual(r.code, 0, `${name}: ${r.out}`)
       assert.ok(forbiddenBySA(r) || refusedByGateway(r), `${name}: ${r.err}`)
       assert.ok(!r.out.includes('ran-in-the-pod') && !/Forwarding from/.test(r.out), `${name}: ${r.out}`)
-      t.diagnostic(`${name}: ${forbiddenBySA(r) ? 'refused by the RBAC, 403 from the API server' : 'refused by the gateway'}`)
+      t.diagnostic(`kubectl ${name}: its last error from ${forbiddenBySA(r) ? 'the API server (RBAC 403)' : 'the gateway (403)'}; the API server received ${reached.length ? reached.map((e) => `${e.verb} ${e.user.username} ${e.responseStatus?.code}`).join(', ') : 'nothing'}`)
+      for (const e of reached) assert.equal(e.responseStatus?.code, 403, `kubectl ${name} reached the API server: ${JSON.stringify(e.responseStatus)}`)
     }
   })
 
