@@ -164,7 +164,8 @@ http.createServer((req, res) => {
     assert.equal(issuer.value, 'https://id.bretagne.dev')
     issuer.value = ISSUER // the one change: the stand-in issuer
     if (MUTATE === 'gate' && g.metadata.name === `${P}-gateway-gate`) {
-      g.spec.template.spec.containers[0].env = env.filter((e) => e.name !== 'OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE').concat([{ name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' }])
+      // Broken open: no identities file, any identity whose token carries the client's audience.
+      g.spec.template.spec.containers[0].env = env.filter((e) => e.name !== 'OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE').concat([{ name: 'OAUTH2_PROXY_EMAIL_DOMAINS', value: '*' }, { name: 'OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL', value: 'true' }])
     }
   }
   const previews = parseAllDocuments(admin(['kustomize', join(REPO, 'infrastructure/configs/previews')])).map((d) => d.toJS()).filter(Boolean)
