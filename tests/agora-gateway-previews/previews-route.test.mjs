@@ -315,10 +315,11 @@ describe('the previews route and the gateway gate: agentgateway 1.6.0, Traefik a
     const before = appSeen()
     const s = await sandbox(['previews'])
     for (const host of ['preview.bretagne.dev', 'x.preview.bretagne.dev', `a.${HOST}`, `pr-0-${APP}.preview.bretagne.dev`, `pr-${PR}-.preview.bretagne.dev`, `pr-${PR}-${APP}-.preview.bretagne.dev`, `pr-${PR}-a_b.preview.bretagne.dev`]) {
-      const r = await s.request(host)
-      t.diagnostic(`${host} with previews: ${r.status} ${r.text.trim().slice(0, 60)}`)
-      assert.equal(r.status, 403, `${host}: ${r.text}`)
-      assert.match(r.text, /authorization failed/)
+      // A name that is not a valid DNS name never gets a certificate from the gateway: refused at TLS.
+      let r
+      try { r = await s.request(host) } catch (error) { r = { status: 'TLS', text: String(error.message).split('\n')[0] } }
+      t.diagnostic(`${host} with previews: ${r.status === 'TLS' ? `refused by the gateway at TLS (${r.text.slice(0, 90)})` : `${r.status} ${r.text.trim().slice(0, 60)}`}`)
+      assert.ok(r.status === 'TLS' || (r.status === 403 && /authorization failed/.test(r.text)), `${host}: ${r.status} ${r.text}`)
     }
     for (const [profiles, address] of [[[], '127.0.0.1'], [['internet'], '127.0.0.1'], [['anthropic'], '127.0.0.1'], [['previews'], '10.244.0.99']]) {
       const other = await sandbox(profiles, address)
