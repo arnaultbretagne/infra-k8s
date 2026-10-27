@@ -115,6 +115,8 @@ for name, want in want_clients.items():
         # then known before it exists, and recreating it keeps it. Pocket-ID mints one otherwise.
         if want.get("id"):
             body["id"] = want["id"]
+        if want.get("accessTokenDurationMinutes"):
+            body["accessTokenDurationMinutes"] = want["accessTokenDurationMinutes"]
         if ENFORCE:
             st, res = api("POST", "/oidc/clients", body)
             if st in (200, 201) and res:
@@ -126,7 +128,10 @@ for name, want in want_clients.items():
         cid = cur["id"]
         if want.get("id") and want["id"] != cid:
             # The id is fixed at creation: only deleting the client changes it, and that is for a human.
-            log(f"         ERROR client {name}: id {cid} is not the spec's {want['id']}"); errors += 1
+            # Nothing is written to a client that is not the one the spec pins: no update, no groups.
+            log(f"[client] SKIP    {name}  (ERROR: id {cid} is not the spec's {want['id']}; nothing written)")
+            errors += 1
+            continue
         st, detail = api("GET", f"/oidc/clients/{cid}")
         if st != 200 or not detail:
             log(f"         ERROR get client {name}: {st} {detail}"); errors += 1; continue
@@ -140,6 +145,8 @@ for name, want in want_clients.items():
             drift.append("pkceEnabled")
         if detail.get("isGroupRestricted", False) != bool(want.get("allowedGroups")):
             drift.append("isGroupRestricted")
+        if want.get("accessTokenDurationMinutes") and detail.get("accessTokenDurationMinutes") != want["accessTokenDurationMinutes"]:
+            drift.append("accessTokenDurationMinutes")
         if drift:
             log(f"[client] UPDATE  {name}  (drift: {', '.join(drift)})")
             if ENFORCE:
@@ -151,6 +158,8 @@ for name, want in want_clients.items():
                     "pkceEnabled": want.get("pkceEnabled", False),
                     "requiresReauthentication": detail.get("requiresReauthentication", False),
                     "isGroupRestricted": bool(want.get("allowedGroups")),
+                    # Pocket-ID resets an update without it to 60 minutes: the spec's, else the current one.
+                    "accessTokenDurationMinutes": want.get("accessTokenDurationMinutes") or detail.get("accessTokenDurationMinutes", 0),
                 }
                 st, res = api("PUT", f"/oidc/clients/{cid}", body)
                 if st == 200: changes += 1

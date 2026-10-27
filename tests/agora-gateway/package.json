@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The agora-gateway's vault route, end to end on the real agentgateway binary (README.md).",
   "scripts": {
-    "test": "node --test --test-concurrency=1 vault-route.test.mjs"
+    "test": "node --test --test-concurrency=1 vault-route.test.mjs vault-token-expiry.test.mjs"
   },
   "engines": {
     "node": ">=24"

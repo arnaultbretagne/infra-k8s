@@ -115,14 +115,19 @@ data:
                 # The vault's MCP server (apps/obsidian), for `vault:read` and `vault:write`. agentgateway
                 # speaks MCP here: it opens its own session with the server, so it reads each tools/list and
                 # tools/call and applies mcpAuthorization to them — a tool the grants do not cover is left
-                # out of tools/list and refused on tools/call. The bearer is the cluster's own Pocket-ID
-                # machine client (`agora_gateway_vault`), minted by vault-refresher.yaml; the sandbox's
+                # out of tools/list and refused on tools/call. The bearer is a token of the cluster's own
+                # Pocket-ID machine client (`agora_gateway_vault`), in vault-token.secrets.yaml; the sandbox's
                 # Authorization never reaches the server. Straight to the Service, not through Traefik: the
                 # gateway reaches nothing else in the cluster (networkpolicy.yaml).
+                # Stateless: agentgateway sets up its upstream client, policies included, once per session, so
+                # a stateful session would keep the bearer it opened with. Stateless, every message builds it
+                # again from the current configuration: a rotated token reaches the sessions already open.
+                # Each message is then initialize + the message + DELETE to the server, which ends its session.
                 - name: vault
                   hostnames: [vault.bretagne.dev]
                   backends:
                     - mcp:
+                        statefulMode: stateless
                         targets:
                           - name: vault
                             mcp:
@@ -337,7 +342,7 @@ spec:
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
-            # The vault's bearer, rewritten by vault-refresher every 15 minutes: watched the same way.
+            # The vault's bearer (vault-token.secrets.yaml): watched the same way.
             - { name: vault, mountPath: /etc/agentgateway/vault, readOnly: true }
       volumes:
         - name: config
@@ -370,10 +375,10 @@ spec:
             defaultMode: 0440
             items:
               - { key: access_token, path: access_token }
-        # Created empty by Flux, filled by vault-refresher (vault-refresher.yaml).
+        # vault-token.secrets.yaml. Optional: the gateway starts without it, the vault then answers 401.
         - name: vault
           secret:
-            secretName: vault-session
+            secretName: vault-token
             optional: true
             defaultMode: 0440
             items:

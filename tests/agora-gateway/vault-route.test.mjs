@@ -51,14 +51,18 @@ async function freePort() {
 async function startVault(port) {
   const seen = []
   const sessions = new Map()
+  // Tokens the server no longer accepts, as Pocket-ID's would expire: 401, as obsidian-mcp answers.
+  const refused = new Set()
   const app = express()
   app.use(express.json())
   app.all('/mcp', async (req, res) => {
     seen.push({ method: req.method, authorization: req.headers.authorization ?? null, rpc: req.body?.method ?? null, name: req.body?.params?.name ?? null, raw: JSON.stringify(req.headers) })
+    if (refused.has(req.headers.authorization)) return res.status(401).json({ error: 'Invalid or expired token' })
     let transport = sessions.get(req.headers['mcp-session-id'])
     if (!transport) {
       if (req.method !== 'POST' || req.body?.method !== 'initialize') return res.status(404).json({ error: 'no session' })
-      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => sessions.set(id, transport) })
+      // As obsidian-mcp 0.4.0 does (mcp-server/src/index.ts, createSession): a DELETE ends the session.
+      transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID(), onsessioninitialized: (id) => sessions.set(id, transport), onsessionclosed: (id) => sessions.delete(id) })
       const server = new McpServer({ name: 'vault-mcp', version: '0.4.0' })
       for (const name of ALL_TOOLS) server.registerTool(name, { description: name }, async () => ({ content: [{ type: 'text', text: `ran ${name}` }] }))
       server.registerPrompt(PROMPT, { description: PROMPT }, async () => ({ messages: [{ role: 'user', content: { type: 'text', text: 'clip it' } }] }))
@@ -67,7 +71,7 @@ async function startVault(port) {
     await transport.handleRequest(req, res, req.body)
   })
   const http = await new Promise((ok) => { const s = app.listen(port, '127.0.0.1', () => ok(s)) })
-  return { seen, close: () => new Promise((ok) => { http.closeAllConnections(); http.close(ok) }) }
+  return { seen, refused, sessions, close: () => new Promise((ok) => { http.closeAllConnections(); http.close(ok) }) }
 }
 
 /** The gateway CA the sandboxes trust, made for the test. */
@@ -246,14 +250,24 @@ function assertRefusedByGateway(result, kind, name) {
   assert.equal(result.json.error.message, `Unknown ${kind}: ${name}`)
 }
 
+/** Until the server has received nothing for 300 ms: the gateway closes its upstream sessions after it answers. */
+async function quiet() {
+  for (let count = -1; count !== ctx.vault.seen.length; ) {
+    count = ctx.vault.seen.length
+    await new Promise((ok) => setTimeout(ok, 300))
+  }
+}
+
 async function assertForbidden(profiles, options, request = (s) => s.open()) {
+  await quiet()
   const before = ctx.vault.seen.length
   const s = await sandbox(profiles, options)
   const result = await request(s)
   await s.close()
   assert.equal(result.status, 403, result.text)
   assert.match(result.text, /authorization failed/)
-  assert.equal(ctx.vault.seen.length, before, 'the server sees nothing')
+  await quiet()
+  assert.deepEqual(ctx.vault.seen.slice(before).map((m) => [m.method, m.rpc]), [], 'the server sees nothing')
 }
 
 describe('the vault route on agentgateway 1.6.0', () => {
@@ -334,21 +348,44 @@ describe('the vault route on agentgateway 1.6.0', () => {
     }
   })
 
-  it('a new machine token, swapped in as the kubelet updates a Secret, is used without a restart', async () => {
+  it('a session opened before the machine token rotates keeps working once the old token has expired', async () => {
+    const s = await sandbox(['vault:read'])
+    assertAllowed(await s.open(), 'initialize')
+    assertAllowed(await s.call('read_note'), 'read_note before the rotation')
+    const old = `Bearer ${ctx.machineToken}`
     const fresh = `machine-${randomUUID()}`
     writeSecretVolume(ctx.vaultDir, { access_token: fresh })
+    ctx.machineToken = fresh
+    // The gateway reloads the file within seconds, as the kubelet's swap is seen: wait until a new session has it.
     const deadline = Date.now() + 30_000
     for (;;) {
-      const s = await sandbox(['vault:read'])
+      const probe = await sandbox(['vault:read'])
       const mark = ctx.vault.seen.length
-      assertAllowed(await s.open(), 'initialize')
-      await s.close()
-      const used = ctx.vault.seen.slice(mark).map((m) => m.authorization)
-      if (used.every((a) => a === `Bearer ${fresh}`)) break
-      if (Date.now() > deadline) assert.fail(`still ${used}`)
+      assertAllowed(await probe.open(), 'initialize')
+      await probe.close()
+      if (ctx.vault.seen.slice(mark).every((m) => m.authorization === `Bearer ${fresh}`)) break
+      if (Date.now() > deadline) assert.fail('the gateway never took the new token')
       await new Promise((ok) => setTimeout(ok, 500))
     }
-    assert.equal(ctx.gateway.exitCode, null, 'the same gateway process')
+    // The old token expires: the server refuses it from now on.
+    ctx.vault.refused.add(old)
+    const mark = ctx.vault.seen.length
+    assertAllowed(await s.call('read_note'), 'read_note in the session opened before the rotation')
+    assert.deepEqual(sorted(await s.tools()), sorted(READ_TOOLS), 'its tools, still filtered')
+    assertRefusedByGateway(await s.call('create_note'), 'tool', 'create_note')
+    const used = ctx.vault.seen.slice(mark).map((m) => m.authorization)
+    assert.ok(used.length > 0 && used.every((a) => a === `Bearer ${fresh}`), `the server saw ${used}`)
+    await s.close()
+    assert.equal(ctx.gateway.exitCode, null, 'the same gateway process: no restart')
+  })
+
+
+  it('every upstream session the gateway opens, it closes: none left open on the server', async () => {
+    await quiet()
+    const opened = ctx.vault.seen.filter((m) => m.rpc === 'initialize').length
+    const deleted = ctx.vault.seen.filter((m) => m.method === 'DELETE').length
+    assert.ok(opened > 20, `${opened} sessions opened`)
+    assert.equal(ctx.vault.sessions.size, 0, `${ctx.vault.sessions.size} of ${opened} sessions left open (${deleted} DELETE)`)
   })
 
   it('the gateway logs the route, the execution and the tool', () => {

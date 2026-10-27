@@ -25,8 +25,14 @@ What it asserts:
 | A token used from another address | 403. |
 | `/sse`, `/health`, `/.well-known/…`, `/mcp/`, `/mcp?x=1`, `..`, `%2e`, `%2f`, `PUT`, `PATCH` | 403. With a grant that has no path too: that one is refused by the route's own path-trick check. |
 | What the server receives | The machine token only: never the sandbox's `Authorization`, never Agora's token. |
-| The machine token's Secret updated, as the kubelet swaps `..data` | The new token is used, with no restart. |
+| A session open, the token rotated (as the kubelet swaps `..data`), then the server refusing the old token, as at its expiry | The **same** session's `tools/call` succeeds with the new token, its tools still filtered, with no restart. On a stateful route this fails with 401: agentgateway sets up a session's upstream client, credential included, once. |
+| Upstream sessions | Every session the gateway opens on the server (stateless: one per message), it closes with a DELETE: none left open. |
 | The gateway's log | Route `vault`, the execution, the tool. |
+
+`vault-token-expiry.test.mjs` checks the expiry check run each day by
+`.github/workflows/agora-gateway-vault-token.yml` (`vault-token-expiry.mjs`). The same workflow, job
+`reconciler`, runs `tests/pocket-id-reconciler`: `reconcile.py` against a simulated Pocket-ID, every write
+recorded.
 
 Locally (linux-amd64, Node 24):
 
