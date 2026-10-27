@@ -301,7 +301,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     for (const [verb, resource] of [['get', 'secrets'], ['list', 'secrets'], ['watch', 'secrets'], ['create', 'pods/exec'], ['get', 'pods/exec'], ['create', 'pods/attach'], ['get', 'pods/attach'], ['create', 'pods/portforward'], ['get', 'pods/portforward'], ['get', 'pods/proxy'], ['get', 'services/proxy'], ['get', 'nodes/proxy'], ['create', 'serviceaccounts/token'], ['update', 'pods/ephemeralcontainers'], ['create', 'configmaps'], ['delete', 'configmaps'], ['patch', 'pods'], ['update', 'deployments.apps'], ['impersonate', 'users'], ['get', 'resourcesets.fluxcd.controlplane.io']]) {
       assert.equal(ask(verb, resource), 'no', `${verb} ${resource}`)
     }
-    for (const [verb, resource] of [['get', 'pods'], ['list', 'pods'], ['watch', 'pods'], ['get', 'pods/log'], ['list', 'configmaps'], ['list', 'nodes'], ['list', 'deployments.apps'], ['list', 'helmreleases.helm.toolkit.fluxcd.io']]) {
+    for (const [verb, resource] of [['get', 'pods'], ['list', 'pods'], ['watch', 'pods'], ['get', 'pods/log'], ['list', 'configmaps'], ['list', 'nodes'], ['list', 'deployments.apps'], ['list', 'customresourcedefinitions.apiextensions.k8s.io']]) {
       assert.equal(ask(verb, resource), 'yes', `${verb} ${resource}`)
     }
     // And with the token itself, past the gateway: a write and a Secret refused.
