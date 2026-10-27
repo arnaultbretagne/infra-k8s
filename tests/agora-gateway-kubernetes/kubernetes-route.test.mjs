@@ -246,7 +246,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     watch.child.kill()
   })
 
-  it('Secrets, exec, attach, port-forward, the proxies and --as: refused by the RBAC, as the gateway\'s ServiceAccount', async (t) => {
+  it('Secrets, the proxies and --as: refused by the RBAC, as the gateway\'s ServiceAccount; kubectl exec, attach, port-forward: refused, nothing runs', async (t) => {
     const s = await sandbox(['kubernetes:read'])
     const cases = {
       'get secrets': ['-n', NS, 'get', 'secrets'],
