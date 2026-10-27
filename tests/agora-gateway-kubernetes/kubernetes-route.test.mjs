@@ -303,15 +303,41 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       } catch (error) {
         failure = error.message
       }
-      assert.equal(upgraded, false, `${name}: the handshake was accepted`)
       await sleep(1500)
       const seen = audit(mark).events.filter((e) => e.requestURI.includes(`/pods/web/${name}`))
+      // What happened, said before it is judged: the audit's codes and messages, as the API server answered.
+      t.diagnostic(`${name} over WebSocket through the gateway: upgraded=${upgraded}; client: ${failure || '101'}; API server: ${seen.length ? seen.map((e) => `${e.stage} ${e.user.username} ${e.annotations?.['authorization.k8s.io/decision'] ?? '?'} ${e.responseStatus?.code} ${e.responseStatus?.message ?? ''}`.trim()).join(' | ') : 'nothing received'}`)
+      assert.equal(upgraded, false, `${name}: the handshake was accepted`)
       for (const e of seen) {
         assert.equal(e.user.username, SA, `${name}: as the ServiceAccount`)
         assert.equal(e.responseStatus?.code, 403, `${name}: ${JSON.stringify(e.responseStatus)}`)
       }
-      t.diagnostic(`${name} over WebSocket: ${seen.length ? `reached the API server ${seen.length} time(s), refused there, 403 to ${SA}` : `stopped at the gateway (${failure})`}`)
     }
+  })
+
+  it('an exec over WebSocket straight to the API server with the ServiceAccount\'s own token: the RBAC refuses it (403, no 101)', async (t) => {
+    // The same handshake kubectl sends, HTTP/1.1, without the gateway: what the role alone decides. With the role
+    // broken on purpose (MUTATE=role), this is where an exec would go through: a 101, and the command runs.
+    const token = readFileSync(join(ctx.tokenDir, 'token'), 'utf8')
+    const direct = new Agent({ connect: { ca: readFileSync(ctx.kubeCa), ALPNProtocols: ['http/1.1'] }, allowH2: false })
+    const mark = audit().count
+    let upgraded = false
+    let failure = ''
+    let output = ''
+    try {
+      const { socket } = await direct.upgrade({ origin: 'https://127.0.0.1:443', path: `/api/v1/namespaces/${NS}/pods/web/exec?command=echo&command=ran-in-the-pod&stdout=true`, method: 'GET', protocol: 'websocket', headers: { authorization: `Bearer ${token}`, 'user-agent': 'agora-e2e-direct-exec', 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-protocol': 'v5.channel.k8s.io' } })
+      upgraded = true
+      socket.on('data', (chunk) => (output += chunk.toString('latin1')))
+      await sleep(2000)
+      socket.destroy()
+    } catch (error) {
+      failure = error.message
+    }
+    await sleep(1500)
+    const seen = audit(mark).events.filter((e) => e.userAgent === 'agora-e2e-direct-exec')
+    t.diagnostic(`direct exec: upgraded=${upgraded}${upgraded ? `, the command's output ${output.includes('ran-in-the-pod') ? 'received' : 'not received'}` : `; client: ${failure}`}; API server: ${seen.map((e) => `${e.stage} ${e.annotations?.['authorization.k8s.io/decision'] ?? '?'} ${e.responseStatus?.code}`).join(' | ') || 'nothing received'}`)
+    assert.equal(upgraded, false, `exec opened (101)${output.includes('ran-in-the-pod') ? ' and the command ran' : ''}: the role allows it`)
+    assert.ok(seen.length > 0 && seen.every((e) => e.user.username === SA && e.responseStatus?.code === 403), JSON.stringify(seen.map((e) => e.responseStatus)))
   })
 
   it('every write, a token, auth can-i: refused by the gateway, the API server receiving none', async () => {
