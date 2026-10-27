@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import forge from 'node-forge'
-import { ProxyAgent } from 'undici'
+import { Agent, ProxyAgent, fetch as undiciFetch } from 'undici'
 import { parse, parseAllDocuments, stringify } from 'yaml'
 
 const SHA256 = '496ed27e6a96b55a9ad7cabe5c2be7172511f44a3cb113e533d22bf93a7f079d' // agentgateway-linux-amd64 v1.6.0
@@ -112,6 +112,18 @@ before(async () => {
   const find = (kind, name) => objects.find((o) => o.kind === kind && o.metadata.name === name) ?? assert.fail(`${kind}/${name} in the render`)
   const role = find('ClusterRole', 'agora-kubernetes-read')
   if (MUTATE === 'role') role.rules.push({ apiGroups: [''], resources: ['secrets', 'pods/exec'], verbs: ['get', 'create'] })
+  // Every RBAC object this repository deploys, from each layer Flux reconciles out of it (clusters/bretagne), so that
+  // what the API server grants an anonymous request is checked with them in place. The Helm charts' own RBAC is not
+  // in this repository. The gateway's role goes on last: MUTATE=role must stay broken.
+  const layers = readFileSync(join(REPO, 'clusters/bretagne/kustomization.yaml'), 'utf8').match(/^\s*-\s*(\S+\.yaml)\s*$/gm).map((l) => l.replace(/^\s*-\s*/, '').trim())
+    .flatMap((file) => parseAllDocuments(readFileSync(join(REPO, 'clusters/bretagne', file), 'utf8')).map((d) => d.toJS()))
+    .filter((k) => k?.kind === 'Kustomization' && k.spec?.sourceRef?.name === 'flux-system')
+    .map((k) => k.spec.path.replace(/^\.\//, ''))
+  assert.ok(layers.includes('apps') && layers.includes('infrastructure/agent-sandbox'), `the layers: ${layers}`)
+  const repoRbac = layers.flatMap((dir) => parseAllDocuments(admin(['kustomize', join(REPO, dir)])).map((d) => d.toJS()))
+    .filter((o) => ['ClusterRole', 'ClusterRoleBinding', 'Role', 'RoleBinding'].includes(o?.kind))
+  const namespaces = [...new Set(repoRbac.map((o) => o.metadata.namespace).filter(Boolean))]
+  admin(['apply', '-f', '-'], [...namespaces.map((name) => ({ apiVersion: 'v1', kind: 'Namespace', metadata: { name } })), ...repoRbac].map((o) => stringify(o)).join('---\n'))
   const rbac = [find('Namespace', 'agora-gateway'), find('ServiceAccount', 'gateway'), role, find('ClusterRoleBinding', 'agora-kubernetes-read')]
   admin(['apply', '-f', '-'], rbac.map((o) => stringify(o)).join('---\n'))
 
@@ -183,7 +195,7 @@ before(async () => {
   assert.ok(shipped.includes('/etc/agora/credential-proxy/ca.pem'))
   writeFileSync(kubeconfig, shipped.replace('/etc/agora/credential-proxy/ca.pem', gatewayCa))
 
-  ctx = { work, gateway, log, signer, startOutbound, kubeconfig, gatewayCa, kubeCa: join(work, 'etc/kube-ca/ca.crt'), tokenDir, anchor, outbounds: [], mark: audit().count, adminUser: 'kubernetes-admin' }
+  ctx = { layers, repoRbac: repoRbac.length, work, gateway, log, signer, startOutbound, kubeconfig, gatewayCa, kubeCa: join(work, 'etc/kube-ca/ca.crt'), tokenDir, anchor, outbounds: [], mark: audit().count, adminUser: 'kubernetes-admin' }
 })
 
 after(async () => {
@@ -374,6 +386,52 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     }
   })
 
+  it('anonymous requests straight to the API server, with this repository\'s RBAC in place: version and health only', async (t) => {
+    // What the internet route would reach if a TLS handshake ever went through: a request with no credential.
+    const ca = readFileSync(ctx.kubeCa)
+    const anonymous = new Agent({ connect: { ca } })
+    const answer = async (path) => {
+      const response = await undiciFetch(`https://127.0.0.1:443${path}`, { dispatcher: anonymous })
+      await response.text()
+      return response.status
+    }
+    const allowed = /^\/(version|healthz|livez|readyz)(\/.*)?$/
+    const paths = ['/version', '/healthz', '/livez', '/readyz', '/', '/api', '/apis', '/api/v1', '/openapi/v2', '/openapi/v3', '/metrics', '/logs/', '/debug/pprof/', '/.well-known/openid-configuration', '/openid/v1/jwks', '/api/v1/namespaces', '/api/v1/secrets', '/api/v1/pods', '/api/v1/nodes', '/api/v1/namespaces/kube-system/configmaps', `/api/v1/namespaces/${NS}/pods/web/log`]
+    // And every resource the API server lists, cluster-wide.
+    const discovered = []
+    const core = JSON.parse(admin(['get', '--raw', '/api/v1']))
+    for (const r of core.resources) if (!r.name.includes('/') && r.verbs.includes('list')) discovered.push(`/api/v1/${r.name}`)
+    for (const g of JSON.parse(admin(['get', '--raw', '/apis'])).groups) {
+      const v = g.preferredVersion.groupVersion
+      for (const r of JSON.parse(admin(['get', '--raw', `/apis/${v}`])).resources) if (!r.name.includes('/') && r.verbs.includes('list')) discovered.push(`/apis/${v}/${r.name}`)
+    }
+    assert.ok(discovered.length > 40, `${discovered.length} resources`)
+    const open = []
+    for (const path of [...paths, ...discovered]) {
+      const status = await answer(path)
+      if (status === 200 && !allowed.test(path)) open.push(path)
+      if (allowed.test(path)) t.diagnostic(`${path}: ${status}`)
+    }
+    assert.deepEqual(open, [], 'nothing but version and health answers an anonymous request')
+    // The API server's own account of what an anonymous request may do.
+    const rules = admin(['auth', 'can-i', '--list', '--as=system:anonymous', '--as-group=system:unauthenticated'])
+    // Its columns: Resources, Non-Resource URLs, Resource Names, Verbs. Read by position.
+    const [header, ...rows] = rules.split('\n').filter((l) => l.trim())
+    const at = ['Non-Resource URLs', 'Resource Names', 'Verbs'].map((name) => header.indexOf(name))
+    assert.ok(at.every((n) => n > 0), header)
+    for (const row of rows) {
+      const resources = row.slice(0, at[0]).trim()
+      const urls = row.slice(at[0], at[1]).trim()
+      // Kubernetes lets anyone ask what they themselves may do: those reviews answer about the caller only.
+      if (resources) assert.match(resources, /^selfsubject(access|rules)?reviews\.authorization\.k8s\.io$|^selfsubjectreviews\.authentication\.k8s\.io$/, `an anonymous request may: ${row}`)
+      for (const url of urls.replace(/^\[|\]$/g, '').split(/\s+/).filter(Boolean)) {
+        assert.match(url, /^\/(version|healthz|livez|readyz)(\/\*?)?$/, `an anonymous request may: ${row}`)
+      }
+    }
+    t.diagnostic(`with ${ctx.repoRbac} RBAC objects of this repository applied (layers: ${ctx.layers.join(', ')})`)
+    t.diagnostic(`auth can-i --list as system:anonymous:\n${rules}`)
+  })
+
   it('the internet route cannot reach the API server anonymously: its certificate is not a public one', async () => {
     const mark = audit().count
     const s = await sandbox(['internet'])
@@ -409,7 +467,14 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     }
     assert.equal(await get(), 200)
     const watch = s.watch(['-n', NS, 'get', 'configmaps', '--watch', '-o', 'name'])
+    const event = async (name, when) => {
+      admin(['-n', NS, 'create', 'configmap', name])
+      for (const deadline = Date.now() + 20_000; !watch.out.includes(name); await sleep(200)) {
+        if (Date.now() > deadline) assert.fail(`the watch stopped ${when}: ${watch.out}`)
+      }
+    }
     await sleep(2000)
+    await event(`before-renewal-${run}`, 'before the renewal')
     const tunnels = s.outbound.describe().tunnels
 
     // The kubelet's renewal: a new token, the file swapped.
@@ -423,10 +488,12 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
 
     assert.equal(await get(), 200, 'the request on the tunnel opened before the renewal')
     assert.equal(s.outbound.describe().tunnels, tunnels, 'the same tunnel: no new CONNECT')
-    admin(['-n', NS, 'create', 'configmap', `after-renewal-${run}`])
-    for (const deadline = Date.now() + 20_000; !watch.out.includes(`after-renewal-${run}`); await sleep(200)) {
-      if (Date.now() > deadline) assert.fail(`the watch opened before the renewal stopped: ${watch.out}`)
-    }
+    // The watch opened before the renewal: one event after it, and another later, the stream still open.
+    await event(`after-renewal-${run}`, 'after the renewal')
+    await sleep(15_000)
+    await event(`later-${run}`, '15 s after the renewal')
+    assert.equal(watch.child.exitCode, null, 'the watch is still open')
+    assert.equal((watch.out.match(/configmap\//g) ?? []).filter(Boolean).length >= 3, true, watch.out)
     watch.child.kill()
     const fresh = await sandbox(['kubernetes:read'])
     const r = await fresh.kubectl(['-n', NS, 'get', 'configmap', 'readable'])
