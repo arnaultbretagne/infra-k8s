@@ -133,6 +133,31 @@ data:
                       key:
                         value: { file: /etc/agentgateway/chatgpt/access_token }
                         location: { header: { name: authorization, prefix: "Bearer " } }
+                # The previews (infra-k8s ADR 0017 v4 §7; docs/specs/credentials.md on arnaultbretagne/agora,
+                # "Previews"): pr-<n>-<app>.preview.bretagne.dev, reached by its public name as a browser reaches
+                # it, through Traefik and the wildcard certificate. Its rule reads the grant's `hostPattern`: a
+                # name the pattern refuses is never sent with the credential. The route marks the request
+                # (x-agora-gate: gateway, overwriting what the sandbox sent), which sends it to the preview's
+                # gateway gate rather than its browser gate; it sets the token of the Pocket-ID machine client
+                # agora_gateway_previews (previews-refresher.yaml) in place of whatever Authorization the sandbox
+                # sent. The gate takes that client alone and passes the app its own identity, never this token.
+                - name: previews
+                  hostnames: ["*.preview.bretagne.dev"]
+                  backends:
+                    - dynamic: {}
+                      policies:
+                        backendTLS: {}
+                  policies:
+                    authorization:
+                      rules:
+                        - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, has(g.hostPattern) && request.host.matches(g.hostPattern) && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    requestHeaderModifier:
+                      set:
+                        x-agora-gate: gateway
+                    backendAuth:
+                      key:
+                        value: { file: /etc/agentgateway/previews/access_token }
+                        location: { header: { name: authorization, prefix: "Bearer " } }
                 # GitHub REST, what a grant covers (GraphQL stays closed: no grant covers /graphql). A header
                 # match outranks the route without one for the same host.
                 - name: github-api
@@ -298,6 +323,8 @@ spec:
             - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
             # Watched by the gateway: rotating a credential needs no restart.
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
+            # The previews' token, rewritten by previews-refresher every 5 minutes: watched the same way.
+            - { name: previews, mountPath: /etc/agentgateway/previews, readOnly: true }
             # The ChatGPT session's access token, rewritten by chatgpt-refresher: watched the same way.
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
@@ -317,6 +344,14 @@ spec:
           secret:
             secretName: upstream-credentials
             defaultMode: 0440
+        # Created empty by Flux, filled by previews-refresher (previews-refresher.yaml).
+        - name: previews
+          secret:
+            secretName: previews-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
         # Created by hand, outside git (chatgpt-refresher.yaml): optional, so the gateway starts without it.
         - name: chatgpt
           secret:
