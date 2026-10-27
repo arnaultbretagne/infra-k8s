@@ -426,7 +426,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     for (const path of paths.filter((p) => !p.includes('/namespaces/'))) reviews.push({ nonResourceAttributes: { verb: 'get', path } })
     // One review per document; kubectl prints each answer as its own YAML document.
     const answers = admin(['create', '-o', 'yaml', '-f', '-'], reviews.map((spec) => stringify({ apiVersion: 'authorization.k8s.io/v1', kind: 'SubjectAccessReview', spec: { user: 'system:anonymous', groups: ['system:unauthenticated'], ...spec } })).join('---\n'))
-    const items = parseAllDocuments(answers).map((d) => d.toJS()).filter(Boolean)
+    const items = parseAllDocuments(answers).map((d) => d.toJS()).filter(Boolean).flatMap((o) => (o.kind === 'List' ? o.items : [o]))
     assert.equal(items.length, reviews.length)
     const granted = items.filter((a) => a.status.allowed).map((a) => a.spec.nonResourceAttributes?.path ?? `${a.spec.resourceAttributes.verb} ${a.spec.resourceAttributes.group}/${a.spec.resourceAttributes.resource}`)
     assert.deepEqual(granted.filter((g) => !allowed.test(g)), [], 'the authorizer grants an anonymous request nothing but version and health')
