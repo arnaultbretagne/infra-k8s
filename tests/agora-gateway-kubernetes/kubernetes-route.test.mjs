@@ -12,7 +12,7 @@
 // MUTATE, `route` or `role`, to break one on purpose (the workflow checks that the run then fails).
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto'
+import { createHash, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -266,6 +266,35 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       assert.ok(forbiddenBySA(r) || refusedByGateway(r), `${name}: ${r.err}`)
       assert.ok(!r.out.includes('ran-in-the-pod') && !/Forwarding from/.test(r.out), `${name}: ${r.out}`)
       t.diagnostic(`${name}: ${forbiddenBySA(r) ? 'refused by the RBAC, 403 from the API server' : 'refused by the gateway'}`)
+    }
+  })
+
+  it('WebSocket handshakes to exec, attach and port-forward (GETs the grant lets through): no command runs, and whoever answers, the API server never accepts one', async (t) => {
+    const s = await sandbox(['kubernetes:read'])
+    const paths = {
+      exec: `/api/v1/namespaces/${NS}/pods/web/exec?command=echo&command=ran-in-the-pod&stdout=true`,
+      attach: `/api/v1/namespaces/${NS}/pods/web/attach?stdout=true`,
+      portforward: `/api/v1/namespaces/${NS}/pods/web/portforward?ports=80`,
+    }
+    for (const [name, path] of Object.entries(paths)) {
+      const mark = audit().count
+      let upgraded = false
+      let failure = ''
+      try {
+        const { socket } = await s.http.upgrade({ origin: `https://${HOST}`, path, method: 'GET', protocol: 'websocket', headers: { 'sec-websocket-version': '13', 'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-protocol': name === 'portforward' ? 'v4.channel.k8s.io' : 'v5.channel.k8s.io' } })
+        upgraded = true
+        socket.destroy()
+      } catch (error) {
+        failure = error.message
+      }
+      assert.equal(upgraded, false, `${name}: the handshake was accepted`)
+      await sleep(1500)
+      const seen = audit(mark).events.filter((e) => e.requestURI.includes(`/pods/web/${name}`))
+      for (const e of seen) {
+        assert.equal(e.user.username, SA, `${name}: as the ServiceAccount`)
+        assert.equal(e.responseStatus?.code, 403, `${name}: ${JSON.stringify(e.responseStatus)}`)
+      }
+      t.diagnostic(`${name} over WebSocket: ${seen.length ? `reached the API server ${seen.length} time(s), refused there, 403 to ${SA}` : `stopped at the gateway (${failure})`}`)
     }
   })
 
