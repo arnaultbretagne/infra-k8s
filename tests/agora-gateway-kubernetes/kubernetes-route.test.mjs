@@ -244,7 +244,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     watch.child.kill()
   })
 
-  it('Secrets, exec, attach, port-forward, the proxies and --as: refused by the RBAC, as the gateway\'s ServiceAccount', async () => {
+  it('Secrets, exec, attach, port-forward, the proxies and --as: refused by the RBAC, as the gateway\'s ServiceAccount', async (t) => {
     const s = await sandbox(['kubernetes:read'])
     const cases = {
       'get secrets': ['-n', NS, 'get', 'secrets'],
@@ -265,6 +265,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       assert.notEqual(r.code, 0, `${name}: ${r.out}`)
       assert.ok(forbiddenBySA(r) || refusedByGateway(r), `${name}: ${r.err}`)
       assert.ok(!r.out.includes('ran-in-the-pod') && !/Forwarding from/.test(r.out), `${name}: ${r.out}`)
+      t.diagnostic(`${name}: ${forbiddenBySA(r) ? 'refused by the RBAC, 403 from the API server' : 'refused by the gateway'}`)
     }
   })
 

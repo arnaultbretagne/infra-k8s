@@ -116,7 +116,7 @@ jobs:
           {
             echo '### The kubernetes route on agentgateway 1.6.0, against kind'
             echo '```'
-            grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
+            grep -E '^ *(✔|✖|ℹ|# )' "$RUNNER_TEMP/test.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -134,6 +134,7 @@ jobs:
               cat "$RUNNER_TEMP/mutate-$mutate.txt"
               exit 1
             fi
+            echo "MUTATE=$mutate: failed, as it must:"; grep -E '^ *✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u | head -20
             {
               echo "- \`MUTATE=$mutate\` ($([ $mutate = route ] && echo "the route's rule set to 'true'" || echo "the role given secrets and pods/exec, get and create")): failed, as it must:"
               echo '```'
