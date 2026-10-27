@@ -1,0 +1,17 @@
+{
+  "name": "agora-gateway-previews-e2e",
+  "private": true,
+  "type": "module",
+  "description": "The agora-gateway's previews route and the previews' gateway gate, end to end (README.md).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 previews-route.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "node-forge": "1.4.1",
+    "undici": "8.12.3",
+    "yaml": "2.9.1"
+  }
+}
