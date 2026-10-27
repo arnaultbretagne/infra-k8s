@@ -238,6 +238,17 @@ async function sandbox(profiles, address = '127.0.0.1') {
   }
 }
 
+/** What the API server did with the requests since `mark`, from its audit log: verb, path, decision, code. */
+function served(mark) {
+  return audit(mark).events.filter((e) => e.user.username === SA && e.stage === 'ResponseComplete')
+    .map((e) => `${e.verb} ${e.requestURI.split('?')[0]} ${e.annotations?.['authorization.k8s.io/decision'] ?? '?'} ${e.responseStatus?.code}`)
+}
+/** One line for a kubectl run: its exit code, who answered, and what the API server's audit shows. */
+function outcome(r, events) {
+  const by = refusedByGateway(r) ? 'the gateway (authorization failed)' : r.code === 0 ? 'the API server (success)' : `the API server: ${(r.err.split('\n').find((l) => /Error|error/.test(l)) ?? r.err).trim().slice(0, 160)}`
+  return `exit ${r.code}, answered by ${by}; API server audit: ${events.length ? events.join(', ') : 'nothing received'}`
+}
+
 const refusedByGateway = (r) => r.code !== 0 && /authorization failed/.test(r.err)
 const forbiddenBySA = (r) => r.code !== 0 && /forbidden/i.test(r.err) && r.err.includes(SA)
 
@@ -345,7 +356,7 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     assert.ok(seen.length > 0 && seen.every((e) => e.user.username === SA && e.responseStatus?.code === 403), JSON.stringify(seen.map((e) => e.responseStatus)))
   })
 
-  it('every write, a token, auth can-i: refused by the gateway, the API server receiving none', async () => {
+  it('every write, a token, auth can-i: refused by the gateway, the API server receiving none', async (t) => {
     const mark = audit().count
     const s = await sandbox(['kubernetes:read'])
     const cases = {
@@ -358,7 +369,10 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
       'auth whoami': ['auth', 'whoami'],
     }
     for (const [name, args] of Object.entries(cases)) {
+      const before = audit().count
       const r = await s.kubectl(args)
+      await sleep(500)
+      t.diagnostic(`${name}: ${outcome(r, served(before))}`)
       // kubectl auth whoami words a 403 its own way; the audit below shows the API server received nothing.
       const whoami = name === 'auth whoami' && r.code !== 0 && /selfsubjectreviews API is not enabled in the cluster or you do not have permission/.test(r.err)
       assert.ok(refusedByGateway(r) || whoami, `${name}: ${r.code} ${r.err}`)
@@ -391,29 +405,38 @@ describe('the kubernetes route, agentgateway 1.6.0 against a real API server', (
     }
   })
 
-  it('without kubernetes:read — no profile, internet alone, anthropic alone — 403 from the gateway', async () => {
+  it('without kubernetes:read — no profile, internet alone, anthropic alone — 403 from the gateway', async (t) => {
     const mark = audit().count
     for (const profiles of [[], ['internet'], ['anthropic']]) {
       const s = await sandbox(profiles)
+      const before = audit().count
       const r = await s.kubectl(['get', 'pods', '-A'])
+      await sleep(500)
+      t.diagnostic(`get pods -A with [${profiles}]: ${outcome(r, served(before))}`)
       assert.ok(refusedByGateway(r), `${profiles}: ${r.err}`)
     }
     assert.deepEqual(audit(mark).events.filter((e) => e.user.username === SA), [], 'the API server receives nothing')
   })
 
-  it('kubernetes:read from another address than the token\'s: 403 from the gateway', async () => {
+  it('kubernetes:read from another address than the token\'s: 403 from the gateway', async (t) => {
     const mark = audit().count
     const s = await sandbox(['kubernetes:read'], '10.244.0.99')
     const r = await s.kubectl(['get', 'pods', '-A'])
+    await sleep(500)
+    t.diagnostic(`get pods -A, token bound to 10.244.0.99: ${outcome(r, served(mark))}`)
     assert.ok(refusedByGateway(r), r.err)
     assert.deepEqual(audit(mark).events.filter((e) => e.user.username === SA), [])
   })
 
-  it('paths outside the grant and path tricks: 403 from the gateway', async () => {
+  it('paths outside the grant and path tricks: 403 from the gateway', async (t) => {
     const s = await sandbox(['kubernetes:read'])
     for (const path of ['/', '/healthz', '/livez', '/metrics', '/logs/', '/api/../healthz', '/api/v1/%2e%2e/%2e%2e/healthz', '/api%2fv1/pods']) {
+      const before = audit().count
       const response = await s.http.request({ origin: `https://${HOST}`, path, method: 'GET' })
       const body = await response.body.text()
+      await sleep(300)
+      const events = served(before)
+      t.diagnostic(`GET ${path}: ${response.statusCode} from ${/authorization failed/.test(body) ? 'the gateway' : 'the API server'}; API server audit: ${events.length ? events.join(', ') : 'nothing received'}`)
       assert.equal(response.statusCode, 403, `${path}: ${body}`)
       assert.match(body, /authorization failed/)
     }
