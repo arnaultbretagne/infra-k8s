@@ -675,7 +675,7 @@ cause of a hung VM would have the same effect.
 Settles §7's open point. The operator approved it: the previews' gate accepts the credential of Agora's gateway, and
 only that one, besides the admins' browser session. The browser path stays as it is (`ALLOWED_GROUPS=admin`), and no
 secret enters a `pv-*` namespace. The contract is Agora's `docs/specs/credentials.md`, "Previews" (branch
-`flow/2f42be87/preview-profile`, PR #155). The implementation is infra-k8s PR #297.
+`feat/credentials-previews`, PR #162). The implementation is infra-k8s PR #303.
 
 - **Who.** An Agora execution given the `previews` profile (the flows' judge). Its grant covers the hosts
   `pr-<n>-<app>.preview.bretagne.dev` alone (`hostPattern`), every path and method.
@@ -693,5 +693,8 @@ secret enters a `pv-*` namespace. The contract is Agora's `docs/specs/credential
 - **Revocation.** Taking `client-<id>` out of `preview-gateway-identities` refuses every token of the client at every
   gateway gate, whatever secret minted it, once the kubelet has updated the file. Deleting a secret or the client in
   Pocket-ID stops new tokens only: tokens already issued stay valid until they expire, 15 minutes at most.
+  Pocket-ID 2.18.0 has no way to disable a client, and creating a secret removes none: the old secret works until it
+  is deleted by its id (`DELETE /api/oidc/clients/{id}/secrets/{secretId}`). Rotating the secret is therefore: create
+  the new one, put it in `previews-client`, then delete the old one.
 - **Network.** Gateway gate → its workload: the entry's port, like the browser gate. Gateway gate → Pocket-ID: as the
   browser gate. `previews-refresher` → Pocket-ID in the cluster, port 1411. The gateway's own egress is unchanged.

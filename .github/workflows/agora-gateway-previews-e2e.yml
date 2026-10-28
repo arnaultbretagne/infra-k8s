@@ -57,7 +57,7 @@ env:
   GATEWAY_API_SHA256: 356c2b8e286a964dc20995435659ad1095386329974793af10bbfe3eff977fe5
   TRAEFIK_CHART_VERSION: 41.6.1
   # Agora's packages/credentials and harness-bridge: the previews profile (docs/specs/credentials.md, "Previews"),
-  # branch flow/2f42be87/preview-profile. Moved by hand when the contract moves.
+  # branch feat/credentials-previews (PR #162). Moved by hand when the contract moves.
   AGORA_REF: b887ae1e3b8f894d7398247a6e002abda273beaa
   PREVIEW_HOST: pr-42-preview-demo.preview.bretagne.dev
 
