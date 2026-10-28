@@ -9,8 +9,8 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   harness: claude-code
-  name: claude-code-bc645733c679
-  image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:bc645733c679264d1af9b69302c0c8fa9202155723f02accad026dc00d057707
+  name: claude-code-ec59a23b8d77
+  image: ghcr.io/arnaultbretagne/agora-harness-claude-code@sha256:ec59a23b8d77c614a15ae2467ff4334da36741ae96e5be1e29568371f4bb631f
   versions: claude-agent-acp 0.85.1, claude-code 2.1.288
-  source: arnaultbretagne/agora design/agora-foundations a1473b1
-  inputs: "64b8dba86244507f"
+  source: arnaultbretagne/agora main 81d1ae8
+  inputs: "fb708ba53d79f1ba"
