@@ -11,6 +11,8 @@ spec:
       app: oidc-reconciler
   ingress: []          # nothing talks to the reconciler
   egress:
+    # -> the API server, for the Secrets apps hand over (spec.json `secret`; ADR 0022, amendment 2026-10-29)
+    - toEntities: [kube-apiserver]
     # -> Pocket-ID app API
     - toEndpoints:
         - matchLabels:

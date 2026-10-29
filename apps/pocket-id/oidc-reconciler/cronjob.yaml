@@ -5,7 +5,9 @@ metadata:
 spec:
   # Daily. The reconciler is idempotent; run it on demand after editing spec.json with:
   #   kubectl -n pocket-id create job --from=cronjob/oidc-reconciler oidc-reconciler-manual
-  schedule: "15 3 * * *"
+  # Every 15 minutes: a client merged in the spec has its policy, and its secret if it names one, within
+  # minutes (ADR 0022, amendment 2026-10-29). Every run is idempotent.
+  schedule: "*/15 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -19,6 +21,8 @@ spec:
             app: oidc-reconciler
         spec:
           restartPolicy: Never
+          # Its own identity: the apps that hand it a Secret (`secret` in spec.json) bind this name.
+          serviceAccountName: oidc-reconciler
           securityContext:
             # Mirrors restore-test.yaml: same image (CNPG postgres, already used in
             # this ns), same non-root uid/gid. No dedicated runner image needed — the

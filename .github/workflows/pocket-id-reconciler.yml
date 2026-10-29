@@ -1,0 +1,45 @@
+# apps/pocket-id/oidc-reconciler/reconcile.py, unchanged, against a simulated Pocket-ID and a simulated API server
+# (tests/pocket-id-reconciler): every write it sends, the client secrets it owns (ADR 0022, amendment 2026-10-29).
+name: pocket-id reconciler
+
+on:
+  pull_request:
+    paths:
+      - apps/pocket-id/oidc-reconciler/**
+      - tests/pocket-id-reconciler/**
+      - .github/workflows/pocket-id-reconciler.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/pocket-id/oidc-reconciler/**
+      - tests/pocket-id-reconciler/**
+      - .github/workflows/pocket-id-reconciler.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocket-id-reconciler-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reconciler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: The OIDC reconciler's writes
+        run: |
+          python3 --version
+          set -o pipefail
+          python3 -m unittest discover -s tests/pocket-id-reconciler -v 2>&1 | tee "$RUNNER_TEMP/reconciler.txt"
+          {
+            echo '### The OIDC reconciler against a simulated Pocket-ID and API server'
+            echo '```'
+            grep -E ' \.\.\. |^Ran |^OK|^FAILED' "$RUNNER_TEMP/reconciler.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
