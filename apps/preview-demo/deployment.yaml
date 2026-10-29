@@ -14,14 +14,13 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
+        runAsUser: 101
+        runAsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: whoami
-          image: traefik/whoami:v1.12.0
-          args: ["--port=8080"]
+        - name: web
+          image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
           ports:
             - containerPort: 8080
           securityContext:
@@ -32,6 +31,83 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 16Mi
+              memory: 32Mi
             limits:
-              memory: 64Mi
+              memory: 128Mi
+          volumeMounts:
+            - name: site
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: conf
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+      volumes:
+        - name: conf
+          configMap:
+            name: team-demo-nginx
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: site
+          projected:
+            sources:
+              - configMap:
+                  name: team-demo-0
+                  items:
+                    - key: assets__assistant-ui-9iult4gO.js.gz
+                      path: assets/assistant-ui-9iult4gO.js.gz
+                    - key: assets__inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
+                      path: assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
+                    - key: assets__index-QWTfIMee.js.gz
+                      path: assets/index-QWTfIMee.js.gz
+                    - key: assets__react-C-U3wrz7.js.gz
+                      path: assets/react-C-U3wrz7.js.gz
+                    - key: assets__newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
+                      path: assets/newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
+                    - key: assets__inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+                      path: assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+                    - key: assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
+                      path: assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
+                    - key: assets__vendor-Dm258jdf.js.gz
+                      path: assets/vendor-Dm258jdf.js.gz
+                    - key: assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
+                      path: assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
+                    - key: assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
+                      path: assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
+                    - key: assets__inter-greek-wght-normal-CkhJZR-_.woff2.gz
+                      path: assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
+                    - key: assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+                      path: assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+              - configMap:
+                  name: team-demo-1
+                  items:
+                    - key: assets__index-naOzeYMb.css.gz
+                      path: assets/index-naOzeYMb.css.gz
+                    - key: assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                      path: assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                    - key: assets__markdown-TNMTbRpp.js.gz
+                      path: assets/markdown-TNMTbRpp.js.gz
+                    - key: assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
+                      path: assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
+                    - key: assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
+                      path: assets/newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
+                    - key: assets__inter-greek-ext-wght-normal-DlzME5K_.woff2.gz
+                      path: assets/inter-greek-ext-wght-normal-DlzME5K_.woff2.gz
+                    - key: assets__inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz
+                      path: assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz
+                    - key: assets__jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz
+                      path: assets/jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz
+                    - key: assets__jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz
+                      path: assets/jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz
+                    - key: assets__jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz
+                      path: assets/jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz
+                    - key: index.html
+                      path: index.html
+                    - key: favicon.svg.gz
+                      path: favicon.svg.gz
+                    - key: assets__rolldown-runtime-vfrPO-fZ.js.gz
+                      path: assets/rolldown-runtime-vfrPO-fZ.js.gz
+                    - key: assets__assistant-ui-CcdakA0V.css.gz
+                      path: assets/assistant-ui-CcdakA0V.css.gz
