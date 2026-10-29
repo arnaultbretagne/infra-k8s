@@ -49,12 +49,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Agora's GrantSigner, at a pinned commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: arnaultbretagne/agora
           ref: ${{ env.AGORA_REF }}
@@ -63,7 +63,7 @@ jobs:
           persist-credentials: false
 
       - name: obsidian-mcp's token checks, at the tag deployed
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: arnaultbretagne/obsidian-stack
           ref: ${{ env.OBSIDIAN_STACK_REF }}
