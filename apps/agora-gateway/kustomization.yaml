@@ -7,6 +7,7 @@ namespace: agora-gateway
 resources:
   - namespace.yaml
   - limitrange.yaml
+  - kubernetes-read.yaml
   - gateway-ca.secrets.yaml
   - upstream-credentials.secrets.yaml
   - chatgpt-refresher.yaml

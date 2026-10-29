@@ -19,6 +19,9 @@ spec:
     spec:
       # Every sandbox reaches its model through here: shed last, like the server.
       priorityClassName: bretagne-critical
+      # Its identity on the API server (kubernetes-read.yaml), for the `kubernetes` route. Not mounted by
+      # default: the token comes from the projected volume `kubernetes` below, to this container only.
+      serviceAccountName: gateway
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
@@ -56,6 +59,9 @@ spec:
           volumeMounts:
             - { name: config, mountPath: /etc/agentgateway/config, readOnly: true }
             - { name: jwks, mountPath: /etc/agentgateway/jwks, readOnly: true }
+            # The ServiceAccount's token, renewed by the kubelet: watched like the credentials below. And the API server's CA.
+            - { name: kubernetes, mountPath: /etc/agentgateway/kubernetes, readOnly: true }
+            - { name: kube-ca, mountPath: /etc/agentgateway/kube-ca, readOnly: true }
             - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
             # Watched by the gateway: rotating a credential needs no restart.
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
@@ -70,6 +76,21 @@ spec:
         - name: jwks
           configMap:
             name: grants-jwks
+        # The ServiceAccount `gateway`'s token, for the API server's own audience: one hour, renewed by the
+        # kubelet before it expires (at 80 % of its life).
+        - name: kubernetes
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+        # The cluster's CA, which every namespace has, to check the API server's certificate.
+        - name: kube-ca
+          configMap:
+            name: kube-root-ca.crt
+            items:
+              - { key: ca.crt, path: ca.crt }
         - name: ca
           secret:
             secretName: gateway-ca

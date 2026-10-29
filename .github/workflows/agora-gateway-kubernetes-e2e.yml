@@ -1,0 +1,157 @@
+# The agora-gateway's `kubernetes` route, end to end (tests/agora-gateway-kubernetes/README.md). There is no preview
+# of the gateway (ADR 0017): this run is the proof of the system working. A kind API server with its audit log;
+# this repository's ServiceAccount and ClusterRole applied to it; the configuration kustomize renders, run by the
+# agentgateway 1.6.0 release binary; tokens from Agora's GrantSigner and carried by Agora's bridge, at a pinned
+# commit of the contract's branch; kubectl as in a sandbox. Then the same test twice more, the route broken and
+# the role broken: both runs must fail. No real secret: every key and token is made for the run.
+#
+# A file of its own, beside agora-gateway-e2e (the vault route, PR #295): that one is not on main yet, and the two
+# pull requests merge in either order without touching the same file.
+name: agora-gateway e2e (kubernetes)
+
+on:
+  pull_request:
+    paths:
+      - apps/agora-gateway/**
+      - apps/agora-sandboxes/networkpolicy.yaml
+      - apps/kustomization.yaml
+      - tests/agora-gateway-kubernetes/**
+      - .github/workflows/agora-gateway-kubernetes-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/agora-gateway/**
+      - apps/agora-sandboxes/networkpolicy.yaml
+      - apps/kustomization.yaml
+      - tests/agora-gateway-kubernetes/**
+      - .github/workflows/agora-gateway-kubernetes-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agora-gateway-kubernetes-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGENTGATEWAY_URL: https://github.com/agentgateway/agentgateway/releases/download/v1.6.0/agentgateway-linux-amd64
+  AGENTGATEWAY_SHA256: 496ed27e6a96b55a9ad7cabe5c2be7172511f44a3cb113e533d22bf93a7f079d
+  # kubectl as the sandbox images ship it (docs/specs/credentials.md, "kubectl in the sandbox").
+  KUBECTL_URL: https://dl.k8s.io/release/v1.36.5/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e
+  KIND_URL: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+  # Kubernetes 1.36, as the cluster's k0s.
+  KIND_NODE_IMAGE: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  # Agora's packages/credentials and harness-bridge: the kubernetes:read profile (docs/specs/credentials.md,
+  # "Kubernetes"), branch flow/2f42be87/kubernetes-profile. Moved by hand when the contract moves.
+  AGORA_REF: 2df72a348453be66cee974c6b3279bb0845ca9c3
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Agora's GrantSigner and bridge, at a pinned commit
+        uses: actions/checkout@v5
+        with:
+          repository: arnaultbretagne/agora
+          ref: ${{ env.AGORA_REF }}
+          path: .agora
+          sparse-checkout: |
+            packages/credentials/src
+            packages/harness-bridge/src
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/agora-gateway-kubernetes/package-lock.json
+
+      - name: kubectl, kind and agentgateway, checked against their sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
+          curl -fsSL -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          echo "$KIND_SHA256  $RUNNER_TEMP/bin/kind" | sha256sum -c -
+          echo "$AGENTGATEWAY_SHA256  $RUNNER_TEMP/bin/agentgateway" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/"*
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Every kustomization the route touches builds
+        run: |
+          { echo '### kubectl kustomize'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          for dir in apps/agora-gateway apps; do
+            kubectl kustomize "$dir" > "$RUNNER_TEMP/rendered.yaml"
+            line="\$ kubectl kustomize $dir  # exit $?, $(grep -c '^kind:' "$RUNNER_TEMP/rendered.yaml") objects"
+            echo "$line"; echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: A kind API server, its audit log on
+        run: |
+          sed "s#__POLICY__#$GITHUB_WORKSPACE/tests/agora-gateway-kubernetes/audit-policy.yaml#" tests/agora-gateway-kubernetes/kind.yaml > "$RUNNER_TEMP/kind.yaml"
+          kind create cluster --name kind --image "$KIND_NODE_IMAGE" --config "$RUNNER_TEMP/kind.yaml" --wait 180s
+          kubectl version
+          kubectl get nodes -o wide
+
+      - name: The kubernetes route on agentgateway 1.6.0
+        working-directory: tests/agora-gateway-kubernetes
+        env:
+          AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
+          AGORA_SRC: ${{ github.workspace }}/.agora/packages
+          KIND_NODE: kind-control-plane
+        run: |
+          npm ci --no-audit --no-fund
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          {
+            echo '### The kubernetes route on agentgateway 1.6.0, against kind'
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ|# )' "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The same test fails with the route broken, and with the role broken
+        working-directory: tests/agora-gateway-kubernetes
+        env:
+          AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
+          AGORA_SRC: ${{ github.workspace }}/.agora/packages
+          KIND_NODE: kind-control-plane
+        run: |
+          echo '### Broken on purpose: each run must fail' >> "$GITHUB_STEP_SUMMARY"
+          for mutate in route role; do
+            if MUTATE=$mutate npm test > "$RUNNER_TEMP/mutate-$mutate.txt" 2>&1; then
+              echo "::error::the test passed with the $mutate broken"
+              cat "$RUNNER_TEMP/mutate-$mutate.txt"
+              exit 1
+            fi
+            echo "MUTATE=$mutate: failed, as it must:"; grep -E '^ *✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u | head -20
+            echo "MUTATE=$mutate: what each test observed (its diagnostics) and the failing assertions:"
+            grep -E '^ *(ℹ |AssertionError|Error \[|  (actual|expected):)' "$RUNNER_TEMP/mutate-$mutate.txt" | head -120
+            {
+              echo "- \`MUTATE=$mutate\` ($([ $mutate = route ] && echo "the route's rule set to 'true'" || echo "the role given secrets and pods/exec, get and create")): failed, as it must:"
+              echo '```'
+              grep -E '^ *✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u | head -20
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: The API server's audit log
+        if: always()
+        run: docker exec kind-control-plane cat /var/log/kubernetes/audit.log > "$RUNNER_TEMP/audit.log" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kind-audit-log
+          path: ${{ runner.temp }}/audit.log
+          retention-days: 14
