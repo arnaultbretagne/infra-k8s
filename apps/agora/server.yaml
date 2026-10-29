@@ -90,8 +90,10 @@ spec:
             # docs/specs/credentials.md, "Offered profiles"). The gateway's GitHub PAT
             # (agora-gateway/upstream-credentials) must reach each repository: the grants only narrow
             # it. `internet` is the gateway's route without hosts, public addresses only
-            # (apps/agora-gateway): off unless picked for an execution.
-            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet" }
+            # (apps/agora-gateway): off unless picked for an execution. `vault:write` covers `vault:read` too (the
+            # vault MCP, route `vault`); `kubernetes:read` reads the cluster (route `kubernetes`); `previews`
+            # reaches the previews through their gateway gate (route `previews`), and the flows' judge is given it.
+            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews" }
             # Agora's docs/specs/credentials.md, "Limits": the server reads each account's limits
             # through the gateway, with a grant bound to its own address, checked against the
             # gateway's root (gateway-ca.yaml).
