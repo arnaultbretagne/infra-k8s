@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: pocket-id
 resources:
   - api-key.secret.yaml
+  - serviceaccount.yaml
   - networkpolicy.yaml
   - cronjob.yaml
 configMapGenerator:

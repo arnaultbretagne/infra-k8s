@@ -3,15 +3,18 @@
 
 Source of truth = /spec/spec.json (Git). This makes Pocket-ID's client policy
 BIJECTIVE with the spec: anything in the spec is created/updated, anything not in
-the spec is pruned. It manages *policy* only (callback URLs, group restriction,
-groups) — it never touches client secrets.
+the spec is pruned. It manages *policy* (callback URLs, group restriction, groups)
+and, for a client whose spec names a `secret` ({namespace, name}), its client
+secret: minted in Pocket-ID, written to that Secret, the only one the client keeps
+(ADR 0022). Never logs a secret. A client without `secret` keeps the old way: its
+secret bootstrapped by hand into its app's SOPS.
 
 MODE=dry-run (default): read-only, prints the plan, mutates nothing.
 MODE=enforce: applies the plan.
 
 Exit 2 = fatal/refused, 1 = ran with API errors, 0 = clean.
 """
-import json, os, sys, urllib.request, urllib.error
+import base64, json, os, ssl, sys, urllib.request, urllib.error
 
 BASE = os.environ["POCKET_ID_URL"].rstrip("/")
 KEY = os.environ["POCKET_ID_API_KEY"]
@@ -40,6 +43,39 @@ def api(method, path, body=None):
         return e.code, {"error": e.read().decode(errors="replace")}
     except Exception as e:
         return 0, {"error": str(e)}
+
+# The API server, for the Secrets the spec names: the Pod's ServiceAccount (KUBE_API and SA_DIR stand in
+# for them in tests/pocket-id-reconciler).
+SA_DIR = os.environ.get("SA_DIR", "/var/run/secrets/kubernetes.io/serviceaccount")
+KUBE_API = os.environ.get("KUBE_API") or (
+    f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}"
+    if os.environ.get("KUBERNETES_SERVICE_HOST") else None)
+
+def kube(method, path, body=None):
+    if KUBE_API is None:
+        return 0, {"error": "no API server"}
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(KUBE_API + path, data=data, method=method)
+    try:
+        with open(f"{SA_DIR}/token") as f:
+            req.add_header("Authorization", "Bearer " + f.read().strip())
+    except OSError as e:
+        return 0, {"error": f"no ServiceAccount token: {e}"}
+    req.add_header("Accept", "application/json")
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    context = ssl.create_default_context(cafile=f"{SA_DIR}/ca.crt") if KUBE_API.startswith("https://") else None
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=context) as r:
+            raw = r.read()
+            return r.status, (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        return e.code, {"error": e.read().decode(errors="replace")[:200]}
+    except Exception as e:
+        return 0, {"error": str(e)}
+
+def b64(text): return base64.b64encode(text.encode()).decode()
+def unb64(text): return base64.b64decode(text or "").decode()
 
 def list_all(path):
     st, body = api("GET", path + "?pagination[limit]=1000")
@@ -98,13 +134,67 @@ def group_ids_for(client):
         else: log(f"         WARN {client['name']}: group '{gname}' not present yet")
     return ids
 
+def ensure_secret(name, cid, where):
+    """The client's secret, owned here: exactly one in Pocket-ID, the same one in the Secret `where` names.
+
+    The Secret exists (its app creates it empty, `kustomize.toolkit.fluxcd.io/ssa: IfNotPresent`, and
+    lets this ServiceAccount get and update it). Empty, or holding a secret Pocket-ID no longer has, a
+    new one is minted and written there with its id; then every other secret of the client is deleted.
+    Emptying the Secret rotates it. Values are never logged."""
+    global changes, errors
+    if not isinstance(where, dict) or not where.get("namespace") or not where.get("name"):
+        log(f"[secret] ERROR   {name}: `secret` must give a namespace and a name"); errors += 1; return
+    path = f"/api/v1/namespaces/{where['namespace']}/secrets/{where['name']}"
+    shown = f"{where['namespace']}/{where['name']}"
+    if cid is None:
+        log(f"[secret] MINT    {name} -> {shown}  (new client)"); return
+    st, current = kube("GET", path)
+    if st != 200 or not isinstance(current, dict):
+        log(f"[secret] ERROR   {name}: cannot read {shown} ({st}); its app creates it, empty"); errors += 1; return
+    data = current.get("data") or {}
+    try:
+        held, held_id, held_client = unb64(data.get("client_secret")), unb64(data.get("secret_id")), unb64(data.get("client_id"))
+    except Exception:
+        held, held_id, held_client = "", "", ""
+    st, listed = api("GET", f"/oidc/clients/{cid}/secrets")
+    if st != 200 or not isinstance(listed, list):
+        log(f"[secret] ERROR   {name}: cannot list its secrets ({st})"); errors += 1; return
+    ids = [x["id"] for x in listed]
+    keep = held_id if held and held_client == cid and held_id in ids else None
+    if keep is None:
+        reason = "empty" if not held else ("another client's" if held_client != cid else "not in Pocket-ID")
+        log(f"[secret] MINT    {name} -> {shown}  ({reason})")
+        if not ENFORCE:
+            return
+        st, created = api("POST", f"/oidc/clients/{cid}/secrets", {})
+        if st not in (200, 201) or not isinstance(created, dict) or not created.get("secret") or not created.get("id"):
+            log(f"         ERROR mint secret {name}: {st}"); errors += 1; return
+        current["data"] = {**data, "client_id": b64(cid), "client_secret": b64(created["secret"]), "secret_id": b64(created["id"])}
+        st, res = kube("PUT", path, current)
+        if st != 200:
+            # Unwritten, it would be a secret nobody holds: deleted again, the next run tries anew.
+            log(f"         ERROR write {shown}: {st}; the new secret is deleted again")
+            api("DELETE", f"/oidc/clients/{cid}/secrets/{created['id']}")
+            errors += 1; return
+        changes += 1
+        keep = created["id"]
+    for sid in ids:
+        if sid == keep:
+            continue
+        log(f"[secret] DELETE  {name}  (a secret {shown} does not hold)")
+        if ENFORCE:
+            st, res = api("DELETE", f"/oidc/clients/{cid}/secrets/{sid}")
+            if st in (200, 204): changes += 1
+            else: log(f"         ERROR delete a secret of {name}: {st}"); errors += 1
+
 for name, want in want_clients.items():
     cur = cur_clients.get(name)
     cid = None
 
     if cur is None:
-        log(f"[client] CREATE  {name}  (NEW — its client_secret must be bootstrapped "
-            f"into {name}'s SOPS by hand; the reconciler never writes secrets)")
+        where = want.get("secret")
+        log(f"[client] CREATE  {name}  (NEW — " + (f"its client_secret goes to {where['namespace']}/{where['name']})" if where else
+            f"its client_secret must be bootstrapped into {name}'s SOPS by hand)"))
         body = {
             "name": name,
             "callbackURLs": want.get("callbackURLs", []),
@@ -126,7 +216,7 @@ for name, want in want_clients.items():
             st, res = api("POST", "/oidc/clients", body)
             if st in (200, 201) and res:
                 cid = res["id"]; changes += 1
-                log(f"         created id={cid} — STORE its client_secret in {name}'s SOPS")
+                log(f"         created id={cid}" + ("" if want.get("secret") else f" — STORE its client_secret in {name}'s SOPS"))
             else:
                 log(f"         ERROR create client {name}: {st} {res}"); errors += 1; continue
     else:
@@ -185,6 +275,9 @@ for name, want in want_clients.items():
                           {"userGroupIds": want_gids})
             if st in (200, 204): changes += 1
             else: log(f"         ERROR set-groups {name}: {st} {res}"); errors += 1
+
+    if want.get("secret"):
+        ensure_secret(name, cid, want["secret"])
 
 for name, c in cur_clients.items():
     if name not in want_clients:

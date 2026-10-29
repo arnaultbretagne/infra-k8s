@@ -5,7 +5,8 @@
 **Proposed — 2026-07-02.** Draft for review. Builds on [ADR 0009](0009-pocket-id-identity.md)
 (Pocket-ID as IdP) and [ADR 0021](0021-oauth2-proxy-oidc-gate.md) (oauth2-proxy as the gate).
 Nothing here is enforced yet; this ADR fixes the *model* so the concrete gaps below can be
-closed consistently instead of ad-hoc.
+closed consistently instead of ad-hoc. **Amended 2026-10-29:** a client may name its Secret, and the reconciler then
+owns its secret, in the cluster (see the last amendment).
 
 ## Context
 
@@ -151,3 +152,29 @@ Pocket-ID clients (above), so a second group check on the resource server is red
 and risks a lockout — the presence of a `groups` claim in an `authorization_code` access token is
 unverified. This matches §5's own caution ("verify a real token before mirroring the group check").
 Closes the vault item in §Consequences.
+
+## Amendment (2026-10-29) — the reconciler owns a declared client secret
+
+The decision above left the secret of a new client to a human: Pocket-ID mints it, and someone copies it
+into the app's SOPS by hand. That step blocks the cluster from being run by agents end to end: an agent
+never holds a credential, so a client it declares waits for a person. It amends "bootstrapping the secret
+of a brand-new client stays a documented manual step", for the clients that opt in.
+
+- **A client may name its Secret.** In `spec.json`, `"secret": {"namespace": …, "name": …}`. The
+  reconciler then owns that client's secret: when the Secret is empty, or holds a secret Pocket-ID no
+  longer has, it mints one (`POST /oidc/clients/{id}/secrets`), writes it to the Secret (`client_id`,
+  `client_secret`, `secret_id`), and deletes every other secret of the client (Pocket-ID 2.18 keeps them
+  all). Exactly one secret is valid, and it is the one the cluster holds. It never logs a value.
+- **The app opts in, in its own namespace.** It creates the Secret empty
+  (`kustomize.toolkit.fluxcd.io/ssa: IfNotPresent`, so Flux never overwrites what the reconciler wrote)
+  and grants the reconciler's ServiceAccount (`pocket-id/oidc-reconciler`) `get` and `update` on that one
+  Secret, by name. Nothing reaches a Secret the app did not hand over.
+- **Rotation is emptying the Secret**, or deleting it (Flux recreates it empty): the next run mints a new
+  secret and deletes the old one. A rebuilt cluster regenerates every declared secret; nothing to restore.
+- **No copy in Git.** The secret lives in Pocket-ID and in the cluster only, as the passwords CNPG
+  generates do. SOPS keeps the secrets that come from outside (third-party keys, the admin API key).
+- **Runner.** The CronJob runs every 15 minutes instead of daily, so that a client merged in the spec has
+  its secret within minutes; every run is idempotent. It has its own ServiceAccount and may reach the API
+  server, for those Secrets only.
+
+Clients without `secret` keep the old way, their secret in their app's SOPS. Moving them is optional.
