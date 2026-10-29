@@ -111,7 +111,9 @@ before(async () => {
 
   // What this repository deploys.
   const objects = parseAllDocuments(admin(['kustomize', join(REPO, 'apps/agora-gateway')])).map((d) => d.toJS())
-  const find = (kind, name) => objects.find((o) => o.kind === kind && o.metadata.name === name) ?? assert.fail(`${kind}/${name} in the render`)
+  // A generated ConfigMap's name carries its content's hash (apps/agora-gateway/kustomization.yaml): <name>-<hash>.
+  const named = (o, name) => o.metadata.name === name || (o.kind === 'ConfigMap' && new RegExp(`^${name}-[a-z0-9]{10}$`).test(o.metadata.name))
+  const find = (kind, name) => objects.find((o) => o.kind === kind && named(o, name)) ?? assert.fail(`${kind}/${name} in the render`)
   const role = find('ClusterRole', 'agora-kubernetes-read')
   if (MUTATE === 'role') role.rules.push({ apiGroups: [''], resources: ['secrets', 'pods/exec'], verbs: ['get', 'create'] })
   // Every RBAC object this repository deploys, from each layer Flux reconciles out of it (clusters/bretagne), so that
