@@ -56,12 +56,10 @@ spec:
               - configMap:
                   name: team-demo-0
                   items:
-                    - key: assets__assistant-ui-9iult4gO.js.gz
-                      path: assets/assistant-ui-9iult4gO.js.gz
+                    - key: assets__assistant-ui-Bu5SgXp9.js.gz
+                      path: assets/assistant-ui-Bu5SgXp9.js.gz
                     - key: assets__inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
                       path: assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
-                    - key: assets__index-QWTfIMee.js.gz
-                      path: assets/index-QWTfIMee.js.gz
                     - key: assets__react-C-U3wrz7.js.gz
                       path: assets/react-C-U3wrz7.js.gz
                     - key: assets__newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
@@ -70,8 +68,10 @@ spec:
                       path: assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
                     - key: assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
                       path: assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
-                    - key: assets__vendor-Dm258jdf.js.gz
-                      path: assets/vendor-Dm258jdf.js.gz
+                    - key: assets__vendor-4WdKJxKA.js.gz
+                      path: assets/vendor-4WdKJxKA.js.gz
+                    - key: assets__index-33qJ3lza.js.gz
+                      path: assets/index-33qJ3lza.js.gz
                     - key: assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
                       path: assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
                     - key: assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
@@ -80,15 +80,15 @@ spec:
                       path: assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
                     - key: assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
                       path: assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+                    - key: assets__index-D2C-_ixA.css.gz
+                      path: assets/index-D2C-_ixA.css.gz
+                    - key: assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                      path: assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                    - key: assets__markdown-w_jP-7yR.js.gz
+                      path: assets/markdown-w_jP-7yR.js.gz
               - configMap:
                   name: team-demo-1
                   items:
-                    - key: assets__index-naOzeYMb.css.gz
-                      path: assets/index-naOzeYMb.css.gz
-                    - key: assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
-                      path: assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
-                    - key: assets__markdown-TNMTbRpp.js.gz
-                      path: assets/markdown-TNMTbRpp.js.gz
                     - key: assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
                       path: assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
                     - key: assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
