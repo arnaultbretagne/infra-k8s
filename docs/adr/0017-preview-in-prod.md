@@ -492,9 +492,9 @@ Pod; g4 has KVM), the class Agora's sandboxes use.
   - `allowedGroups` is `[admin]`;
   - its client secret and the cookie secret sit in one SOPS Secret in `preview-system`, never in a
     preview namespace.
-- **Test agents** cannot pass a browser gate. How they reach previews is decided together with "who
-  may use previews". The intended direction is through the agents' gateway, never with a browser
-  session.
+- **Test agents** reach a preview through Agora's gateway, never with a browser session, and hold no
+  credential: a second gate per preview, the *gateway gate*, accepts the gateway's own identity and
+  nothing else. The browser gate is unchanged. Decided on 2026-10-27; see the amendment of that date.
 
 ### 8. Network
 
@@ -502,7 +502,7 @@ Pod; g4 has KVM), the class Agora's sandboxes use.
 |---|---|
 | Traefik → a gate | The gate's port |
 | A gate → Pocket-ID | HTTPS |
-| A gate → its own workload | The entry's `port` |
+| A gate → its own workload | The entry's `port` (both gates, amendment 2026-10-27) |
 | The host (kubelet) → a workload | Its probe ports |
 | A workload → DNS | Always |
 | A workload → its own database | 5432, selected by the cluster's `cnpg.io/cluster` label |
@@ -666,6 +666,35 @@ for the whole node until the preview was removed. The floor guards the known tri
 cause of a hung VM would have the same effect.
 
 **Still open:**
-- how test agents reach previews (§7);
+- ~~how test agents reach previews (§7)~~: settled on 2026-10-27, see that amendment;
 - whether to narrow who may set the label (§1);
 - Agora's entry (§3).
+
+## Amendment 2026-10-27 — the gateway gate: how test agents reach previews
+
+Settles §7's open point. The operator approved it: the previews' gate accepts the credential of Agora's gateway, and
+only that one, besides the admins' browser session. The browser path stays as it is (`ALLOWED_GROUPS=admin`), and no
+secret enters a `pv-*` namespace. The contract is Agora's `docs/specs/credentials.md`, "Previews" (branch
+`feat/credentials-previews`, PR #162). The implementation is infra-k8s PR #303.
+
+- **Who.** An Agora execution given the `previews` profile (the flows' judge). Its grant covers the hosts
+  `pr-<n>-<app>.preview.bretagne.dev` alone (`hostPattern`), every path and method.
+- **The gateway.** Its route `previews` reaches the preview by its public name, as a browser does. It marks the request
+  `x-agora-gate: gateway` and sets the bearer token of a Pocket-ID machine client of its own,
+  `agora_gateway_previews` (id `f373fa14-edf1-435b-8949-537c02bb5d50`). The token replaces whatever the sandbox sent, and the sandbox never holds it.
+- **The client.** It is confidential, has no callback URL, and is restricted to no group, so no user may authorize it.
+  Its tokens last 15 minutes. `previews-refresher` (in `agora-gateway`) mints one every 5 minutes, with the client's
+  secret, which only it mounts (SOPS Secret `previews-client`).
+- **The gateway gate.** Per preview, in `preview-system` beside the browser gate, a second oauth2-proxy of the same
+  version, on port 4181. The HTTPRoute sends it only the requests marked `x-agora-gate: gateway`; every other request
+  goes to the browser gate. It takes a bearer token checked against Pocket-ID's keys, whose audience is the client's id
+  and whose `sub` is listed in the ConfigMap `preview-gateway-identities` (`client-<id>`, nothing else). It offers no
+  sign-in. It passes the app `Basic client-<id>:none`, never the gateway's token.
+- **Revocation.** Taking `client-<id>` out of `preview-gateway-identities` refuses every token of the client at every
+  gateway gate, whatever secret minted it, once the kubelet has updated the file. Deleting a secret or the client in
+  Pocket-ID stops new tokens only: tokens already issued stay valid until they expire, 15 minutes at most.
+  Pocket-ID 2.18.0 has no way to disable a client, and creating a secret removes none: the old secret works until it
+  is deleted by its id (`DELETE /api/oidc/clients/{id}/secrets/{secretId}`). Rotating the secret is therefore: create
+  the new one, put it in `previews-client`, then delete the old one.
+- **Network.** Gateway gate → its workload: the entry's port, like the browser gate. Gateway gate → Pocket-ID: as the
+  browser gate. `previews-refresher` → Pocket-ID in the cluster, port 1411. The gateway's own egress is unchanged.

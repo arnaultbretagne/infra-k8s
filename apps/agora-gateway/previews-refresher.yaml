@@ -1,0 +1,234 @@
+# Keeps the gateway's previews credential fresh (route `previews`; docs/specs/credentials.md on
+# arnaultbretagne/agora, "Previews", "Keeping the token"): a Pocket-ID access token of the machine client
+# `agora_gateway_previews` (apps/pocket-id/oidc-reconciler/spec.json), minted by client_credentials without
+# `resource`. The token lives 15 minutes (the client's accessTokenDurationMinutes); a new one every 5 minutes.
+# Minting spends nothing: a run that fails, or is retried, loses nothing.
+#
+# The client secret is in `previews-client`, which the Pocket-ID reconciler owns (spec.json `secret`; ADR 0022,
+# amendment 2026-10-29): it mints the secret and writes it there, and nobody bootstraps it. Mounted here and
+# nowhere else: never in the gateway, never in a sandbox, never in a preview. The token goes to `previews-session`,
+# which only the gateway mounts. Logs dates and error codes, never a token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: previews-refresher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: previews-refresher
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [previews-session]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: previews-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: previews-refresher
+subjects:
+  - kind: ServiceAccount
+    name: previews-refresher
+---
+# The client's secret, handed to the Pocket-ID reconciler: created empty by Flux, then never touched by it
+# again (IfNotPresent). The reconciler writes client_id, client_secret and secret_id; emptying it rotates the
+# secret. Until its first run, the refresher exits 4.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: previews-client
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  client_secret: ""
+---
+# The reconciler may read and write that one Secret, nothing else in this namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oidc-reconciler-previews-client
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [previews-client]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oidc-reconciler-previews-client
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oidc-reconciler-previews-client
+subjects:
+  - kind: ServiceAccount
+    name: oidc-reconciler
+    namespace: pocket-id
+---
+# Where the token lands. Created empty by Flux, then never touched by it again (IfNotPresent): the
+# refresher owns its content. Until the first run, the gateway sends an empty Bearer and the preview's
+# answers 401. Deleting this file from git prunes the Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: previews-session
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  access_token: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: previews-refresher
+data:
+  refresh.mjs: |
+    import { readFileSync } from 'node:fs'
+
+    const NAME = 'previews-session'
+    const SA = '/var/run/secrets/kubernetes.io/serviceaccount'
+    const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
+    const url = `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}/api/v1/namespaces/${namespace}/secrets/${NAME}`
+    const clientId = process.env.CLIENT_ID
+    const read = (path) => {
+      try {
+        return readFileSync(path, 'utf8').trim()
+      } catch {
+        return ''
+      }
+    }
+    const clientSecret = read('/etc/previews-client/client_secret')
+    const minLife = Number(process.env.MIN_LIFE_MINUTES ?? 10) * 60_000
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    if (!clientSecret) {
+      console.error('previews-client has no client_secret yet: the Pocket-ID reconciler writes it on its next run (every 15 minutes)')
+      process.exit(4)
+    }
+
+    // No `resource`: Pocket-ID refuses one that is not a registered API; without it, aud is the client's
+    // own id, which the previews' gateway gates take as their audience (OAUTH2_PROXY_CLIENT_ID).
+    const answer = await fetch(process.env.TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: `Basic ${Buffer.from(`${encodeURIComponent(clientId)}:${encodeURIComponent(clientSecret)}`).toString('base64')}`,
+      },
+      body: new URLSearchParams({ grant_type: 'client_credentials' }),
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!answer.ok) {
+      const detail = await answer.json().catch(() => ({}))
+      console.error(`token refused: ${answer.status} ${String(detail.error ?? '')}`)
+      process.exit(1)
+    }
+    const fresh = await answer.json()
+    const expiresAt = Date.now() + fresh.expires_in * 1000
+    // A lifetime shorter than two runs would let the token lapse between them: say it, after writing.
+    const status = fresh.expires_in * 1000 < minLife ? 3 : 0
+
+    for (let attempt = 1; ; attempt++) {
+      const got = await fetch(url, {
+        headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (got.ok) {
+        const current = await got.json()
+        const data = { ...current.data, access_token: Buffer.from(fresh.access_token).toString('base64') }
+        const put = await fetch(url, {
+          method: 'PUT',
+          headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ ...current, data }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (put.ok) break
+        console.error(`writing ${NAME}: ${put.status}`)
+      } else {
+        console.error(`reading ${NAME}: ${got.status}`)
+      }
+      if (attempt === 5) process.exit(2)
+      await sleep(2000 * attempt)
+    }
+    if (status) console.error(`the token lives ${fresh.expires_in} s, under ${minLife / 1000} s: raise the client's access token duration`)
+    console.log(`written: token valid until ${new Date(expiresAt).toISOString()}`)
+    process.exit(status)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: previews-refresher
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # Minting is idempotent: a second Pod may retry.
+      backoffLimit: 1
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app: previews-refresher
+        spec:
+          serviceAccountName: previews-refresher
+          restartPolicy: Never
+          priorityClassName: bretagne-low
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            # Reads previews-client (0440).
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresher
+              image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+              command: ["node", "/app/refresh.mjs"]
+              env:
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                # Pocket-ID in the cluster, as the OIDC reconciler reaches it: the issuer in the token is
+                # its APP_URL (https://id.bretagne.dev) whatever address the request takes.
+                - name: TOKEN_URL
+                  value: http://pocket-id.pocket-id.svc.cluster.local:1411/api/oidc/token
+                # agora_gateway_previews, pinned in apps/pocket-id/oidc-reconciler/spec.json.
+                - name: CLIENT_ID
+                  value: f373fa14-edf1-435b-8949-537c02bb5d50
+                # A token must outlive two runs (5 minutes apart): below 10 minutes, the run says so.
+                - name: MIN_LIFE_MINUTES
+                  value: "10"
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: script, mountPath: /app, readOnly: true }
+                - { name: client, mountPath: /etc/previews-client, readOnly: true }
+          volumes:
+            - name: script
+              configMap:
+                name: previews-refresher
+            - name: client
+              secret:
+                secretName: previews-client
+                # Empty until the reconciler's first run: the refresher then exits 4.
+                optional: true
+                defaultMode: 0440
+                items:
+                  - { key: client_secret, path: client_secret }

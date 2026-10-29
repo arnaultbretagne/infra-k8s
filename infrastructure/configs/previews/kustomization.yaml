@@ -8,6 +8,7 @@ resources:
   - guardrails.yaml
   - rbac.yaml
   - gate.secrets.yaml
+  - gateway-identities.yaml
   - github.secrets.yaml
   - r2-ro.secrets.yaml
   - resourceset.yaml

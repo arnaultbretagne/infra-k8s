@@ -1,0 +1,27 @@
+# infrastructure/gateway/release.yaml's values, for kind: the same providers and ports; the Service is a NodePort
+# on 30443 instead of the node's externalIPs; no PriorityClass (kind has none of the cluster's).
+providers:
+  kubernetesGateway:
+    enabled: true
+  kubernetesCRD:
+    enabled: false
+gateway:
+  enabled: false
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    protocol: TCP
+  websecure:
+    port: 8443
+    exposedPort: 443
+    protocol: TCP
+    nodePort: 30443
+service:
+  spec:
+    type: NodePort
+log:
+  level: INFO
+accessLog:
+  enabled: true
+  format: json

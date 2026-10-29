@@ -10,6 +10,7 @@ resources:
   - kubernetes-read.yaml
   - gateway-ca.secrets.yaml
   - upstream-credentials.secrets.yaml
+  - previews-refresher.yaml
   - chatgpt-refresher.yaml
   - claude-refresher.yaml
   - vault-refresher.yaml

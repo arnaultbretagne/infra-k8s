@@ -1,0 +1,11 @@
+# The kind cluster of the previews e2e test (README.md): Traefik's websecure NodePort (30443) on the runner's
+# 127.0.0.1:443, where the gateway reaches a preview's public name (an /etc/hosts entry on the runner).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30443
+        hostPort: 443
+        listenAddress: 127.0.0.1
+        protocol: TCP

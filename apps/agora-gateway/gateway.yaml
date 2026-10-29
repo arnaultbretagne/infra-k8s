@@ -65,6 +65,8 @@ spec:
             - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
             # Watched by the gateway: rotating a credential needs no restart.
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
+            # The previews' token, rewritten by previews-refresher every 5 minutes: watched the same way.
+            - { name: previews, mountPath: /etc/agentgateway/previews, readOnly: true }
             # The ChatGPT session's access token, rewritten by chatgpt-refresher: watched the same way.
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
@@ -101,6 +103,14 @@ spec:
           secret:
             secretName: upstream-credentials
             defaultMode: 0440
+        # Created empty by Flux, filled by previews-refresher (previews-refresher.yaml).
+        - name: previews
+          secret:
+            secretName: previews-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
         # Created by hand, outside git (chatgpt-refresher.yaml): optional, so the gateway starts without it.
         - name: chatgpt
           secret:

@@ -6,8 +6,9 @@
 # Per preview it renders:
 #   pv-<app>-pr<n>    the namespace that runs the PR's workload: Kata only, quota, default-deny,
 #                     the applier's RoleBinding, the database credentials the workload mounts
-#   preview-system    GitRepository + Kustomization + applier ServiceAccount, the gate (oauth2-proxy)
-#                     and its HTTPRoute, the database (data: empty | restore)
+#   preview-system    GitRepository + Kustomization + applier ServiceAccount, the gate (oauth2-proxy),
+#                     the gateway gate (a second oauth2-proxy, for Agora's gateway) and their HTTPRoute,
+#                     the database (data: empty | restore)
 #   flux-system       the comment and the commit status on the PR
 # When the PR is closed or merged, or loses its label, its input disappears and the flux-operator
 # garbage-collects every object below.
@@ -84,7 +85,7 @@ spec:
       egress:
         - {}
     ---
-    # In: the preview's gate on the entry's port, the workload's own pods, kubelet probes.
+    # In: the preview's gates (browser and gateway) on the entry's port, the workload's own pods, kubelet probes.
     # Out: DNS, the workload's own pods, its database, the Internet when the entry says so.
     apiVersion: cilium.io/v2
     kind: CiliumNetworkPolicy
@@ -98,6 +99,12 @@ spec:
             - matchLabels:
                 k8s:io.kubernetes.pod.namespace: preview-system
                 app: << $p >>-gate
+          toPorts:
+            - ports: [{ port: "<< inputs.port >>", protocol: TCP }]
+        - fromEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: preview-system
+                app: << $p >>-gateway-gate
           toPorts:
             - ports: [{ port: "<< inputs.port >>", protocol: TCP }]
         - fromEndpoints:
@@ -350,6 +357,138 @@ spec:
           toPorts:
             - ports: [{ port: "8443", protocol: TCP }]
     ---
+    # The gateway gate (ADR 0017 §7, amendment 2026-10-27; docs/specs/credentials.md on arnaultbretagne/agora,
+    # "Previews"): a second oauth2-proxy, same version, its own port, for Agora's gateway alone. The HTTPRoute
+    # sends it only the requests marked x-agora-gate: gateway. It takes a bearer token, checked against
+    # Pocket-ID's keys, whose audience is agora_gateway_previews's id and whose sub is in
+    # preview-gateway-identities (client-<that id>, nothing else); no sign-in page, no cookie session
+    # started by it. It replaces the Authorization it received by Basic client-<id>:none, so the app never
+    # sees the gateway's token. It holds no secret of that client; its cookie secret is the browser gate's.
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: << $p >>-gateway-gate
+      namespace: preview-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: << $p >>-gateway-gate
+      template:
+        metadata:
+          labels:
+            app: << $p >>-gateway-gate
+            preview.bretagne.dev/name: << $p >>
+        spec:
+          automountServiceAccountToken: false
+          priorityClassName: bretagne-low
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: oauth2-proxy
+              image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+              args:
+                - --http-address=0.0.0.0:4181
+              securityContext:
+                runAsUser: 2000
+                runAsGroup: 2000
+                runAsNonRoot: true
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              env:
+                - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
+                - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: https://id.bretagne.dev }
+                # agora_gateway_previews (apps/pocket-id/oidc-reconciler/spec.json): the audience a token must
+                # carry. The gate never redeems a code: oauth2-proxy only requires a secret to be set.
+                - { name: OAUTH2_PROXY_CLIENT_ID, value: f373fa14-edf1-435b-8949-537c02bb5d50 }
+                - { name: OAUTH2_PROXY_CLIENT_SECRET, value: unused }
+                - { name: OAUTH2_PROXY_SKIP_JWT_BEARER_TOKENS, value: "true" }
+                - { name: OAUTH2_PROXY_BEARER_TOKEN_LOGIN_FALLBACK, value: "false" }
+                - { name: OAUTH2_PROXY_OIDC_EMAIL_CLAIM, value: sub }
+                - { name: OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE, value: /etc/oauth2-proxy/identities/gateway-identities }
+                - { name: OAUTH2_PROXY_PASS_BASIC_AUTH, value: "true" }
+                - { name: OAUTH2_PROXY_BASIC_AUTH_PASSWORD, value: none }
+                - { name: OAUTH2_PROXY_API_ROUTES, value: "^/" }
+                - { name: OAUTH2_PROXY_REDIRECT_URL, value: "https://<< $host >>/oidc/callback" }
+                - { name: OAUTH2_PROXY_PROXY_PREFIX, value: /oidc }
+                - { name: OAUTH2_PROXY_UPSTREAMS, value: "http://<< inputs.service >>.<< $ns >>.svc.cluster.local:<< inputs.port >>" }
+                - { name: OAUTH2_PROXY_REVERSE_PROXY, value: "true" }
+                - name: OAUTH2_PROXY_COOKIE_SECRET
+                  valueFrom:
+                    secretKeyRef: { name: preview-gate, key: OAUTH2_PROXY_COOKIE_SECRET }
+              ports:
+                - containerPort: 4181
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits: { memory: 128Mi }
+              readinessProbe:
+                httpGet: { path: /ping, port: 4181 }
+                periodSeconds: 10
+              livenessProbe:
+                httpGet: { path: /ping, port: 4181 }
+                periodSeconds: 30
+              volumeMounts:
+                - { name: identities, mountPath: /etc/oauth2-proxy/identities, readOnly: true }
+          volumes:
+            - name: identities
+              configMap:
+                name: preview-gateway-identities
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: << $p >>-gateway-gate
+      namespace: preview-system
+    spec:
+      selector:
+        app: << $p >>-gateway-gate
+      ports:
+        - { port: 4181, targetPort: 4181 }
+    ---
+    # As the browser gate's: Traefik in, kubelet probes; out, DNS, its own workload, id.bretagne.dev (JWKS).
+    apiVersion: cilium.io/v2
+    kind: CiliumNetworkPolicy
+    metadata:
+      name: << $p >>-gateway-gate
+      namespace: preview-system
+    spec:
+      endpointSelector:
+        matchLabels:
+          app: << $p >>-gateway-gate
+      ingress:
+        - fromEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: traefik
+          toPorts:
+            - ports: [{ port: "4181", protocol: TCP }]
+        - fromEntities: [host] # kubelet probes
+          toPorts:
+            - ports: [{ port: "4181", protocol: TCP }]
+      egress:
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: kube-system
+                k8s:k8s-app: kube-dns
+          toPorts:
+            - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: << $ns >>
+          toPorts:
+            - ports: [{ port: "<< inputs.port >>", protocol: TCP }]
+        # -> id.bretagne.dev: the public IP resolves to the node, then reaches Traefik (as the apps' gates).
+        - toEntities: [world, host]
+          toPorts:
+            - ports: [{ port: "443", protocol: TCP }]
+        - toEndpoints:
+            - matchLabels:
+                k8s:io.kubernetes.pod.namespace: traefik
+          toPorts:
+            - ports: [{ port: "8443", protocol: TCP }]
+    ---
     apiVersion: gateway.networking.k8s.io/v1
     kind: HTTPRoute
     metadata:
@@ -363,6 +502,22 @@ spec:
       hostnames:
         - << $host >>
       rules:
+        # Agora's gateway marks its requests x-agora-gate: gateway: to the gateway gate. A header match
+        # outranks the rule without one. A browser never sends it; one that does meets the gateway gate,
+        # which wants the gateway's token.
+        - matches:
+            - headers:
+                - { name: x-agora-gate, value: gateway }
+          filters:
+            - type: ResponseHeaderModifier
+              responseHeaderModifier:
+                set:
+                  - name: Strict-Transport-Security
+                    value: "max-age=86400; includeSubDomains"
+          backendRefs:
+            - name: << $p >>-gateway-gate
+              port: 4181
+        # Every other request: the browser gate, as before.
         - filters:
             - type: ResponseHeaderModifier
               responseHeaderModifier:

@@ -1,0 +1,172 @@
+# The agora-gateway's `previews` route and the previews' gateway gate, end to end (tests/agora-gateway-previews/README.md).
+# There is no preview of the gateway (ADR 0017): this run is the proof of the system working. kind, with Traefik (the
+# chart version and values of infrastructure/gateway) and this repository's Gateway; one preview rendered from the
+# template by flux-operator, its two gates the real oauth2-proxy; the gateway-config kustomize renders, run by the
+# agentgateway 1.6.0 release binary; tokens from Agora's GrantSigner carried by Agora's bridge, at a pinned commit of
+# the contract's branch. Then the same test twice more, the route broken and the gate broken: both runs must fail.
+# No real secret: every key, certificate and token is made for the run.
+#
+# A file of its own, beside agora-gateway-e2e (#295) and agora-gateway-kubernetes-e2e (#296), neither on main yet:
+# the pull requests merge in any order without touching the same workflow.
+name: agora-gateway e2e (previews)
+
+on:
+  pull_request:
+    paths:
+      - apps/agora-gateway/**
+      - apps/pocket-id/**
+      - infrastructure/configs/previews/**
+      - infrastructure/gateway/**
+      - tests/agora-gateway-previews/**
+      - .github/workflows/agora-gateway-previews-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/agora-gateway/**
+      - apps/pocket-id/**
+      - infrastructure/configs/previews/**
+      - infrastructure/gateway/**
+      - tests/agora-gateway-previews/**
+      - .github/workflows/agora-gateway-previews-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agora-gateway-previews-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGENTGATEWAY_URL: https://github.com/agentgateway/agentgateway/releases/download/v1.6.0/agentgateway-linux-amd64
+  AGENTGATEWAY_SHA256: 496ed27e6a96b55a9ad7cabe5c2be7172511f44a3cb113e533d22bf93a7f079d
+  KUBECTL_URL: https://dl.k8s.io/release/v1.36.5/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e
+  KIND_URL: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+  KIND_NODE_IMAGE: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  # The cluster's flux-operator (infrastructure/controllers/flux-operator/release.yaml), which renders the template.
+  FLUX_OPERATOR_URL: https://github.com/controlplaneio-fluxcd/flux-operator/releases/download/v0.61.0/flux-operator_0.61.0_linux_amd64.tar.gz
+  FLUX_OPERATOR_SHA256: 5720a6b38e48f950dd97cb06f692695700e0239b28503e1926cc28cf8310145c
+  HELM_URL: https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz
+  HELM_SHA256: a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496
+  # infrastructure/sources/gateway-api.yaml (tag) and infrastructure/gateway/release.yaml (chart version).
+  GATEWAY_API_URL: https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.3/standard-install.yaml
+  GATEWAY_API_SHA256: 356c2b8e286a964dc20995435659ad1095386329974793af10bbfe3eff977fe5
+  TRAEFIK_CHART_VERSION: 41.6.1
+  # Agora's packages/credentials and harness-bridge: the previews profile (docs/specs/credentials.md, "Previews"),
+  # branch feat/credentials-previews (PR #162). Moved by hand when the contract moves.
+  AGORA_REF: b887ae1e3b8f894d7398247a6e002abda273beaa
+  PREVIEW_HOST: pr-42-preview-demo.preview.bretagne.dev
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The template on the base branch, to compare the browser gate with
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base=$(git rev-parse origin/main)
+          git show "$base:infrastructure/configs/previews/resourceset.yaml" > "$RUNNER_TEMP/base-resourceset.yaml"
+          echo "base: $base"
+
+      - name: Agora's GrantSigner and bridge, at a pinned commit
+        uses: actions/checkout@v5
+        with:
+          repository: arnaultbretagne/agora
+          ref: ${{ env.AGORA_REF }}
+          path: .agora
+          sparse-checkout: |
+            packages/credentials/src
+            packages/harness-bridge/src
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/agora-gateway-previews/package-lock.json
+
+      - name: kubectl, kind, helm, flux-operator and agentgateway, checked against their sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
+          curl -fsSL -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
+          curl -fsSL -o "$RUNNER_TEMP/dl/flux-operator.tgz" "$FLUX_OPERATOR_URL"
+          curl -fsSL -o "$RUNNER_TEMP/dl/helm.tgz" "$HELM_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          echo "$KIND_SHA256  $RUNNER_TEMP/bin/kind" | sha256sum -c -
+          echo "$AGENTGATEWAY_SHA256  $RUNNER_TEMP/bin/agentgateway" | sha256sum -c -
+          echo "$FLUX_OPERATOR_SHA256  $RUNNER_TEMP/dl/flux-operator.tgz" | sha256sum -c -
+          echo "$HELM_SHA256  $RUNNER_TEMP/dl/helm.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/dl/flux-operator.tgz" -C "$RUNNER_TEMP/bin" flux-operator
+          tar -xzf "$RUNNER_TEMP/dl/helm.tgz" -C "$RUNNER_TEMP/dl" linux-amd64/helm && mv "$RUNNER_TEMP/dl/linux-amd64/helm" "$RUNNER_TEMP/bin/helm"
+          chmod +x "$RUNNER_TEMP/bin/"*
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Every kustomization the change touches builds
+        run: |
+          { echo '### kubectl kustomize'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          for dir in apps/agora-gateway apps/pocket-id apps/pocket-id/oidc-reconciler infrastructure/configs/previews infrastructure/configs apps; do
+            kubectl kustomize "$dir" > "$RUNNER_TEMP/rendered.yaml"
+            line="\$ kubectl kustomize $dir  # exit $?, $(grep -c '^kind:' "$RUNNER_TEMP/rendered.yaml") objects"
+            echo "$line"; echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: kind, Gateway API and Traefik as infrastructure/gateway installs it
+        run: |
+          kind create cluster --name kind --image "$KIND_NODE_IMAGE" --config tests/agora-gateway-previews/kind.yaml --wait 180s
+          curl -fsSL -o "$RUNNER_TEMP/dl/gateway-api.yaml" "$GATEWAY_API_URL"
+          echo "$GATEWAY_API_SHA256  $RUNNER_TEMP/dl/gateway-api.yaml" | sha256sum -c -
+          kubectl apply --server-side -f "$RUNNER_TEMP/dl/gateway-api.yaml"
+          helm repo add traefik https://traefik.github.io/charts
+          helm install traefik traefik/traefik --version "$TRAEFIK_CHART_VERSION" --namespace traefik --create-namespace \
+            -f tests/agora-gateway-previews/traefik-values.yaml --wait --timeout 5m
+          kubectl get gatewayclass
+          # The preview's public name resolves to kind's Traefik, as it resolves to the node in the cluster.
+          echo "127.0.0.1 $PREVIEW_HOST" | sudo tee -a /etc/hosts
+
+      - name: The previews route and the gateway gate
+        working-directory: tests/agora-gateway-previews
+        env:
+          AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
+          FLUX_OPERATOR: ${{ runner.temp }}/bin/flux-operator
+          AGORA_SRC: ${{ github.workspace }}/.agora/packages
+          BASE_RESOURCESET: ${{ runner.temp }}/base-resourceset.yaml
+        run: |
+          npm ci --no-audit --no-fund
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          {
+            echo '### The previews route and the gateway gate'
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The same test fails with the route broken, and with the gate broken
+        working-directory: tests/agora-gateway-previews
+        env:
+          AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
+          FLUX_OPERATOR: ${{ runner.temp }}/bin/flux-operator
+          AGORA_SRC: ${{ github.workspace }}/.agora/packages
+          BASE_RESOURCESET: ${{ runner.temp }}/base-resourceset.yaml
+        run: |
+          for mutate in route gate; do
+            if MUTATE=$mutate npm test > "$RUNNER_TEMP/mutate-$mutate.txt" 2>&1; then
+              echo "::error::the test passed with the $mutate broken"
+              cat "$RUNNER_TEMP/mutate-$mutate.txt"
+              exit 1
+            fi
+            echo "MUTATE=$mutate: failed, as it must:"; grep -E '^ *✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u | head -20
+            echo "MUTATE=$mutate: what each test observed (its diagnostics) and the failing assertions:"
+            grep -E '^ *(ℹ |AssertionError|Error \[|  (actual|expected):)' "$RUNNER_TEMP/mutate-$mutate.txt" | head -120
+          done

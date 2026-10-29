@@ -1,0 +1,13 @@
+# The previews' gateway gates' one identity (resourceset.yaml, the gateway gate): the sub of the Pocket-ID
+# machine client agora_gateway_previews (apps/pocket-id/oidc-reconciler/spec.json), client-<its id>. Taking
+# it out refuses every token of that client at every gateway gate, whatever secret minted it, once the
+# kubelet has updated the mounted file and oauth2-proxy has reloaded it (docs/specs/credentials.md on
+# arnaultbretagne/agora, "Previews", "Revocation"). In preview-system: nothing here reaches a pv-* namespace.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: preview-gateway-identities
+  namespace: preview-system
+data:
+  gateway-identities: |
+    client-f373fa14-edf1-435b-8949-537c02bb5d50

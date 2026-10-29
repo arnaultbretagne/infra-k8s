@@ -119,6 +119,17 @@
       "callbackURLs": ["https://*.preview.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin"],
       "pkceEnabled": false
+    },
+    {
+      "_comment": "MACHINE client for Agora's gateway on the previews (apps/agora-gateway, route `previews`; docs/specs/credentials.md on arnaultbretagne/agora, 'Previews'). The gateway presents its token to each preview's gateway gate (infrastructure/configs/previews), which names this id as its audience and client-<id> as its one identity (ConfigMap preview-gateway-identities). Used for client_credentials only. Restricted to no group (isGroupRestricted with none): no user may authorize it, so its device_code and refresh_token give nothing; no callbackURLs, so no authorization_code. Tokens live 15 minutes. Its secret is owned by this reconciler, in agora-gateway/previews-client (`secret`; ADR 0022, amendment 2026-10-29); nobody bootstraps it, and agora-gateway/previews-refresher mints its tokens.",
+      "id": "f373fa14-edf1-435b-8949-537c02bb5d50",
+      "name": "agora_gateway_previews",
+      "secret": { "namespace": "agora-gateway", "name": "previews-client" },
+      "accessTokenDurationMinutes": 15,
+      "callbackURLs": [],
+      "allowedGroups": [],
+      "isGroupRestricted": true,
+      "pkceEnabled": false
     }
   ]
 }
