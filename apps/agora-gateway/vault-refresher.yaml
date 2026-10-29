@@ -4,9 +4,10 @@
 # lives 15 minutes (the client's accessTokenDurationMinutes); a new one every 5 minutes. Minting spends
 # nothing: a run that fails, or is retried, loses nothing. Nobody mints a token by hand.
 #
-# The client secret is in `vault-client` (vault-client.secrets.yaml, SOPS), mounted here and nowhere else:
-# never in the gateway, never in a sandbox. The token goes to `vault-token`, which only the gateway mounts
-# and watches. Logs dates and error codes, never a token.
+# The client secret is in `vault-client`, which the Pocket-ID reconciler owns (spec.json `secret`; ADR 0022,
+# amendment 2026-10-29): it mints the secret and writes it there, and nobody bootstraps it. Mounted here and
+# nowhere else: never in the gateway, never in a sandbox. The token goes to `vault-token`, which only the
+# gateway mounts and watches. Logs dates and error codes, never a token.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -33,6 +34,43 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: vault-refresher
+---
+# The client's secret, handed to the Pocket-ID reconciler: created empty by Flux, then never touched by it
+# again (IfNotPresent). The reconciler writes client_id, client_secret and secret_id; emptying it rotates the
+# secret. Until its first run, the refresher exits 4.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-client
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  client_secret: ""
+---
+# The reconciler may read and write that one Secret, nothing else in this namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oidc-reconciler-vault-client
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [vault-client]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oidc-reconciler-vault-client
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oidc-reconciler-vault-client
+subjects:
+  - kind: ServiceAccount
+    name: oidc-reconciler
+    namespace: pocket-id
 ---
 # Where the token lands. Created empty by Flux, then never touched by it again (IfNotPresent): the
 # refresher owns its content. Until the first run, the gateway sends an empty Bearer and the vault
@@ -63,12 +101,19 @@ data:
     const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
     const url = `${api}/api/v1/namespaces/${namespace}/secrets/${NAME}`
     const clientId = process.env.CLIENT_ID
-    const clientSecret = readFileSync(process.env.CLIENT_SECRET_FILE ?? '/etc/vault-client/client_secret', 'utf8').trim()
+    const read = (path) => {
+      try {
+        return readFileSync(path, 'utf8').trim()
+      } catch {
+        return ''
+      }
+    }
+    const clientSecret = read(process.env.CLIENT_SECRET_FILE ?? '/etc/vault-client/client_secret')
     const minLife = Number(process.env.MIN_LIFE_MINUTES ?? 10) * 60_000
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-    if (!clientSecret || clientSecret === 'set-me') {
-      console.error('vault-client has no client_secret yet: create it in Pocket-ID and put it in vault-client.secrets.yaml')
+    if (!clientSecret) {
+      console.error('vault-client has no client_secret yet: the Pocket-ID reconciler writes it on its next run (every 15 minutes)')
       process.exit(4)
     }
 
@@ -185,6 +230,8 @@ spec:
             - name: client
               secret:
                 secretName: vault-client
+                # Empty until the reconciler's first run: the refresher then exits 4.
+                optional: true
                 defaultMode: 0440
                 items:
                   - { key: client_secret, path: client_secret }

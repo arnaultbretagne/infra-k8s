@@ -2,6 +2,7 @@
 // ships it, run against a stand-in Pocket-ID token endpoint and a stand-in API server. It mints by
 // client_credentials, writes the token to vault-token keeping the Secret's other keys, never logs it,
 // and says why it stops: 4 without a client secret, 1 refused, 2 unable to write, 3 a token too short.
+// And the manifests hand the client's secret to the Pocket-ID reconciler, which owns it (spec.json `secret`).
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -54,7 +55,7 @@ async function refresh(base, clientSecret) {
   mkdirSync(join(dir, 'sa'))
   writeFileSync(join(dir, 'sa', 'namespace'), 'agora-gateway\n')
   writeFileSync(join(dir, 'sa', 'token'), 'the-service-account-token\n')
-  writeFileSync(join(dir, 'client_secret'), `${clientSecret}\n`)
+  if (clientSecret !== null) writeFileSync(join(dir, 'client_secret'), `${clientSecret}\n`)
   const child = spawn(process.execPath, [join(dir, 'refresh.mjs')], {
     env: {
       ...process.env,
@@ -92,15 +93,18 @@ test('a token minted by client_credentials, written to vault-token with the Secr
   }
 })
 
-test('no client secret yet: exit 4, Pocket-ID never asked, nothing written', async () => {
-  const s = await standIns()
-  try {
-    const { code, output } = await refresh(s.url, 'set-me')
-    assert.equal(code, 4, output)
-    assert.equal(s.asked.token.length, 0)
-    assert.equal(s.asked.api.length, 0)
-  } finally {
-    s.close()
+test('no client secret yet, the Secret empty or its key absent: exit 4, Pocket-ID never asked, nothing written', async () => {
+  for (const clientSecret of ['', null]) {
+    const s = await standIns()
+    try {
+      const { code, output } = await refresh(s.url, clientSecret)
+      assert.equal(code, 4, output)
+      assert.match(output, /the Pocket-ID reconciler writes it/)
+      assert.equal(s.asked.token.length, 0)
+      assert.equal(s.asked.api.length, 0)
+    } finally {
+      s.close()
+    }
   }
 })
 
@@ -144,4 +148,18 @@ test('the client the spec declares: its pinned id, and tokens that outlive two r
   assert.equal(cronJob.spec.schedule, '*/5 * * * *')
   assert.ok(client.accessTokenDurationMinutes >= Number(env.MIN_LIFE_MINUTES), `${client.accessTokenDurationMinutes} min`)
   assert.ok(client.accessTokenDurationMinutes > 2 * 5, `${client.accessTokenDurationMinutes} min`)
+})
+
+test('the client secret handed to the Pocket-ID reconciler: an empty Secret Flux creates once, that Secret alone to it', () => {
+  const secret = manifests.find((m) => m.kind === 'Secret' && m.metadata.name === 'vault-client')
+  assert.equal(secret.metadata.annotations['kustomize.toolkit.fluxcd.io/ssa'], 'IfNotPresent')
+  assert.deepEqual(secret.data, { client_secret: '' })
+  assert.deepEqual(client.secret, { namespace: 'agora-gateway', name: 'vault-client' })
+  const role = manifests.find((m) => m.kind === 'Role' && m.metadata.name === 'oidc-reconciler-vault-client')
+  assert.deepEqual(role.rules, [{ apiGroups: [''], resources: ['secrets'], resourceNames: ['vault-client'], verbs: ['get', 'update'] }])
+  const binding = manifests.find((m) => m.kind === 'RoleBinding' && m.roleRef.name === role.metadata.name)
+  assert.deepEqual(binding.subjects, [{ kind: 'ServiceAccount', name: 'oidc-reconciler', namespace: 'pocket-id' }])
+  // Mounted by the refresher alone, optional until the reconciler's first run.
+  const volume = cronJob.spec.jobTemplate.spec.template.spec.volumes.find((v) => v.secret?.secretName === 'vault-client')
+  assert.equal(volume.secret.optional, true)
 })

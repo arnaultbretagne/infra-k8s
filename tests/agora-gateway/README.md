@@ -41,8 +41,8 @@ environment `apps/obsidian` deploys. Its tokens have the shape Pocket-ID v2.18.0
 ships it, against a stand-in Pocket-ID and a stand-in API server: the token minted by client_credentials and
 written to `vault-token` with the Secret's other keys, never logged; exit 4 without a client secret, 1 refused, 2
 unable to write, 3 a token that would not outlive two runs; the client's pinned id and token duration against the
-schedule. The workflow's job `reconciler` runs `tests/pocket-id-reconciler`: `reconcile.py` against a simulated Pocket-ID, every write
-recorded.
+schedule; the client's secret handed to the Pocket-ID reconciler, which owns it (its own tests:
+`tests/pocket-id-reconciler`, workflow `pocket-id reconciler`).
 
 Locally (linux-amd64, Node 24):
 

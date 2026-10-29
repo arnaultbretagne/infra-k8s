@@ -119,7 +119,8 @@ before(async () => {
   // The configuration this repository deploys.
   const rendered = execFileSync(process.env.KUBECTL ?? 'kubectl', ['kustomize', join(REPO, 'apps/agora-gateway')], { encoding: 'utf8' })
   const objects = parseAllDocuments(rendered).map((doc) => doc.toJS())
-  const configMap = (name) => objects.find((o) => o.kind === 'ConfigMap' && o.metadata.name === name)
+  // A generated ConfigMap's name carries its content's hash (apps/agora-gateway/kustomization.yaml): <name>-<hash>.
+  const configMap = (name) => objects.find((o) => o.kind === 'ConfigMap' && new RegExp(`^${name}(-[a-z0-9]{10})?$`).test(o.metadata.name))
   let config = configMap('gateway-config').data['config.yaml']
   const parsed = parse(config)
   const internal = parsed.binds.find((bind) => bind.port === 443)

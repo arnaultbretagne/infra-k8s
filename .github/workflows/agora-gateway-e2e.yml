@@ -1,5 +1,5 @@
-# The agora-gateway's vault route, end to end on the real agentgateway binary (tests/agora-gateway/README.md),
-# and the Pocket-ID reconciler that declares its machine client (tests/pocket-id-reconciler).
+# The agora-gateway's vault route, end to end on the real agentgateway binary (tests/agora-gateway/README.md), and
+# the refresher that mints its token. The Pocket-ID reconciler has its own workflow (pocket-id-reconciler.yml).
 # There is no preview of the gateway (ADR 0017): this run is the proof of the system working. It renders what
 # this repository deploys with kustomize, runs it on agentgateway 1.6.0 as released (sha256 checked), signs tokens
 # with Agora's own GrantSigner at a pinned commit, and talks MCP through it to a stand-in vault. No real secret:
@@ -14,7 +14,6 @@ on:
       - apps/pocket-id/**
       - apps/kustomization.yaml
       - tests/agora-gateway/**
-      - tests/pocket-id-reconciler/**
       - .github/workflows/agora-gateway-e2e.yml
   push:
     branches: [main]
@@ -24,7 +23,6 @@ on:
       - apps/pocket-id/**
       - apps/kustomization.yaml
       - tests/agora-gateway/**
-      - tests/pocket-id-reconciler/**
       - .github/workflows/agora-gateway-e2e.yml
   workflow_dispatch:
 
@@ -120,26 +118,5 @@ jobs:
             echo '### The vault route on agentgateway 1.6.0, and obsidian-mcp 0.4.0 token checks'
             echo '```'
             grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  reconciler:
-    # apps/pocket-id/oidc-reconciler/reconcile.py, unchanged, against a simulated Pocket-ID API: every write it sends.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: The OIDC reconciler's writes
-        run: |
-          python3 --version
-          set -o pipefail
-          python3 -m unittest discover -s tests/pocket-id-reconciler -v 2>&1 | tee "$RUNNER_TEMP/reconciler.txt"
-          {
-            echo '### The OIDC reconciler against a simulated Pocket-ID'
-            echo '```'
-            grep -E ' \.\.\. |^Ran |^OK|^FAILED' "$RUNNER_TEMP/reconciler.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
