@@ -15,3 +15,13 @@ resources:
   - vault-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml
+# The gateway's configuration, and Agora's public key for the grants JWT (the private half is
+# apps/agora/grants-key.secrets.yaml): each ConfigMap's name carries its content's hash, so a change renames
+# it in the Deployment (gateway.yaml) and Flux rolls the gateway. agentgateway reads them at start only.
+configMapGenerator:
+  - name: gateway-config
+    files:
+      - config/config.yaml
+  - name: grants-jwks
+    files:
+      - config/jwks.json
