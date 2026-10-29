@@ -1,0 +1,122 @@
+# The agora-gateway's vault route, end to end on the real agentgateway binary (tests/agora-gateway/README.md), and
+# the refresher that mints its token. The Pocket-ID reconciler has its own workflow (pocket-id-reconciler.yml).
+# There is no preview of the gateway (ADR 0017): this run is the proof of the system working. It renders what
+# this repository deploys with kustomize, runs it on agentgateway 1.6.0 as released (sha256 checked), signs tokens
+# with Agora's own GrantSigner at a pinned commit, and talks MCP through it to a stand-in vault. No real secret:
+# the signing key, the gateway CA and the machine token are made for the run.
+name: agora-gateway e2e
+
+on:
+  pull_request:
+    paths:
+      - apps/agora-gateway/**
+      - apps/obsidian/**
+      - apps/pocket-id/**
+      - apps/kustomization.yaml
+      - tests/agora-gateway/**
+      - .github/workflows/agora-gateway-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/agora-gateway/**
+      - apps/obsidian/**
+      - apps/pocket-id/**
+      - apps/kustomization.yaml
+      - tests/agora-gateway/**
+      - .github/workflows/agora-gateway-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agora-gateway-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGENTGATEWAY_URL: https://github.com/agentgateway/agentgateway/releases/download/v1.6.0/agentgateway-linux-amd64
+  AGENTGATEWAY_SHA256: 496ed27e6a96b55a9ad7cabe5c2be7172511f44a3cb113e533d22bf93a7f079d
+  KUBECTL_URL: https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8
+  # Agora's packages/credentials: the vault profiles (docs/specs/credentials.md, "The vault"), branch
+  # flow/2f42be87/vault-profile. Moved by hand when the contract moves.
+  AGORA_REF: 929f96b3dee23ed3a5899bd4b76e42359611b032
+  # obsidian-mcp's own config.ts and auth.ts, at the tag of the image apps/obsidian deploys (0.4.0).
+  OBSIDIAN_STACK_REF: 8b31791b8b936a46d2abe5fbe9f870d189f7ca40 # v0.4.0
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Agora's GrantSigner, at a pinned commit
+        uses: actions/checkout@v5
+        with:
+          repository: arnaultbretagne/agora
+          ref: ${{ env.AGORA_REF }}
+          path: .agora
+          sparse-checkout: packages/credentials/src
+          persist-credentials: false
+
+      - name: obsidian-mcp's token checks, at the tag deployed
+        uses: actions/checkout@v5
+        with:
+          repository: arnaultbretagne/obsidian-stack
+          ref: ${{ env.OBSIDIAN_STACK_REF }}
+          # Under the test's directory: its imports of jose and zod resolve to the test's node_modules, pinned to
+          # the versions obsidian-mcp 0.4.0 locks.
+          path: tests/agora-gateway/.obsidian-stack
+          sparse-checkout: mcp-server/src
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/agora-gateway/package-lock.json
+
+      - name: kubectl and agentgateway, checked against their sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          echo "$AGENTGATEWAY_SHA256  $RUNNER_TEMP/bin/agentgateway" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/kubectl" "$RUNNER_TEMP/bin/agentgateway"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Every kustomization the vault route touches builds
+        run: |
+          {
+            echo '### kubectl kustomize'
+            echo '```'
+            kubectl version --client | head -2
+          } >> "$GITHUB_STEP_SUMMARY"
+          for dir in apps/agora-gateway apps/obsidian apps/pocket-id apps/pocket-id/oidc-reconciler apps; do
+            kubectl kustomize "$dir" > "$RUNNER_TEMP/rendered.yaml"
+            line="\$ kubectl kustomize $dir  # exit $?, $(grep -c '^kind:' "$RUNNER_TEMP/rendered.yaml") objects"
+            echo "$line"
+            echo "$line" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The vault route on agentgateway 1.6.0
+        working-directory: tests/agora-gateway
+        env:
+          AGENTGATEWAY: ${{ runner.temp }}/bin/agentgateway
+          AGORA_GRANTS: ${{ github.workspace }}/.agora/packages/credentials/src/grants.ts
+          OBSIDIAN_MCP_SRC: ${{ github.workspace }}/tests/agora-gateway/.obsidian-stack/mcp-server/src
+        run: |
+          npm ci --no-audit --no-fund
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          {
+            echo '### The vault route on agentgateway 1.6.0, and obsidian-mcp 0.4.0 token checks'
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

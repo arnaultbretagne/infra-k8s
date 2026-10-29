@@ -69,6 +69,8 @@ spec:
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
+            # The vault's bearer, rewritten by vault-refresher every 5 minutes: watched the same way.
+            - { name: vault, mountPath: /etc/agentgateway/vault, readOnly: true }
       volumes:
         - name: config
           configMap:
@@ -111,6 +113,14 @@ spec:
         - name: claude
           secret:
             secretName: claude-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
+        # vault-refresher.yaml. Optional: the gateway starts without it, the vault then answers 401.
+        - name: vault
+          secret:
+            secretName: vault-token
             optional: true
             defaultMode: 0440
             items:

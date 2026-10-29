@@ -49,8 +49,15 @@ spec:
             # obsidian-stack ADR 0002, Update 2026-07-08). NB: these are Pocket-ID-generated client_ids —
             # if a connector is recreated in apps/pocket-id/oidc-reconciler/spec.json its UUID changes,
             # update here. (claude_auth, openai_auth.)
+            # Agora's gateway (agora_gateway_vault, id pinned in spec.json) asks its client_credentials
+            # token WITHOUT `resource`: Pocket-ID v2.18 refuses a resource that is not a registered API,
+            # and with none it sets aud = the client's own id. That id is the fourth value. It also lets
+            # through the other token this client can obtain: device_code, approved by a user of its group
+            # (admin), whose token carries aud = this id and no client id, so MCP_ALLOWED_CLIENT_IDS never
+            # sees it. Revoking the client therefore takes the id out of BOTH lists (PR #295, "Revocation";
+            # tests/agora-gateway/vault-auth.test.mjs).
             - name: MCP_ALLOWED_AUDIENCE
-              value: "https://vault.bretagne.dev,a8bcf978-4c56-4cbd-bedc-e369777a6713,7db41a0c-cc74-433a-a11b-0b3cc1fe289c"
+              value: "https://vault.bretagne.dev,a8bcf978-4c56-4cbd-bedc-e369777a6713,7db41a0c-cc74-433a-a11b-0b3cc1fe289c,7d54f86c-7456-4cbd-b79d-a9bb7452bb62"
             # ACTIVE (agent-broker plan P5.2 step 6). Proven live 2026-07-15, gate OFF: oauth2-proxy's
             # own client (ff448523) minted a token with aud=https://vault.bretagne.dev — Pocket-ID
             # echoes the requested `resource` into `aud` with zero validation — and this server
@@ -65,10 +72,12 @@ spec:
             # all, so they present none, and the gate only rejects a token that PRESENTS an id not on
             # this list. They keep passing on `aud` exactly as before (verified live after this flip).
             #
-            # This is the client_id of `agent_broker_vault` in apps/pocket-id/oidc-reconciler/spec.json.
-            # Recreating that client changes its UUID and silently breaks this gate.
+            # These are the client_ids of `agent_broker_vault` and `agora_gateway_vault` (Agora's gateway,
+            # apps/agora-gateway) in apps/pocket-id/oidc-reconciler/spec.json. The first was minted by
+            # Pocket-ID: recreating it changes its UUID and silently breaks this gate. The second is
+            # pinned in spec.json, so it survives a recreation.
             - name: MCP_ALLOWED_CLIENT_IDS
-              value: "285e5889-e9b4-40cf-b1e8-a6f430f42c35"
+              value: "285e5889-e9b4-40cf-b1e8-a6f430f42c35,7d54f86c-7456-4cbd-b79d-a9bb7452bb62"
             # v0.4.0 (agent-broker plan P5.2 step 1): this image KNOWS how to enforce
             # MCP_ALLOWED_CLIENT_IDS, but the variable stays ABSENT — absent is the documented way to
             # leave the gate off. Do NOT set it to "" to disable it: v0.4.0 refuses to start on a gate

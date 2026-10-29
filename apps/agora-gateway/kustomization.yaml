@@ -12,6 +12,7 @@ resources:
   - upstream-credentials.secrets.yaml
   - chatgpt-refresher.yaml
   - claude-refresher.yaml
+  - vault-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml
 # The gateway's configuration, and Agora's public key for the grants JWT (the private half is

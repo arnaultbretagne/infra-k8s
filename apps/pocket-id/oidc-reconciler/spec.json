@@ -43,6 +43,16 @@
       "pkceEnabled": false
     },
     {
+      "_comment": "MACHINE client for Agora's gateway (apps/agora-gateway, route `vault`): an execution given vault:read or vault:write reaches the vault MCP with this client's token, set by the gateway, never seen by the sandbox. Used for client_credentials only (sub client-<id>, aud <id>). Pocket-ID v2.18 cannot close a grant per client: with the client secret AND a user of allowedGroups (admin) approving the code, device_code also gives a user token (sub = that user, aud <id>, no client id), which the vault MCP accepts on its audience; no callbackURLs, so no authorization_code. Its id is pinned (the reconciler passes `id` at creation and writes nothing to a client of that name with another id): it is in MCP_ALLOWED_CLIENT_IDS and MCP_ALLOWED_AUDIENCE of apps/obsidian/mcp-server.yaml, and revoking the client takes it out of both. Its tokens live 15 minutes (accessTokenDurationMinutes): vault-refresher (apps/agora-gateway/vault-refresher.yaml) mints one every 5 minutes by client_credentials from inside the cluster, with the client secret this reconciler owns in agora-gateway/vault-client (`secret`; ADR 0022, amendment 2026-10-29), and writes it to agora-gateway/vault-token. Nobody mints a token or bootstraps a secret by hand.",
+      "id": "7d54f86c-7456-4cbd-b79d-a9bb7452bb62",
+      "name": "agora_gateway_vault",
+      "secret": { "namespace": "agora-gateway", "name": "vault-client" },
+      "accessTokenDurationMinutes": 15,
+      "callbackURLs": [],
+      "allowedGroups": ["admin"],
+      "pkceEnabled": false
+    },
+    {
       "name": "claude_auth",
       "callbackURLs": [
         "https://claude.ai/api/mcp/auth_callback",
