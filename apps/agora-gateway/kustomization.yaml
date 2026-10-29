@@ -9,7 +9,6 @@ resources:
   - limitrange.yaml
   - gateway-ca.secrets.yaml
   - upstream-credentials.secrets.yaml
-  - previews-client.secrets.yaml
   - previews-refresher.yaml
   - chatgpt-refresher.yaml
   - claude-refresher.yaml

@@ -215,7 +215,9 @@ http.createServer((req, res) => {
 
   // The gateway, on the configuration this repository renders.
   const objects = parseAllDocuments(admin(['kustomize', join(REPO, 'apps/agora-gateway')])).map((d) => d.toJS())
-  const find = (kind, name) => objects.find((o) => o.kind === kind && o.metadata.name === name)
+  // A generated ConfigMap's name carries its content's hash (apps/agora-gateway/kustomization.yaml): <name>-<hash>.
+  const named = (o, name) => o.metadata.name === name || (o.kind === 'ConfigMap' && new RegExp(`^${name}-[a-z0-9]{10}$`).test(o.metadata.name))
+  const find = (kind, name) => objects.find((o) => o.kind === kind && named(o, name))
   let config = find('ConfigMap', 'gateway-config').data['config.yaml']
   const listener = parse(config).binds.find((b) => b.port === 443).listeners[0]
   const route = listener.routes.find((r) => r.name === 'previews')

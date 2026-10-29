@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The agora-gateway's previews route and the previews' gateway gate, end to end (README.md).",
   "scripts": {
-    "test": "node --test --test-concurrency=1 previews-route.test.mjs"
+    "test": "node --test --test-concurrency=1 previews-client.test.mjs previews-route.test.mjs"
   },
   "engines": {
     "node": ">=24"
