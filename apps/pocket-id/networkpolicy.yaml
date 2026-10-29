@@ -31,6 +31,15 @@ spec:
             app: oidc-reconciler
       toPorts:
         - ports: [{ port: "1411", protocol: TCP }]
+    # Agora's vault token refresher (apps/agora-gateway/vault-refresher.yaml) -> token endpoint :1411: it
+    # mints the gateway's client_credentials bearer for the vault MCP every 5 minutes. Its matching egress
+    # is apps/agora-gateway/networkpolicy.yaml (vault-refresher).
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora-gateway
+            app: vault-refresher
+      toPorts:
+        - ports: [{ port: "1411", protocol: TCP }]
     # The channels-era broker's vault adapter used to reach the token endpoint :1411 from the
     # `agent` namespace, minting its own client_credentials bearer so a loge never held a vault
     # credential. Removed with that system on 2026-08-07. The new platform's own vault equipment

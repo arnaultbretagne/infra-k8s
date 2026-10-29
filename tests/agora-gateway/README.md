@@ -37,9 +37,11 @@ environment `apps/obsidian` deploys. Its tokens have the shape Pocket-ID v2.18.0
 - taking the id out of `MCP_ALLOWED_CLIENT_IDS` alone leaves the device_code token accepted;
 - the documented revocation, the id out of both lists, refuses both tokens, and the server still starts.
 
-`vault-token-expiry.test.mjs` checks the expiry check run each day by
-`.github/workflows/agora-gateway-vault-token.yml` (`vault-token-expiry.mjs`). The same workflow, job
-`reconciler`, runs `tests/pocket-id-reconciler`: `reconcile.py` against a simulated Pocket-ID, every write
+`vault-refresher.test.mjs` runs the vault token's refresher, its script as `apps/agora-gateway/vault-refresher.yaml`
+ships it, against a stand-in Pocket-ID and a stand-in API server: the token minted by client_credentials and
+written to `vault-token` with the Secret's other keys, never logged; exit 4 without a client secret, 1 refused, 2
+unable to write, 3 a token that would not outlive two runs; the client's pinned id and token duration against the
+schedule. The workflow's job `reconciler` runs `tests/pocket-id-reconciler`: `reconcile.py` against a simulated Pocket-ID, every write
 recorded.
 
 Locally (linux-amd64, Node 24):

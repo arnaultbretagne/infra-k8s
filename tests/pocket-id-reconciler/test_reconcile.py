@@ -111,7 +111,7 @@ class Reconcile(unittest.TestCase):
         self.assertEqual(len(post), 1, log)
         self.assertEqual(post[0][2]["id"], GATEWAY_ID)
         self.assertEqual(post[0][2]["name"], GATEWAY)
-        self.assertEqual(post[0][2]["accessTokenDurationMinutes"], 129600)
+        self.assertEqual(post[0][2]["accessTokenDurationMinutes"], 15)
         self.assertEqual(post[0][2]["callbackURLs"], [])
         self.assertIn(("PUT", f"/oidc/clients/{GATEWAY_ID}/allowed-user-groups", {"userGroupIds": [GROUP_IDS["admin"]]}), api.writes)
 
@@ -134,7 +134,7 @@ class Reconcile(unittest.TestCase):
         code, log = run(api)
         self.assertEqual(code, 0, log)
         self.assertEqual([(w[0], w[1]) for w in api.writes], [("PUT", f"/oidc/clients/{GATEWAY_ID}")], log)
-        self.assertEqual(api.writes[0][2]["accessTokenDurationMinutes"], 129600)
+        self.assertEqual(api.writes[0][2]["accessTokenDurationMinutes"], 15)
 
     def test_an_update_keeps_the_token_duration_of_a_client_whose_spec_does_not_set_it(self):
         """Pocket-ID resets an update without accessTokenDurationMinutes to 60 minutes."""
