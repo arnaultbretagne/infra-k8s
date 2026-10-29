@@ -1,8 +1,43 @@
-# The previews' smoke test (ADR 0017 v4): a whoami, catalogue entry preview-demo. NOT listed in
-# apps/kustomization.yaml on purpose: this folder is only ever applied by a preview, from the PR's
-# commit, into pv-preview-demo-pr<n>.
+# THROWAWAY, never merge: serves the team-thread demo (agora spike/team-thread-demo, showcase-team/dist)
+# through the preview-demo catalogue slot, so it can be judged at pr-<n>-preview-demo.preview.bretagne.dev.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
+generatorOptions:
+  disableNameSuffixHash: true
+configMapGenerator:
+  - name: team-demo-nginx
+    files:
+      - default.conf=nginx.conf
+  - name: team-demo-0
+    files:
+      - assets__assistant-ui-Bu5SgXp9.js.gz=site/assets/assistant-ui-Bu5SgXp9.js.gz
+      - assets__inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz=site/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
+      - assets__react-C-U3wrz7.js.gz=site/assets/react-C-U3wrz7.js.gz
+      - assets__newsreader-latin-wght-normal-CCVVNp6i.woff2.gz=site/assets/newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
+      - assets__inter-latin-wght-normal-Dx4kXJAl.woff2.gz=site/assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+      - assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz=site/assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
+      - assets__vendor-4WdKJxKA.js.gz=site/assets/vendor-4WdKJxKA.js.gz
+      - assets__index-33qJ3lza.js.gz=site/assets/index-33qJ3lza.js.gz
+      - assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz=site/assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
+      - assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz=site/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
+      - assets__inter-greek-wght-normal-CkhJZR-_.woff2.gz=site/assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
+      - assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz=site/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+      - assets__index-D2C-_ixA.css.gz=site/assets/index-D2C-_ixA.css.gz
+      - assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz=site/assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+      - assets__markdown-w_jP-7yR.js.gz=site/assets/markdown-w_jP-7yR.js.gz
+  - name: team-demo-1
+    files:
+      - assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz=site/assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
+      - assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz=site/assets/newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
+      - assets__inter-greek-ext-wght-normal-DlzME5K_.woff2.gz=site/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2.gz
+      - assets__inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz=site/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz
+      - assets__jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz=site/assets/jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz
+      - assets__jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz=site/assets/jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz
+      - assets__jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz=site/assets/jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz
+      - index.html=site/index.html
+      - favicon.svg.gz=site/favicon.svg.gz
+      - assets__rolldown-runtime-vfrPO-fZ.js.gz=site/assets/rolldown-runtime-vfrPO-fZ.js.gz
+      - assets__assistant-ui-CcdakA0V.css.gz=site/assets/assistant-ui-CcdakA0V.css.gz
