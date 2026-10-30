@@ -64,6 +64,9 @@ spec:
       disabled:
         KubeCPUQuotaOvercommit: true
         KubeMemoryQuotaOvercommit: true
+        # Fires per failed Job until the Job is deleted, even after good runs of its
+        # CronJob: replaced by CronJobLastRunFailed + JobFailed (observability/rules.yaml).
+        KubeJobFailed: true
 
     # Single-node k0s/kine: nobody will ever do apiserver SLOs here. The chart's
     # default metricRelabelings only trims some bucket label values; this REPLACES
