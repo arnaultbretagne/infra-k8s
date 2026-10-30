@@ -43,7 +43,7 @@ data:
     // the refresh token at platform.claude.com for a new pair, as Claude Code does, and write both keys
     // back at once. The login itself ends on a fixed date that refreshes do not move
     // (`refreshTokenExpiresAt`, about 28 days after `claude auth login`): from WARN_DAYS before it, the
-    // job fails, so KubeJobFailed asks for a new login in time. Logs dates and error codes, never a token.
+    // job fails, so CronJobLastRunFailed asks for a new login in time. Logs dates and error codes, never a token.
     import { readFileSync } from 'node:fs'
 
     const NAME = 'claude-session'
