@@ -71,9 +71,13 @@ spec:
           # An idle sandbox uses ~1m CPU (measured 2026-09-27). The request only reserves scheduling
           # room on a 6-core node: at 250m (+100m Kata overhead) a cold sandbox could not be scheduled
           # while stopped ones waited for their deadline. A turn may still burst up to the limit.
+          # Kata sizes the VM at the memory limit (+32Mi), so the limit is all the RAM the agent has:
+          # at 1Gi, three sub-agents plus 25 `node` processes started at once ran the VM out and its
+          # kernel killed Claude Code mid-turn (2026-10-30). The VM takes host RAM only when it first
+          # touches it, and keeps it until the Pod ends (reclaim_guest_freed_memory is off).
           resources:
             requests: { cpu: 50m, memory: 512Mi }
-            limits: { cpu: "1", memory: 1Gi }
+            limits: { cpu: "1", memory: 4Gi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

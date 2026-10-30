@@ -3,10 +3,10 @@
 # Kata's RuntimeClass overhead (100m / 256Mi per Pod) counts against these requests. Sized for 24
 # Pods: MAX_ACTIVE (16) claims, the warm Pods of every pool (mock 2, claude-code, opencode, codex),
 # and 3 for a pool being replaced when its image changes. Per Pod: 150m / 768Mi requested,
-# 1.1 CPU / 1.25Gi in limits.
+# 1.1 CPU / 4.25Gi in limits.
 #
 # The memory limits overcommit the node on purpose: a sandbox holds 130-490Mi idle (measured
-# 2026-10-07), well under its 1.25Gi ceiling. If many burst at once, the kubelet sheds the
+# 2026-10-07), well under its 4.25Gi ceiling. If many burst at once, the kubelet sheds the
 # sandboxes above their request first; the server, gateway, log and IdP are bretagne-critical.
 apiVersion: v1
 kind: ResourceQuota
@@ -18,4 +18,4 @@ spec:
     requests.cpu: "4"        # 24 × 150m = 3.6
     requests.memory: 18Gi    # 24 × 768Mi
     limits.cpu: "27"         # 24 × 1.1 = 26.4
-    limits.memory: 30Gi      # 24 × 1.25Gi
+    limits.memory: 102Gi     # 24 × 4.25Gi
