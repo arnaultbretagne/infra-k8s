@@ -371,14 +371,14 @@ describe('the previews route and the gateway gate: agentgateway 1.6.0, Traefik a
     const pick = (objs, kind, name) => objs.find((o) => o.kind === kind && o.metadata.name === name)
     for (const [kind, name] of [['Deployment', `${P}-gate`], ['Service', `${P}-gate`], ['CiliumNetworkPolicy', `${P}-gate`]]) {
       const now = pick(ctx.rendered, kind, name)
-      assert.deepEqual(now, pick(base, kind, name), `${kind}/${name}`)
+      assert.deepEqual(now, pick(base, kind, name), `${kind}/${name} differs from the base branch's: the browser gate changed, on purpose?`)
       t.diagnostic(`${kind}/${name}: identical to the base branch's render`)
     }
     const rules = pick(ctx.rendered, 'HTTPRoute', P).spec.rules
     const baseRules = pick(base, 'HTTPRoute', P).spec.rules
-    assert.equal(baseRules.length, 1)
-    assert.deepEqual(rules.at(-1), baseRules[0], 'the rule without a header match is the base branch\'s')
-    t.diagnostic(`HTTPRoute ${P}: ${rules.length} rules; the last, without a match, identical to the base branch's only rule; the first matches x-agora-gate: gateway -> ${rules[0].backendRefs[0].name}`)
+    // The last rule on both sides: the base has one rule before the gateway gate (#303), two since.
+    assert.deepEqual(rules.at(-1), baseRules.at(-1), 'the rule without a header match differs from the base branch\'s: the browser gate changed, on purpose?')
+    t.diagnostic(`HTTPRoute ${P}: ${rules.length} rules (base: ${baseRules.length}); the last, without a match, identical to the base branch's last; the first matches x-agora-gate: gateway -> ${rules[0].backendRefs[0].name}`)
     const plain = await browserRequest('/echo')
     t.diagnostic(`browser, no header: ${plain.status} -> ${plain.location.split('?')[0]} client_id=${new URL(plain.location, ISSUER).searchParams.get('client_id')}`)
     assert.equal(plain.status, 302)
