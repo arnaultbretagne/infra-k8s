@@ -18,18 +18,18 @@ configMapGenerator:
       - assets__react-C-U3wrz7.js.gz=site/assets/react-C-U3wrz7.js.gz
       - assets__newsreader-latin-wght-normal-CCVVNp6i.woff2.gz=site/assets/newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
       - assets__inter-latin-wght-normal-Dx4kXJAl.woff2.gz=site/assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+      - assets__index-B1o65-Hf.js.gz=site/assets/index-B1o65-Hf.js.gz
       - assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz=site/assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
-      - assets__vendor-4WdKJxKA.js.gz=site/assets/vendor-4WdKJxKA.js.gz
-      - assets__index-33qJ3lza.js.gz=site/assets/index-33qJ3lza.js.gz
+      - assets__vendor-CSkv7Jpc.js.gz=site/assets/vendor-CSkv7Jpc.js.gz
       - assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz=site/assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
       - assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz=site/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
       - assets__inter-greek-wght-normal-CkhJZR-_.woff2.gz=site/assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
       - assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz=site/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
-      - assets__index-D2C-_ixA.css.gz=site/assets/index-D2C-_ixA.css.gz
+      - assets__index-CeSwJ9Ka.css.gz=site/assets/index-CeSwJ9Ka.css.gz
       - assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz=site/assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
-      - assets__markdown-w_jP-7yR.js.gz=site/assets/markdown-w_jP-7yR.js.gz
   - name: team-demo-1
     files:
+      - assets__markdown-w_jP-7yR.js.gz=site/assets/markdown-w_jP-7yR.js.gz
       - assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz=site/assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
       - assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz=site/assets/newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
       - assets__inter-greek-ext-wght-normal-DlzME5K_.woff2.gz=site/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2.gz

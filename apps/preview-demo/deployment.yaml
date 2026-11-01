@@ -66,12 +66,12 @@ spec:
                       path: assets/newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
                     - key: assets__inter-latin-wght-normal-Dx4kXJAl.woff2.gz
                       path: assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+                    - key: assets__index-B1o65-Hf.js.gz
+                      path: assets/index-B1o65-Hf.js.gz
                     - key: assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
                       path: assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
-                    - key: assets__vendor-4WdKJxKA.js.gz
-                      path: assets/vendor-4WdKJxKA.js.gz
-                    - key: assets__index-33qJ3lza.js.gz
-                      path: assets/index-33qJ3lza.js.gz
+                    - key: assets__vendor-CSkv7Jpc.js.gz
+                      path: assets/vendor-CSkv7Jpc.js.gz
                     - key: assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
                       path: assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
                     - key: assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
@@ -80,15 +80,15 @@ spec:
                       path: assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
                     - key: assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
                       path: assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
-                    - key: assets__index-D2C-_ixA.css.gz
-                      path: assets/index-D2C-_ixA.css.gz
+                    - key: assets__index-CeSwJ9Ka.css.gz
+                      path: assets/index-CeSwJ9Ka.css.gz
                     - key: assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
                       path: assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
-                    - key: assets__markdown-w_jP-7yR.js.gz
-                      path: assets/markdown-w_jP-7yR.js.gz
               - configMap:
                   name: team-demo-1
                   items:
+                    - key: assets__markdown-w_jP-7yR.js.gz
+                      path: assets/markdown-w_jP-7yR.js.gz
                     - key: assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
                       path: assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
                     - key: assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
