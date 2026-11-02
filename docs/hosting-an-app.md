@@ -333,7 +333,8 @@ spec:
     s3Credentials:
       accessKeyId:     { name: cnpg-s3-creds, key: ACCESS_KEY_ID }
       secretAccessKey: { name: cnpg-s3-creds, key: SECRET_ACCESS_KEY }
-    wal: { compression: snappy }
+    wal: { compression: zstd }                 # idle segments are zero-padded: zstd shrinks them to ~nothing
+    data: { compression: gzip }                # base backups; the plugin offers no zstd here
   instanceSidecarConfiguration:                 # the plugin's sidecar: bound it, or the LimitRange default applies
     resources:
       requests: { cpu: 10m, memory: 64Mi }
