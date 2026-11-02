@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — **amended 2026-10-08** (Barman Cloud through the plugin)
+Accepted — **amended 2026-10-08** (Barman Cloud through the plugin) and **2026-11-02** (compression)
 
 ## Amendment 2026-10-08 — Barman Cloud runs as a CNPG plugin
 
@@ -26,6 +26,20 @@ operator in `cnpg-system` (`infrastructure/controllers/cloudnativepg/plugin-barm
 
 All eight clusters moved on 2026-10-08, each checked by a forced WAL switch archived by the plugin, a
 plugin backup and its restore drill.
+
+## Amendment 2026-11-02 — WAL in zstd, base backups in gzip
+
+`archive_timeout: 5min` ships a 16 MB segment every five minutes as soon as anything was written, and
+most of it is zero padding. Snappy cannot go below 771 KB on such a segment; zstd brings it under 1 KB
+and cuts real segments 5× to 30× further than snappy. Base backups were uploaded as plain tar; gzip
+halves agora-pg's (2.5×, TOAST already compresses the large values) — the plugin offers no zstd for
+base backups. Measured on 2026-11-02: the bucket held 15.8 GB for 1.35 GB of databases, heading to
+~18 GB as agora-pg grew; the estimate after one retention window is ~5–6 GB.
+
+Every `ObjectStore` sets `wal.compression: zstd` and `data.compression: gzip`. Restores read each
+file's own compression, so the snappy WAL and plain base backups already in the bucket stay
+restorable until retention removes them. `archive_timeout` stays at 5 minutes: with zstd the padding
+costs nothing, so there is no reason to widen the data-loss window.
 
 ## Context
 
@@ -194,7 +208,9 @@ spec:
         name: cnpg-s3-creds
         key: SECRET_ACCESS_KEY
     wal:
-      compression: snappy
+      compression: zstd
+    data:
+      compression: gzip
 
 ---
 apiVersion: postgresql.cnpg.io/v1
