@@ -70,6 +70,14 @@ spec:
             app: obsidian-mcp
       toPorts:
         - ports: [{ port: "4000", protocol: TCP }]
+    # Agora's MCP server, route `agora`: the server's Pods, port 8082, nothing else of Agora
+    # (apps/agora/networkpolicy.yaml, the other half).
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: agora
+            app: server
+      toPorts:
+        - ports: [{ port: "8082", protocol: TCP }]
 ---
 # The vault token's refresher (vault-refresher.yaml): the API server for its one Secret, Pocket-ID's
 # token endpoint in the cluster (apps/pocket-id/networkpolicy.yaml, the other half). Nothing else.

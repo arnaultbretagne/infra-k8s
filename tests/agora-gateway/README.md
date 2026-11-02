@@ -1,4 +1,4 @@
-# agora-gateway: the vault route, end to end
+# agora-gateway: the vault and agora routes, end to end
 
 The proof that the gateway's `vault` route works. There is no preview of agora-gateway (ADR 0017), so this
 test, run by `.github/workflows/agora-gateway-e2e.yml` on every pull request touching the gateway, the vault
@@ -28,6 +28,16 @@ What it asserts:
 | A session open, the token rotated (as the kubelet swaps `..data`), then the server refusing the old token, as at its expiry | The **same** session's `tools/call` succeeds with the new token, its tools still filtered, with no restart. On a stateful route this fails with 401: agentgateway sets up a session's upstream client, credential included, once. |
 | Upstream sessions | Every session the gateway opens on the server (stateless: one per message), it closes with a DELETE: none left open. |
 | The gateway's log | Route `vault`, the execution, the tool. |
+
+`agora-route.test.mjs` does the same for the `agora` route — Agora's own MCP server (`docs/specs/mcp.md` on
+arnaultbretagne/agora) — with a stand-in for the server's port 8082 that records each message and the caller named:
+
+| Case | Expected |
+| --- | --- |
+| `agora:read` | The message reaches the server with `x-agora-execution` set to the token's own subject, whatever the sandbox sent in it. |
+| `internet` alone, `anthropic` alone, no profile; a token used from another address | 403, the server never reached. |
+| `/mcp/`, `/mcp?x=1`, `/api/workstreams`, `..`, `%2e`, `PUT` | 403, the server never reached. |
+| The gateway's log | Route `agora`, the execution. |
 
 `vault-auth.test.mjs` runs obsidian-mcp v0.4.0's own `config.ts` and `auth.ts` (obsidian-stack at its tag) on the
 environment `apps/obsidian` deploys. Its tokens have the shape Pocket-ID v2.18.0 gives them. It checks that:

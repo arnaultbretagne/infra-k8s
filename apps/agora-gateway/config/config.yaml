@@ -296,6 +296,23 @@ binds:
                   key:
                     value: { file: /etc/agentgateway/kubernetes/token }
                     location: { header: { name: authorization, prefix: "Bearer " } }
+            # Agora's own MCP server, for `agora:read` (docs/specs/credentials.md on arnaultbretagne/agora,
+            # "Agora's MCP"; docs/specs/mcp.md). `mcp.agora.internal` resolves nowhere: only this route knows
+            # it. No credential: the gateway tells Agora who calls instead — the JWT's subject, `agora
+            # <execution>`, set as x-agora-execution over whatever the sandbox sent — and Agora opens its tools by
+            # the rights it recorded. The server's port 8082 admits the gateway alone (apps/agora/networkpolicy.yaml).
+            - name: agora
+              hostnames: [mcp.agora.internal]
+              backends:
+                - host: server.agora.svc.cluster.local:8082
+              policies:
+                authorization:
+                  rules:
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                transformations:
+                  request:
+                    set:
+                      x-agora-execution: 'jwt.sub'
             # The Internet: no hostnames, so agentgateway picks it last, for a host none of the routes
             # above names — those keep their own grants, and their credentials, whatever this one
             # allows. No credential set: the request leaves as the sandbox sent it. Its own rule: a

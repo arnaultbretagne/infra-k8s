@@ -73,6 +73,8 @@ spec:
               containerPort: 8080
             - name: anchors
               containerPort: 8081
+            - name: mcp
+              containerPort: 8082
           env:
             - { name: SANDBOX_NAMESPACE, value: agora-sandboxes }
             - { name: SIGNING_KEY_FILE, value: /etc/agora/signing/private.pem }
@@ -92,8 +94,9 @@ spec:
             # it. `internet` is the gateway's route without hosts, public addresses only
             # (apps/agora-gateway): off unless picked for an execution. `vault:write` covers `vault:read` too (the
             # vault MCP, route `vault`); `kubernetes:read` reads the cluster (route `kubernetes`); `previews`
-            # reaches the previews through their gateway gate (route `previews`), and the flows' judge is given it.
-            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews" }
+            # reaches the previews through their gateway gate (route `previews`), and the flows' judge is given it;
+            # `agora:read` opens Agora's own MCP server to the agent — search and read its person's Workstreams (route `agora`).
+            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews,agora:read" }
             # Agora's docs/specs/credentials.md, "Limits": the server reads each account's limits
             # through the gateway, with a grant bound to its own address, checked against the
             # gateway's root (gateway-ca.yaml).
@@ -165,3 +168,6 @@ spec:
     - name: anchors
       port: 8081
       targetPort: anchors
+    - name: mcp
+      port: 8082
+      targetPort: mcp
