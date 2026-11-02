@@ -40,7 +40,8 @@ spec:
         - ports: [{ port: "8080", protocol: TCP }]
     # The MCP server (Agora's docs/specs/mcp.md): the gateway alone, whose route `agora` has checked the
     # token and names the caller in x-agora-execution — which the server trusts on this port only
-    # (apps/agora-gateway/networkpolicy.yaml, the other half). Not the host, not the sandboxes.
+    # (apps/agora-gateway/networkpolicy.yaml, the other half). No other Pod, the sandboxes included; the node
+    # reaches it anyway, as Cilium lets a node reach every port of its Pods (measured 2026-11-02: 401 from g4).
     - fromEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: agora-gateway
