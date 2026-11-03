@@ -13,7 +13,6 @@ configMapGenerator:
       - site/fr.html
       - site/style.css
       - site/app.js
-      - site/layout.js
       - site/favicon.svg
       - site/heebo.woff2
       - site/photo.jpg

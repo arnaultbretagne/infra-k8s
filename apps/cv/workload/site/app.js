@@ -1,5 +1,5 @@
-// Two touches the PDF cannot have: a print button, and each repository's last activity, asked of
-// GitHub's public API. The page is whole without this script; a failure leaves the chip as it is.
+// What the PDF cannot have: a print button, each repository's last activity asked of GitHub's public
+// API, and the length of each job. The page is whole without this script; a failure leaves it as is.
 
 const print = document.querySelector(".print");
 print.hidden = false;
@@ -56,20 +56,4 @@ for (const el of document.querySelectorAll(".dur[data-from]")) {
     ? [y && `${y} an${y > 1 ? "s" : ""}`, m && `${m} mois`]
     : [y && `${y} yr${y > 1 ? "s" : ""}`, m && `${m} mo${m > 1 ? "s" : ""}`];
   el.textContent = ` · ${parts.filter(Boolean).join(" ")}`;
-}
-
-// The review bar (temporary): switches the entries' layout and remembers it across both pages.
-const review = document.querySelector(".review");
-if (review) {
-  review.hidden = false;
-  const current = () => document.documentElement.dataset.layout || "a";
-  const mark = () => review.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.layout === current())));
-  review.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-layout]");
-    if (!button) return;
-    document.documentElement.dataset.layout = button.dataset.layout;
-    try { localStorage.setItem("cv-layout", button.dataset.layout); } catch {}
-    mark();
-  });
-  mark();
 }
