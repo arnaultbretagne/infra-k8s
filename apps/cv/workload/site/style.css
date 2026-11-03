@@ -92,20 +92,11 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   align-items: start;
 }
 .contact .ic {
-  width: 1.0667rem;
-  height: 1.0667rem;
-  margin-top: 0.12rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.17rem;
   justify-self: center;
   fill: var(--ink);
-}
-.contact .in {
-  font-family: "DejaVu Sans", Verdana, "Heebo", sans-serif;
-  font-weight: 700;
-  font-size: 1.3333rem;
-  line-height: 1;
-  color: var(--ink);
-  justify-self: start;
-  letter-spacing: -0.02em;
 }
 .contact .mail { font-size: 0.8889rem; line-height: 1.62; }
 .contact a:hover { color: var(--accent); }
@@ -126,30 +117,19 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
 .side h2 + h3 { margin-top: 0.84rem; }
 .skills { margin-left: 1.25rem; line-height: 1.3333; }
 
-.langs { margin: 0.78rem 0 0 0.75rem; width: 14.9167rem; }
-.langs dt { color: var(--ink); font-weight: 700; }
-.langs dd { margin: 0.15rem 0 0.325rem; height: 0.4167rem; }
-.langs dd span { display: block; height: 100%; background: var(--text); }
-[data-level="A1"] { width: 0; }
-[data-level="A2"] { width: 20%; }
-[data-level="B1"] { width: 40%; }
-[data-level="B2"] { width: 60%; }
-[data-level="C1"] { width: 80%; }
-[data-level="C2"] { width: 100%; }
-.scale {
-  display: flex;
-  justify-content: space-between;
-  margin: 0.675rem 0 0 0.75rem;
-  width: 14.9167rem;
-  font-size: 0.8889rem;
-}
-.scale span { display: grid; justify-items: center; gap: 0.44rem; width: 0.95rem; }
-.scale span::before {
-  content: "";
-  width: 1px;
-  height: 0.5833rem;
-  background: var(--accent);
-}
+/* Languages: six equal segments, one per CEFR level from A1 to C2, and the level beside the name. */
+.langs { margin: 0.7rem 0 0 0.75rem; width: 14.9167rem; display: grid; gap: 0.7rem; }
+.langs li { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 0.32rem; }
+.langs .lang { color: var(--ink); font-weight: 700; }
+.langs .cefr { color: var(--accent); font-weight: 700; font-size: 0.8889rem; }
+.langs .bar { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.25rem; }
+.langs .bar i { height: 0.4167rem; border-radius: 99px; background: rgba(91, 94, 102, 0.2); }
+.bar[data-level="1"] i:nth-child(-n+1),
+.bar[data-level="2"] i:nth-child(-n+2),
+.bar[data-level="3"] i:nth-child(-n+3),
+.bar[data-level="4"] i:nth-child(-n+4),
+.bar[data-level="5"] i:nth-child(-n+5),
+.bar[data-level="6"] i { background: var(--text); }
 
 /* ---------- Name ---------- */
 
@@ -170,21 +150,31 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   line-height: 1.2;
   margin-top: 0.345rem;
 }
-.print {
+.tools {
   position: absolute;
   top: 0.4rem;
   right: 0;
+  display: flex;
+  gap: 0.5rem;
+}
+.pill {
   font: inherit;
   font-size: 0.9rem;
   font-weight: 700;
+  line-height: 1.4;
   color: var(--text);
   background: transparent;
   border: 1.5px solid #c9c9c9;
   border-radius: 99px;
   padding: 0.2rem 0.75rem;
-  cursor: pointer;
 }
+.print { cursor: pointer; }
 .print:hover { color: var(--accent); border-color: var(--accent); }
+.switch { display: flex; padding: 0.2rem 0.15rem; }
+.switch > * { padding: 0 0.55rem; }
+.switch > * + * { border-left: 1.5px solid #c9c9c9; }
+.switch [aria-current] { color: var(--accent); }
+.switch a:hover { color: var(--accent); }
 
 /* ---------- Card ---------- */
 
@@ -220,6 +210,8 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   object-fit: contain;
   flex: none;
 }
+.entry .logo-capgemini, .entry .logo-agora { padding: 0.15rem; }
+.entry .logo-kubernetes { padding: 0.3rem; }
 .entry h3 {
   color: var(--ink);
   font-weight: 700;
@@ -275,12 +267,6 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
 .repo svg { width: 1rem; height: 1rem; fill: currentColor; }
 .repo .live { font-weight: 400; }
 .repo:hover { color: var(--accent); }
-.facts {
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-.entry p.facts { margin-top: 0.5rem; }
-.facts strong { color: var(--text); font-weight: 700; }
 
 .certs { margin-top: 0.11rem; }
 .certs li { display: flex; justify-content: space-between; gap: 1rem; }
@@ -327,6 +313,7 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   .contact { margin: 0.6rem 0.6rem 0.6rem 0; gap: 0.45rem; }
   .head h1 { font-size: 2.6rem; margin-top: 0; }
   .head .title { font-size: 1.55rem; margin-top: 0.2rem; }
+  .tools { position: static; justify-content: flex-end; margin-bottom: 0.5rem; }
   .print { display: none; }
   .card { margin-top: 0; padding: 1.1rem 1.1rem 1.5rem; }
   .entry .org { margin-left: 0; height: auto; min-height: 2.6rem; flex-wrap: wrap; row-gap: 0.4rem; }
@@ -354,7 +341,7 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   .page { max-width: none; width: 66.1667rem; }
   .page, .side, .card { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
   .lang-block { break-inside: avoid; }
-  .print, .foot { display: none; }
+  .tools, .foot { display: none; }
   a.proof { text-decoration: none; }
   .certs li, .points li { break-inside: avoid; }
   .card h2, .entry .org, .role, .entry > p { break-after: avoid; }

@@ -1,12 +1,13 @@
-// Two touches the PDF cannot have: a print button, and the repositories' numbers refreshed from
-// GitHub's public API. The page is whole without this script; each failure leaves the numbers
-// written in the HTML.
+// Two touches the PDF cannot have: a print button, and each repository's last activity, asked of
+// GitHub's public API. The page is whole without this script; a failure leaves the chip as it is.
 
 const print = document.querySelector(".print");
 print.hidden = false;
 print.addEventListener("click", () => window.print());
 
-const ago = new Intl.RelativeTimeFormat("fr", { numeric: "auto", style: "short" });
+const lang = document.documentElement.lang;
+const ago = new Intl.RelativeTimeFormat(lang, { numeric: "auto", style: "short" });
+const active = lang === "fr" ? "actif" : "active";
 
 function since(date) {
   const minutes = Math.round((Date.now() - date.getTime()) / 60000);
@@ -16,33 +17,23 @@ function since(date) {
   return ago.format(-Math.round(hours / 24), "day");
 }
 
-async function github(path) {
-  const key = `gh:${path}`;
+async function repo(name) {
+  const key = `gh:${name}`;
   try {
     const cached = JSON.parse(sessionStorage.getItem(key));
     if (cached && Date.now() - cached.at < 10 * 60000) return cached.body;
   } catch {}
-  const response = await fetch(`https://api.github.com/${path}`, {
+  const response = await fetch(`https://api.github.com/repos/${name}`, {
     headers: { Accept: "application/vnd.github+json" },
   });
-  if (!response.ok) throw new Error(`${response.status} ${path}`);
+  if (!response.ok) throw new Error(`${response.status} ${name}`);
   const body = await response.json();
   try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), body })); } catch {}
   return body;
 }
 
 for (const el of document.querySelectorAll("[data-pushed]")) {
-  github(`repos/${el.dataset.pushed}`)
-    .then((repo) => { el.textContent = ` · actif ${since(new Date(repo.pushed_at))}`; })
-    .catch(() => {});
-}
-
-for (const el of document.querySelectorAll("[data-prs]")) {
-  github(`search/issues?q=${encodeURIComponent(`repo:${el.dataset.prs} is:pr is:merged`)}&per_page=1`)
-    .then((result) => {
-      if (Number.isInteger(result.total_count) && result.total_count > 0) {
-        el.textContent = result.total_count.toLocaleString("fr-CH");
-      }
-    })
+  repo(el.dataset.pushed)
+    .then((r) => { el.textContent = ` · ${active} ${since(new Date(r.pushed_at))}`; })
     .catch(() => {});
 }
