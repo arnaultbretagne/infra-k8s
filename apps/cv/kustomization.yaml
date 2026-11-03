@@ -1,0 +1,12 @@
+# arnault.bretagne.dev: the CV, as a web page. Public on purpose, no gate, no data: nginx serves the
+# static files of workload/site from a ConfigMap. Previewable (catalogue entry cv): workload/ holds
+# what a preview applies, the rest is production only.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cv
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - workload
+  - httproute.yaml
+  - networkpolicy.yaml

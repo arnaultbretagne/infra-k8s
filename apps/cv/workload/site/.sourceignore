@@ -1,0 +1,4 @@
+# Flux leaves *.jpg and *.png out of what it fetches from git by default; this page serves its own
+# photo and logos, so they are taken back in, in this folder only.
+!*.jpg
+!*.png

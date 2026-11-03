@@ -1,0 +1,346 @@
+/* The CV's own design, measured on its A4 PDF: 1rem is the PDF's 12 px body text, and the spacings
+   reproduce its baselines. The screen scales it by 1.25 (html font-size 15px); print keeps the PDF's
+   12 px. */
+
+@font-face {
+  font-family: "Heebo";
+  src: url("heebo.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --bg: #efefef;
+  --side: #d9d9d9;
+  --card: #ffffff;
+  --accent: #ff7948;
+  --text: #5b5e66;
+  --ink: #000000;
+  --muted: #737373;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 15px; -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Heebo", system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.44;
+}
+
+a { color: inherit; text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* A link to a proof: the text keeps its colour, an orange dotted line says it opens something. */
+a.proof {
+  text-decoration: underline dotted var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+a.proof:hover { color: var(--accent); }
+
+ul { margin: 0; padding: 0; list-style: none; }
+h1, h2, h3, h4, p, dl, dd { margin: 0; }
+
+/* ---------- Page: sidebar on the left, name and card on the right ---------- */
+
+.page {
+  max-width: 66.1667rem; /* the A4 width, 794 px at 12 px */
+  margin: 0 auto;
+  padding: 3.25rem;
+  display: grid;
+  grid-template-columns: 16.6667rem minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "side head"
+    "side main"
+    "foot foot";
+  column-gap: 2rem;
+}
+
+/* ---------- Sidebar ---------- */
+
+.side {
+  grid-area: side;
+  background: var(--side);
+  border-radius: 1.5rem;
+  padding: 0.1667rem 0.1667rem 2.5rem;
+}
+
+.photo {
+  display: block;
+  width: 100%;
+  height: 21.8333rem;
+  object-fit: cover;
+  border-radius: 1.3333rem;
+}
+
+.contact {
+  margin: 1.51rem 0 0 1.1667rem;
+  display: grid;
+  gap: 0.6rem;
+}
+.contact li {
+  display: grid;
+  grid-template-columns: 1.4167rem 1fr;
+  column-gap: 0.4rem;
+  align-items: start;
+}
+.contact .ic {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.17rem;
+  justify-self: center;
+  fill: var(--ink);
+}
+.contact .mail { font-size: 0.8889rem; line-height: 1.62; }
+.contact a:hover { color: var(--accent); }
+
+.side h2 {
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 1.3333rem;
+  line-height: 1.4;
+  margin: 1.68rem 0 0 0.75rem;
+}
+.side-skills > h2:first-child { margin-top: 2.14rem; }
+.side h3 {
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0.95rem 0 0.33rem 1.25rem;
+}
+.side h2 + h3 { margin-top: 0.84rem; }
+.skills { margin-left: 1.25rem; line-height: 1.3333; }
+
+/* Languages: six equal segments, one per CEFR level from A1 to C2, and the level beside the name. */
+.langs { margin: 0.7rem 0 0 0.75rem; width: 14.9167rem; display: grid; gap: 0.7rem; }
+.langs li { display: grid; grid-template-columns: 1fr auto; align-items: baseline; row-gap: 0.32rem; }
+.langs .lang { color: var(--ink); font-weight: 700; }
+.langs .cefr { color: var(--accent); font-weight: 700; font-size: 0.8889rem; }
+.langs .bar { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.25rem; }
+.langs .bar i { height: 0.4167rem; border-radius: 99px; background: rgba(91, 94, 102, 0.2); }
+.bar[data-level="1"] i:nth-child(-n+1),
+.bar[data-level="2"] i:nth-child(-n+2),
+.bar[data-level="3"] i:nth-child(-n+3),
+.bar[data-level="4"] i:nth-child(-n+4),
+.bar[data-level="5"] i:nth-child(-n+5),
+.bar[data-level="6"] i { background: var(--text); }
+
+/* ---------- Name ---------- */
+
+.head {
+  grid-area: head;
+  position: relative;
+}
+.head h1 {
+  color: var(--ink);
+  font-weight: 900;
+  font-size: 3.6667rem;
+  line-height: 1;
+  margin-top: 0.19rem;
+}
+.head .title {
+  font-weight: 700;
+  font-size: 2.3333rem;
+  line-height: 1.2;
+  margin-top: 0.345rem;
+}
+.tools {
+  position: absolute;
+  top: 0.4rem;
+  right: 0;
+  display: flex;
+  gap: 0.5rem;
+}
+.pill {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  background: transparent;
+  border: 1.5px solid #c9c9c9;
+  border-radius: 99px;
+  padding: 0.2rem 0.75rem;
+}
+.print { cursor: pointer; }
+.print:hover { color: var(--accent); border-color: var(--accent); }
+.switch { display: flex; padding: 0.2rem 0.15rem; }
+.switch > * { padding: 0 0.55rem; }
+.switch > * + * { border-left: 1.5px solid #c9c9c9; }
+.switch [aria-current] { color: var(--accent); }
+.switch a:hover { color: var(--accent); }
+
+/* ---------- Card ---------- */
+
+.card {
+  grid-area: main;
+  background: var(--card);
+  border-radius: 1.3333rem;
+  padding: 1.725rem 1.6667rem 2.2rem;
+  margin-top: 1.575rem;
+}
+.card > section + section { margin-top: 1.32rem; }
+.card h2 {
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 1.4444rem;
+  line-height: 1.4;
+  margin-bottom: 0.73rem;
+}
+.lead { text-align: justify; }
+
+/* An entry: an employer or a project. Its header puts the logo beside the role (or the project),
+   then one grey line with where, when and how long. */
+.entry + .entry { margin-top: 0.88rem; }
+.eh {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  grid-template-areas: "logo h repo" "logo meta meta";
+  column-gap: 0.97rem;
+  align-items: center;
+  margin-left: 0.6667rem;
+}
+.eh .logo { grid-area: logo; }
+.eh h3 { grid-area: h; }
+.eh .repo { grid-area: repo; }
+.entry .eh .meta { grid-area: meta; margin: 0; font-size: 0.9rem; line-height: 1.35; color: var(--muted); }
+.eh .meta b { color: var(--text); font-weight: 700; }
+.entry .logo {
+  width: 3.25rem;
+  height: 2.6rem;
+  object-fit: contain;
+  flex: none;
+}
+.entry .logo-capgemini, .entry .logo-agora { padding: 0.15rem; }
+.entry .logo-kubernetes { padding: 0.3rem; }
+.entry h3 {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.3333rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.entry h3 .o { color: var(--muted); }
+.dates { white-space: nowrap; }
+.entry p { margin-top: 0.6rem; }
+.entry p.sub { font-weight: 700; margin-top: 0.5rem; }
+
+.points { margin: 0.61rem 0 0 1.6667rem; }
+.points li { position: relative; line-height: 1.3333; }
+.points li + li { margin-top: 0.4167rem; }
+.points li::before {
+  content: "";
+  position: absolute;
+  left: -1.22rem;
+  top: 0.56em;
+  width: 0.3333rem;
+  height: 0.3333rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.points b { font-weight: 700; }
+.points.tight { margin-top: 0.5rem; }
+.points.tight li + li { margin-top: 0; }
+
+/* Smart links: a project's repository, with its numbers. */
+.repo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  border-radius: 99px;
+  padding: 0.2rem 0.7rem 0.2rem 0.55rem;
+  white-space: nowrap;
+}
+.repo svg { width: 1rem; height: 1rem; fill: currentColor; }
+.repo .live { font-weight: 400; }
+.repo:hover { color: var(--accent); }
+
+.certs { margin-top: 0.11rem; }
+.certs li { display: flex; justify-content: space-between; gap: 1rem; }
+.certs li + li { margin-top: 0.33rem; }
+.certs b { color: var(--ink); font-weight: 700; }
+
+.school { margin-top: 0.11rem; }
+.school b { color: var(--ink); font-weight: 700; }
+
+/* ---------- Footer ---------- */
+
+.foot {
+  grid-area: foot;
+  margin-top: 1.1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* ---------- Narrow screens: name, identity, card, then skills ---------- */
+
+@media screen and (max-width: 860px) {
+  .page {
+    padding: 1.1rem 1.0667rem 1.5rem;
+    max-width: 44rem;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "head" "id" "main" "skills" "foot";
+    row-gap: 1rem;
+  }
+  .side { display: contents; }
+  .side-id, .side-skills { background: var(--side); border-radius: 1.5rem; }
+  .side-id {
+    grid-area: id;
+    display: grid;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.1667rem;
+  }
+  .side-skills { grid-area: skills; padding: 0.1rem 0 1.8rem; }
+  .side-skills > h2:first-child { margin-top: 1.1rem; }
+  .photo { height: 11.3rem; }
+  .contact { margin: 0.6rem 0.6rem 0.6rem 0; gap: 0.45rem; }
+  .head h1 { font-size: 2.6rem; margin-top: 0; }
+  .head .title { font-size: 1.55rem; margin-top: 0.2rem; }
+  .tools { position: static; justify-content: flex-end; margin-bottom: 0.5rem; }
+  .print { display: none; }
+  .card { margin-top: 0; padding: 1.1rem 1.1rem 1.5rem; }
+  .eh { margin-left: 0; grid-template-columns: 3.25rem minmax(0, 1fr); grid-template-areas: "logo h" "logo meta" "repo repo"; row-gap: 0.1rem; }
+  .eh .repo { justify-self: start; margin-top: 0.3rem; }
+  .entry h3 { font-size: 1.2rem; white-space: normal; }
+  .lead { text-align: left; }
+}
+
+@media screen and (max-width: 420px) {
+  .side-id { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .photo { width: 12rem; height: 15rem; }
+  .contact { margin: 0 0 0.9rem; }
+}
+
+/* ---------- Print: A4 at the PDF's own scale ---------- */
+
+/* No sheet margin, so the grey background covers the whole sheet as in the PDF; the page, the
+   sidebar and the card repeat their padding and rounded box on each sheet instead. */
+@page { size: A4; margin: 0; }
+
+@media print {
+  html { font-size: 12px; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { max-width: none; width: 66.1667rem; }
+  .page, .side, .card { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .lang-block { break-inside: avoid; }
+  .tools, .foot { display: none; }
+  a.proof { text-decoration: none; }
+  .certs li, .points li { break-inside: avoid; }
+  .card h2, .eh, .entry > p { break-after: avoid; }
+}
