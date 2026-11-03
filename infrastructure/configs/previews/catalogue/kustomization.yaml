@@ -6,3 +6,4 @@ kind: Kustomization
 resources:
   - preview-demo.yaml
   - rss.yaml
+  - cv.yaml
