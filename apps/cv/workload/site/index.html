@@ -21,9 +21,11 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="heebo.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script src="layout.js"></script>
 <script src="app.js" defer></script>
 </head>
 <body>
+<div class="review" hidden><span>Layout</span><div class="pill switch layouts" role="group" aria-label="Layout"><button type="button" data-layout="a">Current</button><button type="button" data-layout="b">Role first</button><button type="button" data-layout="c">Compact</button><button type="button" data-layout="d">Timeline</button></div></div>
 <div class="page">
 
   <aside class="side">
@@ -125,11 +127,11 @@
       <h2>Professional experience</h2>
 
       <article class="entry">
-        <div class="org">
-          <img class="logo" src="fhvi.png" width="175" height="136" alt="">
-          <h3>FHVI <span class="place">- Lausanne</span></h3>
-        </div>
-        <div class="role"><h4>Data Engineer</h4><span class="dates">Aug. 2024 - Present</span></div>
+        <div class="when"><b>Aug. 2024</b><span>Present</span></div>
+        <div class="eh eh-a"><div class="org"><img class="logo" src="fhvi.png" width="175" height="136" alt=""><h3>FHVI <span class="place">- Lausanne</span></h3></div><div class="role"><h4>Data Engineer</h4><span class="dates">Aug. 2024 - Present</span></div></div>
+        <div class="eh eh-b"><img class="logo" src="fhvi.png" width="175" height="136" alt=""><h3>Data Engineer <span class="o">- FHVI</span></h3><span class="dates">Aug. 2024 - Present</span><span class="pl">Lausanne</span></div>
+        <div class="eh eh-c"><img class="logo" src="fhvi.png" width="175" height="136" alt=""><h3>Data Engineer</h3><p class="meta"><b>FHVI</b> · Lausanne · Aug. 2024 - Present<span class="dur" data-from="2024-08" data-to=""></span></p></div>
+        <div class="eh eh-d"><img class="logo" src="fhvi.png" width="175" height="136" alt=""><h3>Data Engineer <span class="o">- FHVI</span></h3><span class="pl">Lausanne</span></div>
         <p>Maintenance and development of the operational data hub on SQL Server, in an on-premise environment.</p>
         <ul class="points">
           <li><b>LLM:</b> Led the LLM proof of concept.</li>
@@ -138,13 +140,12 @@
           <li><b>Infrastructure:</b> Administration of the backend and the virtual machines.</li>
         </ul>
       </article>
-
       <article class="entry">
-        <div class="org">
-          <img class="logo logo-capgemini" src="capgemini.png" width="126" height="119" alt="">
-          <h3>Capgemini <span class="place">- Geneva</span></h3>
-        </div>
-        <div class="role"><h4>Data Engineer</h4><span class="dates">Nov. 2021 - Jul. 2025</span></div>
+        <div class="when"><b>Nov. 2021</b><span>Jul. 2025</span></div>
+        <div class="eh eh-a"><div class="org"><img class="logo logo-capgemini" src="capgemini.png" width="126" height="119" alt=""><h3>Capgemini <span class="place">- Geneva</span></h3></div><div class="role"><h4>Data Engineer</h4><span class="dates">Nov. 2021 - Jul. 2025</span></div></div>
+        <div class="eh eh-b"><img class="logo logo-capgemini" src="capgemini.png" width="126" height="119" alt=""><h3>Data Engineer <span class="o">- Capgemini</span></h3><span class="dates">Nov. 2021 - Jul. 2025</span><span class="pl">Geneva</span></div>
+        <div class="eh eh-c"><img class="logo logo-capgemini" src="capgemini.png" width="126" height="119" alt=""><h3>Data Engineer</h3><p class="meta"><b>Capgemini</b> · Geneva · Nov. 2021 - Jul. 2025<span class="dur" data-from="2021-11" data-to="2025-07"></span></p></div>
+        <div class="eh eh-d"><img class="logo logo-capgemini" src="capgemini.png" width="126" height="119" alt=""><h3>Data Engineer <span class="o">- Capgemini</span></h3><span class="pl">Geneva</span></div>
         <p class="sub">Consultant / Senior Consultant</p>
         <p>SAP financial reporting and planning for a European semiconductor leader.</p>
         <ul class="points">
@@ -154,13 +155,12 @@
           <li><b>ML:</b> Cost classification with SAP Data Intelligence and hana-ml.</li>
         </ul>
       </article>
-
       <article class="entry">
-        <div class="org">
-          <img class="logo" src="losinger.png" width="164" height="86" alt="">
-          <h3>Losinger Marazzi <span class="place">- Lausanne</span></h3>
-        </div>
-        <div class="role"><h4>Buyer</h4><span class="dates">Feb. 2016 - Dec. 2020</span></div>
+        <div class="when"><b>Feb. 2016</b><span>Dec. 2020</span></div>
+        <div class="eh eh-a"><div class="org"><img class="logo" src="losinger.png" width="164" height="86" alt=""><h3>Losinger Marazzi <span class="place">- Lausanne</span></h3></div><div class="role"><h4>Buyer</h4><span class="dates">Feb. 2016 - Dec. 2020</span></div></div>
+        <div class="eh eh-b"><img class="logo" src="losinger.png" width="164" height="86" alt=""><h3>Buyer <span class="o">- Losinger Marazzi</span></h3><span class="dates">Feb. 2016 - Dec. 2020</span><span class="pl">Lausanne</span></div>
+        <div class="eh eh-c"><img class="logo" src="losinger.png" width="164" height="86" alt=""><h3>Buyer</h3><p class="meta"><b>Losinger Marazzi</b> · Lausanne · Feb. 2016 - Dec. 2020<span class="dur" data-from="2016-02" data-to="2020-12"></span></p></div>
+        <div class="eh eh-d"><img class="logo" src="losinger.png" width="164" height="86" alt=""><h3>Buyer <span class="o">- Losinger Marazzi</span></h3><span class="pl">Lausanne</span></div>
         <p>Procurement of building services (HVAC, plumbing, electrical), kitchens and floor coverings; innovation.</p>
       </article>
     </section>
@@ -169,15 +169,11 @@
       <h2>Personal projects</h2>
 
       <article class="entry">
-        <div class="org">
-          <img class="logo logo-agora" src="agora.svg" width="72" height="72" alt="">
-          <h3>Agora <span class="place">- Agent platform</span></h3>
-          <a class="repo" href="https://github.com/arnaultbretagne/agora">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg>
-            agora<span class="live" data-pushed="arnaultbretagne/agora"></span>
-          </a>
-        </div>
-        <div class="role"><h4>Design, development, operations</h4><span class="dates">Jul. 2026 - Present</span></div>
+        <div class="when"><b>Jul. 2026</b><span>Present</span></div>
+        <div class="eh eh-a"><div class="org"><img class="logo logo-agora" src="agora.svg" width="72" height="72" alt=""><h3>Agora <span class="place">- Agent platform</span></h3><a class="repo" href="https://github.com/arnaultbretagne/agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> agora<span class="live" data-pushed="arnaultbretagne/agora"></span></a></div><div class="role"><h4>Design, development, operations</h4><span class="dates">Jul. 2026 - Present</span></div></div>
+        <div class="eh eh-b"><img class="logo logo-agora" src="agora.svg" width="72" height="72" alt=""><h3>Agora <span class="o">- Agent platform</span></h3><span class="dates">Jul. 2026 - Present</span><span class="pl">Design, development, operations</span><a class="repo" href="https://github.com/arnaultbretagne/agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> agora<span class="live" data-pushed="arnaultbretagne/agora"></span></a></div>
+        <div class="eh eh-c"><img class="logo logo-agora" src="agora.svg" width="72" height="72" alt=""><h3>Agora <span class="o">- Agent platform</span></h3><a class="repo" href="https://github.com/arnaultbretagne/agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> agora<span class="live" data-pushed="arnaultbretagne/agora"></span></a><p class="meta">Design, development, operations · Jul. 2026 - Present<span class="dur" data-from="2026-07" data-to=""></span></p></div>
+        <div class="eh eh-d"><img class="logo logo-agora" src="agora.svg" width="72" height="72" alt=""><h3>Agora <span class="o">- Agent platform</span></h3><span class="pl">Design, development, operations</span><a class="repo" href="https://github.com/arnaultbretagne/agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> agora<span class="live" data-pushed="arnaultbretagne/agora"></span></a></div>
         <p>A web interface to work with coding agents that run in isolation, find all their work again after an interruption, and have them work as a team.</p>
         <ul class="points">
           <li><b><a class="proof" href="https://github.com/arnaultbretagne/agora/blob/main/docs/architecture/executions.md">Executions</a>:</b> Claude Code, Codex and opencode over ACP, each agent in its own Kata microVM, warm pools.</li>
@@ -188,17 +184,12 @@
           <li><b><a class="proof" href="https://github.com/arnaultbretagne/agora/tree/main/docs/reliability">Reliability</a>:</b> acceptance cases per spec, proven locally, on the cluster or live, with dated evidence.</li>
         </ul>
       </article>
-
       <article class="entry">
-        <div class="org">
-          <img class="logo logo-kubernetes" src="kubernetes.svg" width="777" height="754" alt="">
-          <h3>bretagne.dev <span class="place">- Kubernetes</span></h3>
-          <a class="repo" href="https://github.com/arnaultbretagne/infra-k8s">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg>
-            infra-k8s<span class="live" data-pushed="arnaultbretagne/infra-k8s"></span>
-          </a>
-        </div>
-        <div class="role"><h4>Self-hosted GitOps platform</h4><span class="dates">Apr. 2026 - Present</span></div>
+        <div class="when"><b>Apr. 2026</b><span>Present</span></div>
+        <div class="eh eh-a"><div class="org"><img class="logo logo-kubernetes" src="kubernetes.svg" width="777" height="754" alt=""><h3>bretagne.dev <span class="place">- Kubernetes</span></h3><a class="repo" href="https://github.com/arnaultbretagne/infra-k8s"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> infra-k8s<span class="live" data-pushed="arnaultbretagne/infra-k8s"></span></a></div><div class="role"><h4>Self-hosted GitOps platform</h4><span class="dates">Apr. 2026 - Present</span></div></div>
+        <div class="eh eh-b"><img class="logo logo-kubernetes" src="kubernetes.svg" width="777" height="754" alt=""><h3>bretagne.dev <span class="o">- Kubernetes</span></h3><span class="dates">Apr. 2026 - Present</span><span class="pl">Self-hosted GitOps platform</span><a class="repo" href="https://github.com/arnaultbretagne/infra-k8s"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> infra-k8s<span class="live" data-pushed="arnaultbretagne/infra-k8s"></span></a></div>
+        <div class="eh eh-c"><img class="logo logo-kubernetes" src="kubernetes.svg" width="777" height="754" alt=""><h3>bretagne.dev <span class="o">- Kubernetes</span></h3><a class="repo" href="https://github.com/arnaultbretagne/infra-k8s"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> infra-k8s<span class="live" data-pushed="arnaultbretagne/infra-k8s"></span></a><p class="meta">Self-hosted GitOps platform · Apr. 2026 - Present<span class="dur" data-from="2026-04" data-to=""></span></p></div>
+        <div class="eh eh-d"><img class="logo logo-kubernetes" src="kubernetes.svg" width="777" height="754" alt=""><h3>bretagne.dev <span class="o">- Kubernetes</span></h3><span class="pl">Self-hosted GitOps platform</span><a class="repo" href="https://github.com/arnaultbretagne/infra-k8s"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3"/></svg> infra-k8s<span class="live" data-pushed="arnaultbretagne/infra-k8s"></span></a></div>
         <p>The cluster that runs Agora and my services on a mini PC at home: every change goes through a pull request, and Flux applies it.</p>
         <ul class="points">
           <li><b><a class="proof" href="https://github.com/arnaultbretagne/infra-k8s/blob/main/docs/adr/0026-gitops-root-of-trust.md">GitOps</a>:</b> Flux, SOPS, Renovate; protected main branch: agents propose, I merge.</li>

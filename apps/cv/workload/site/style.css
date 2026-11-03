@@ -346,3 +346,88 @@ h1, h2, h3, h4, p, dl, dd { margin: 0; }
   .certs li, .points li { break-inside: avoid; }
   .card h2, .entry .org, .role, .entry > p { break-after: avoid; }
 }
+
+/* ---------- Entry layouts, switchable while one is chosen (review bar) ---------- */
+
+.review { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 0.6rem; padding: 0.9rem 1rem 0; font-size: 0.9rem; color: var(--muted); }
+.review[hidden] { display: none; }
+.layouts button { font: inherit; font-weight: 700; color: inherit; background: none; border: 0; padding: 0 0.55rem; cursor: pointer; }
+.layouts button[aria-pressed="true"], .layouts button:hover { color: var(--accent); }
+
+.eh, .when { display: none; }
+html:not([data-layout]) .eh-a, html[data-layout="a"] .eh-a { display: block; }
+html[data-layout="b"] .eh-b, html[data-layout="c"] .eh-c, html[data-layout="d"] .eh-d { display: grid; }
+html[data-layout="d"] .when { display: flex; }
+
+/* 2 · 3 · 4: the logo beside a two-line header. */
+.eh-b, .eh-c, .eh-d {
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  column-gap: 0.97rem;
+  align-items: center;
+  margin-left: 0.6667rem;
+}
+.eh-b { grid-template-areas: "logo h right1" "logo pl right2"; }
+.eh-c { grid-template-areas: "logo h right1" "logo meta meta"; }
+.eh-d { grid-template-areas: "logo h h" "logo pl right2"; }
+.eh .logo { grid-area: logo; }
+.eh-b h3, .eh-c h3, .eh-d h3 { grid-area: h; }
+.eh h3 .o { color: var(--muted); }
+.eh-b .dates { grid-area: right1; }
+.eh-b .repo { grid-area: right2; justify-self: end; margin-top: 0.2rem; }
+.eh-c .repo { grid-area: right1; }
+.eh-d .repo { grid-area: right2; justify-self: end; margin-top: 0.2rem; }
+.eh .pl { grid-area: pl; font-size: 0.9rem; line-height: 1.35; color: var(--muted); }
+.entry .eh-c .meta { grid-area: meta; margin: 0; font-size: 0.9rem; line-height: 1.35; color: var(--muted); }
+.eh-c .meta b { color: var(--text); font-weight: 700; }
+html[data-layout]:not([data-layout="a"]) .entry p.sub { margin-top: 0.5rem; }
+
+/* 4 · Timeline: the dates in a left column, on a line that joins the entries of a section. */
+html[data-layout="d"] .entry {
+  display: grid;
+  grid-template-columns: 6.4rem minmax(0, 1fr);
+  column-gap: 1.6rem;
+  position: relative;
+}
+html[data-layout="d"] .entry > * { grid-column: 2; }
+html[data-layout="d"] .entry > .when { grid-column: 1; grid-row: 1 / span 9; }
+html[data-layout="d"] .eh-d { margin-left: 0; }
+.when { flex-direction: column; align-items: flex-end; text-align: right; font-size: 0.9rem; line-height: 1.35; color: var(--muted); padding-top: 0.25rem; }
+.when b { color: var(--text); font-weight: 700; }
+html[data-layout="d"] .entry::before {
+  content: "";
+  position: absolute;
+  left: calc(6.4rem + 0.8rem - 1px);
+  top: 1rem;
+  bottom: -0.88rem;
+  width: 2px;
+  background: #e2e2e2;
+}
+html[data-layout="d"] .entry:last-child::before { bottom: 0; }
+html[data-layout="d"] .entry::after {
+  content: "";
+  position: absolute;
+  left: calc(6.4rem + 0.8rem - 5px);
+  top: 0.55rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--card);
+}
+
+@media screen and (max-width: 860px) {
+  .eh-b, .eh-c, .eh-d { margin-left: 0; grid-template-columns: 3.25rem minmax(0, 1fr); row-gap: 0.1rem; }
+  .eh-b { grid-template-areas: "logo h" "logo pl" "right1 right1" "right2 right2"; }
+  .eh-c { grid-template-areas: "logo h" "logo meta" "right1 right1"; }
+  .eh-d { grid-template-areas: "logo h" "logo pl" "right2 right2"; }
+  .eh .repo { justify-self: start; margin-top: 0.3rem; }
+  html[data-layout="d"] .entry { display: block; }
+  html[data-layout="d"] .entry::before, html[data-layout="d"] .entry::after { display: none; }
+  .when { flex-direction: row; gap: 0.3rem; align-items: baseline; padding: 0 0 0.35rem; }
+  .when span::before { content: "- "; }
+}
+
+@media print {
+  .review { display: none !important; }
+}
+.layouts button + button { border-left: 1.5px solid #c9c9c9; }
