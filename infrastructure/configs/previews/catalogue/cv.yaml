@@ -1,0 +1,39 @@
+# Catalogue entry (ADR 0017 v4 §2): the CV at arnault.bretagne.dev, a static page served by nginx.
+# Stateless, no Internet. Label an infra-k8s PR `preview/cv` to get
+# https://pr-<n>-cv.preview.bretagne.dev, e.g. to read a change of the page before it goes public.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-cv
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview/cv"]
+    limit: 1
+  defaultValues:
+    app: cv
+    repo: https://github.com/arnaultbretagne/infra-k8s
+    source: pr
+    path: apps/cv/workload
+    image: ""
+    service: cv
+    port: "8080"
+    urlDeployment: ""
+    urlContainer: ""
+    urlEnv: ""
+    internet: false
+    data: none
+    dbCluster: ""
+    dbName: ""
+    dbOwner: ""
+    backupPath: ""
+    dbSize: ""
+    dbImage: ""
