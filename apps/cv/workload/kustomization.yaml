@@ -1,0 +1,25 @@
+# What a preview applies (catalogue entry cv): the server and the site. Edit the page in site/; the
+# ConfigMap's name carries a hash of its content, so every change rolls the Deployment.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+configMapGenerator:
+  - name: cv-site
+    files:
+      - site/index.html
+      - site/style.css
+      - site/app.js
+      - site/favicon.svg
+      - site/heebo.woff2
+      - site/photo.jpg
+      - site/og.jpg
+      - site/agora.svg
+      - site/kubernetes.svg
+      - site/fhvi.png
+      - site/capgemini.png
+      - site/losinger.png
+  - name: cv-nginx
+    files:
+      - nginx.conf

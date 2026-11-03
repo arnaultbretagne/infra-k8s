@@ -14,6 +14,8 @@ resources:
   - agora-runs
   # The UI showcase of the redesign (agora-test.bretagne.dev), public, static, no backend.
   - agora-test
+  # The CV (arnault.bretagne.dev), public, static, no backend.
+  - cv
   # Agora: its sandboxes (Kata, Agent Sandbox claims) and its server (agora.bretagne.dev,
   # OIDC-gated).
   - agora-sandboxes
