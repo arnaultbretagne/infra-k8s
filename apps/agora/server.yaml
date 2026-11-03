@@ -95,8 +95,10 @@ spec:
             # (apps/agora-gateway): off unless picked for an execution. `vault:write` covers `vault:read` too (the
             # vault MCP, route `vault`); `kubernetes:read` reads the cluster (route `kubernetes`); `previews`
             # reaches the previews through their gateway gate (route `previews`), and the flows' judge is given it;
-            # `agora:read` opens Agora's own MCP server to the agent — search and read its person's Workstreams (route `agora`).
-            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews,agora:read" }
+            # `agora:read` opens Agora's own MCP server to the agent — search and read its person's Workstreams (route `agora`);
+            # `agora:delegate` lets it hand work to another agent there, a sub-stream of its Workstream, rights beyond its own
+            # waiting for the person's Approve (Agora's docs/specs/delegation.md).
+            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews,agora:read,agora:delegate" }
             # Agora's docs/specs/credentials.md, "Limits": the server reads each account's limits
             # through the gateway, with a grant bound to its own address, checked against the
             # gateway's root (gateway-ca.yaml).
