@@ -2,11 +2,11 @@
 # image). Idempotent, in one transaction; named after the schema it applies, so a new schema is a new
 # Job, applied before the server that needs it. The owner's password reaches node-postgres through
 # PGUSER/PGPASSWORD: the URL names no credential.
-# 007: 001.sql as of agora ef13b38, which indexes the trigrams of the messages' texts for search: pg_trgm, and objects_text, a GIN index built in about 6 s while writes to objects wait.
+# 008: 001.sql as of agora 5ff8da9, which widens the entries' kinds for delegation's facts and an approval's expiry: the check dropped and added again NOT VALID, under a brief lock on entries, no row read again.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: agora-log-migrate-007
+  name: agora-log-migrate-008
   namespace: agora-system
 spec:
   backoffLimit: 10
@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/arnaultbretagne/agora-server@sha256:0b5168d466c2759abedb382ba7d23f383e32d8dbe14ac3e502238595c2472444 # main ef13b38
+          image: ghcr.io/arnaultbretagne/agora-server@sha256:9e8693804f7f54b848e26ad7746661354c397052c5d108749d38b811e1473526 # main 5ff8da9
           command: [node, /app/packages/log/scripts/migrate.ts]
           env:
             - { name: LOG_MIGRATION_URL, value: "postgresql://agora-pg-rw.agora-system.svc.cluster.local:5432/agora" }
