@@ -198,7 +198,8 @@ test('the manifests: an hour’s token outlives two runs; the keys from github-a
   const volume = gateway.volumes.find((v) => v.secret?.secretName === 'github-tokens')
   const mount = gateway.containers[0].volumeMounts.find((m) => m.name === volume.name).mountPath
   const config = parse(readFileSync(join(ROOT, 'apps/agora-gateway/config/config.yaml'), 'utf8'))
-  const files = config.binds[1].listeners[0].routes.filter((r) => r.name.startsWith('github-')).map((r) => r.policies.backendAuth.key.value.file)
+  // Every GitHub route but the operator's, which sets the operator's PAT for Agora's merge card alone.
+  const files = config.binds[1].listeners[0].routes.filter((r) => r.name.startsWith('github-') && r.name !== 'github-api-operator').map((r) => r.policies.backendAuth.key.value.file)
   assert.deepEqual(files.sort(), Object.keys(tokens.data).map((k) => `${mount}/${k}`).sort(), 'one route per token the refresher writes')
   // The refresher alone mounts the keys; nothing in the gateway reads them.
   assert.ok(!JSON.stringify(gateway).includes('github-apps'))

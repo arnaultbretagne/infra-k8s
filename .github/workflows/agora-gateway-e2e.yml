@@ -39,9 +39,9 @@ env:
   KUBECTL_URL: https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
   KUBECTL_SHA256: 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8
   # Agora's packages/credentials: the vault profiles (docs/specs/credentials.md, "The vault"), agora:read
-  # ("Agora's MCP") and the GitHub identities ("GitHub identities"), branch feat/github-identities. Moved by hand
+  # ("Agora's MCP") and the GitHub identities ("GitHub identities", the operator's `merge` grant), branch feat/merge-card. Moved by hand
   # when the contract moves.
-  AGORA_REF: 73f93e94907f9eb15fc1d713b7ab8b19024ac603
+  AGORA_REF: 973326ce94afb9efab83f3249b10a3d907475140
   # obsidian-mcp's own config.ts and auth.ts, at the tag of the image apps/obsidian deploys (0.4.0).
   OBSIDIAN_STACK_REF: 8b31791b8b936a46d2abe5fbe9f870d189f7ca40 # v0.4.0
 
