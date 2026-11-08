@@ -105,6 +105,28 @@ spec:
       toPorts:
         - ports: [{ port: "1411", protocol: TCP }]
 ---
+# The GitHub tokens' refresher (github-refresher.yaml): the API server for its one Secret, api.github.com on 443.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: github-refresher
+spec:
+  endpointSelector:
+    matchLabels:
+      app: github-refresher
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEntities: [kube-apiserver]
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+---
 # The ChatGPT session's refresher: the API server for its one Secret, auth.openai.com on 443.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

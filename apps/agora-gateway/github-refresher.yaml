@@ -1,0 +1,248 @@
+# Keeps the gateway's GitHub tokens fresh (docs/specs/credentials.md on arnaultbretagne/agora, "GitHub
+# identities"). Agora acts on GitHub as two GitHub Apps of the operator's, each installed once on the account
+# with every repository: agora-contributor (contents and pull requests write) and agora-reviewer (contents read,
+# pull requests write). Every 15 minutes, for each App, a JWT signed with its private key buys an installation
+# token (one hour), and a third token, the contributor's narrowed to its public repositories with read
+# permissions, serves the public routes. Minting spends nothing: a run that fails, or is retried, loses nothing.
+#
+# The private keys are in `github-apps` (github-apps.secrets.yaml), mounted here and nowhere else: never in the
+# gateway, never in a sandbox. The tokens go to `github-tokens`, which only the gateway mounts and watches, each
+# also as git's Basic credential. Logs dates, counts and error codes, never a token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: github-refresher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-refresher
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [github-tokens]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-refresher
+subjects:
+  - kind: ServiceAccount
+    name: github-refresher
+---
+# Where the tokens land. Created empty by Flux, then never touched by it again (IfNotPresent): the refresher
+# owns its content. Until the first run, the gateway sends an empty credential and GitHub answers 401. Deleting
+# this file from git prunes the Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-tokens
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  contributor: ""
+  contributor-basic: ""
+  reviewer: ""
+  reviewer-basic: ""
+  public: ""
+  public-basic: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: github-refresher
+data:
+  refresh.mjs: |
+    import { createSign } from 'node:crypto'
+    import { readFileSync } from 'node:fs'
+
+    // The Secret it writes, the keys it reads, GitHub's API; the API server and the ServiceAccount's files as a
+    // Pod has them (KUBE_API, SA_DIR and GITHUB_API stand in for them in tests/agora-gateway).
+    const NAME = process.env.TOKEN_SECRET ?? 'github-tokens'
+    const SA = process.env.SA_DIR ?? '/var/run/secrets/kubernetes.io/serviceaccount'
+    const KEYS = process.env.KEYS_DIR ?? '/etc/github-apps'
+    const github = process.env.GITHUB_API ?? 'https://api.github.com'
+    const api = process.env.KUBE_API ?? `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}`
+    const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
+    const url = `${api}/api/v1/namespaces/${namespace}/secrets/${NAME}`
+    const minLife = Number(process.env.MIN_LIFE_MINUTES ?? 40) * 60_000
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    const apps = {
+      contributor: { id: process.env.CONTRIBUTOR_APP_ID, installation: process.env.CONTRIBUTOR_INSTALLATION_ID },
+      reviewer: { id: process.env.REVIEWER_APP_ID, installation: process.env.REVIEWER_INSTALLATION_ID },
+    }
+    // The public routes' token: what anyone may read, so reads only, and the operator's private repositories
+    // left out by naming the public ones.
+    const PUBLIC_PERMISSIONS = { contents: 'read', metadata: 'read', pull_requests: 'read', actions: 'read', checks: 'read', statuses: 'read' }
+
+    const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+    const keys = {}
+    for (const identity of Object.keys(apps)) {
+      try {
+        keys[identity] = readFileSync(`${KEYS}/${identity}.pem`, 'utf8')
+      } catch {
+        console.error(`github-apps has no ${identity}.pem`)
+        process.exit(4)
+      }
+    }
+    // An App's JWT: GitHub takes 10 minutes at most; issued a minute back, for a clock ahead of GitHub's.
+    function appJwt(identity) {
+      const now = Math.floor(Date.now() / 1000)
+      const unsigned = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({ iat: now - 60, exp: now + 540, iss: String(apps[identity].id) })}`
+      return `${unsigned}.${createSign('RSA-SHA256').update(unsigned).sign(keys[identity], 'base64url')}`
+    }
+    async function call(method, path, auth, body) {
+      const answer = await fetch(`${github}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${auth}`,
+          accept: 'application/vnd.github+json',
+          'x-github-api-version': '2022-11-28',
+          'user-agent': 'agora-gateway-github-refresher',
+          ...(body ? { 'content-type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!answer.ok) {
+        const detail = await answer.json().catch(() => ({}))
+        throw new Error(`${method} ${path.replace(/\?.*$/, '')}: ${answer.status} ${String(detail.message ?? '')}`)
+      }
+      return answer.json()
+    }
+    const mint = (identity, body) => call('POST', `/app/installations/${apps[identity].installation}/access_tokens`, appJwt(identity), body)
+
+    let tokens, open
+    try {
+      const contributor = await mint('contributor')
+      const reviewer = await mint('reviewer')
+      const repositories = []
+      for (let page = 1; ; page++) {
+        const listed = await call('GET', `/installation/repositories?per_page=100&page=${page}`, contributor.token)
+        repositories.push(...listed.repositories)
+        if (listed.repositories.length === 0 || repositories.length >= listed.total_count) break
+      }
+      open = repositories.filter((r) => !r.private).map((r) => r.id)
+      if (open.length === 0) throw new Error('the contributor reaches no public repository to narrow the public token to')
+      tokens = { contributor, reviewer, public: await mint('contributor', { repository_ids: open, permissions: PUBLIC_PERMISSIONS }) }
+    } catch (error) {
+      console.error(`minting: ${error.message}`)
+      process.exit(1)
+    }
+    const expiresAt = Math.min(...Object.values(tokens).map((t) => Date.parse(t.expires_at)))
+    // A lifetime shorter than two runs would let a token lapse between them: say it, after writing.
+    const status = expiresAt - Date.now() < minLife ? 3 : 0
+    const b64 = (text) => Buffer.from(text).toString('base64')
+    const written = {}
+    for (const [name, { token }] of Object.entries(tokens)) {
+      written[name] = b64(token)
+      written[`${name}-basic`] = b64(b64(`x-access-token:${token}`))
+    }
+
+    for (let attempt = 1; ; attempt++) {
+      const got = await fetch(url, {
+        headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (got.ok) {
+        const current = await got.json()
+        const put = await fetch(url, {
+          method: 'PUT',
+          headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ ...current, data: { ...current.data, ...written } }),
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (put.ok) break
+        console.error(`writing ${NAME}: ${put.status}`)
+      } else {
+        console.error(`reading ${NAME}: ${got.status}`)
+      }
+      if (attempt === 5) process.exit(2)
+      await sleep(Number(process.env.RETRY_MS ?? 2000) * attempt)
+    }
+    if (status) console.error(`a token expires at ${new Date(expiresAt).toISOString()}, under ${minLife / 60_000} minutes from now`)
+    console.log(`written: contributor, reviewer and public (${open.length} public repositories), valid until ${new Date(expiresAt).toISOString()}`)
+    process.exit(status)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: github-refresher
+spec:
+  # A token lives one hour: every 15 minutes, three runs may fail before one lapses.
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # Minting is idempotent: a second Pod may retry.
+      backoffLimit: 1
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app: github-refresher
+        spec:
+          serviceAccountName: github-refresher
+          restartPolicy: Never
+          priorityClassName: bretagne-low
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            # Reads github-apps (0440).
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresher
+              image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+              command: ["node", "/app/refresh.mjs"]
+              env:
+                # The API server's CA, added to Node's own roots, which keep checking api.github.com.
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                # The Apps and their installation on the account arnaultbretagne (all repositories), read from
+                # each App's API on 2026-11-08. Not secrets: a key is needed to act as either.
+                - name: CONTRIBUTOR_APP_ID
+                  value: "5666338"
+                - name: CONTRIBUTOR_INSTALLATION_ID
+                  value: "179813328"
+                - name: REVIEWER_APP_ID
+                  value: "5666348"
+                - name: REVIEWER_INSTALLATION_ID
+                  value: "179813715"
+                # A token must outlive two runs (15 minutes apart) and the kubelet's sync: below 40 minutes,
+                # the run says so.
+                - name: MIN_LIFE_MINUTES
+                  value: "40"
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: script, mountPath: /app, readOnly: true }
+                - { name: keys, mountPath: /etc/github-apps, readOnly: true }
+          volumes:
+            - name: script
+              configMap:
+                name: github-refresher
+            - name: keys
+              secret:
+                secretName: github-apps
+                defaultMode: 0440
+                items:
+                  - { key: contributor.pem, path: contributor.pem }
+                  - { key: reviewer.pem, path: reviewer.pem }

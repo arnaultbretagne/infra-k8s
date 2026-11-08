@@ -56,13 +56,14 @@ spec:
             # fetches or pushes goes through the gateway.
             - name: GIT_SSL_CAINFO
               value: /etc/agora/credential-proxy/ca.pem
-            # Who commits: an address of no GitHub account, so a commit shows this name rather than
-            # the operator's; the same for every execution until agents have names of their own.
-            # Pushing is the gateway's PAT, whatever this says.
-            - { name: GIT_AUTHOR_NAME, value: Agora }
-            - { name: GIT_AUTHOR_EMAIL, value: agent@agora.bretagne.dev }
-            - { name: GIT_COMMITTER_NAME, value: Agora }
-            - { name: GIT_COMMITTER_EMAIL, value: agent@agora.bretagne.dev }
+            # Who commits: the GitHub App that pushes (docs/specs/credentials.md on arnaultbretagne/agora,
+            # "GitHub identities"), by its bot user's noreply address (id 354025670, read from GitHub's API on
+            # 2026-11-08), so GitHub shows each commit as agora-contributor[bot], never the operator. Pushing is
+            # the gateway's, with that App's token, whatever this says.
+            - { name: GIT_AUTHOR_NAME, value: "agora-contributor[bot]" }
+            - { name: GIT_AUTHOR_EMAIL, value: "354025670+agora-contributor[bot]@users.noreply.github.com" }
+            - { name: GIT_COMMITTER_NAME, value: "agora-contributor[bot]" }
+            - { name: GIT_COMMITTER_EMAIL, value: "354025670+agora-contributor[bot]@users.noreply.github.com" }
           # Ready means the adapter runs; Agora initializes it after allocation.
           readinessProbe:
             httpGet: { path: /healthz, port: bridge }

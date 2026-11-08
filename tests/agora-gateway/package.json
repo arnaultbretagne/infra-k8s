@@ -2,9 +2,9 @@
   "name": "agora-gateway-e2e",
   "private": true,
   "type": "module",
-  "description": "The agora-gateway's vault route, end to end on the real agentgateway binary (README.md).",
+  "description": "The agora-gateway's vault, agora and GitHub routes, end to end on the real agentgateway binary (README.md).",
   "scripts": {
-    "test": "node --test --test-concurrency=1 vault-route.test.mjs vault-auth.test.mjs vault-refresher.test.mjs"
+    "test": "node --test --test-concurrency=1 vault-route.test.mjs vault-auth.test.mjs vault-refresher.test.mjs agora-route.test.mjs github-routes.test.mjs github-refresher.test.mjs"
   },
   "engines": {
     "node": ">=24"
