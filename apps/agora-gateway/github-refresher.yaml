@@ -1,7 +1,8 @@
 # Keeps the gateway's GitHub tokens fresh (docs/specs/credentials.md on arnaultbretagne/agora, "GitHub
 # identities"). Agora acts on GitHub as two GitHub Apps of the operator's, each installed once on the account
-# with every repository: agora-contributor (contents and pull requests write) and agora-reviewer (contents read,
-# pull requests write). Every 15 minutes, for each App, a JWT signed with its private key buys an installation
+# with every repository, both with contents, pull requests and issues write: agora-contributor proposes code,
+# agora-reviewer reviews it — GitHub counts an approval only from an actor who may write. Only the operator
+# merges: `main`'s ruleset restricts updates to its bypass actors. Every 15 minutes, for each App, a JWT signed with its private key buys an installation
 # token (one hour), and a third token, the contributor's narrowed to its public repositories with read
 # permissions, serves the public routes. Minting spends nothing: a run that fails, or is retried, loses nothing.
 #
