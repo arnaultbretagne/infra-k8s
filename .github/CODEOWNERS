@@ -1,4 +1,0 @@
-# Merging into main takes an approving review from a code owner: the operator (ruleset agents-propose-only,
-# "require review from code owners"). Agora's GitHub Apps, agora-contributor and agora-reviewer, open, push and
-# review, never stand in for this approval (apps/agora-gateway/github-refresher.yaml).
-* @arnaultbretagne
