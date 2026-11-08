@@ -11,8 +11,8 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   harness: codex
-  name: codex-7fc81aec7cce
-  image: ghcr.io/arnaultbretagne/agora-harness-codex@sha256:7fc81aec7ccebf1620f5b999ab2609c3d282d33d82b0b7c4b9b1beffbd24042e
+  name: codex-0f0ef3c44884
+  image: ghcr.io/arnaultbretagne/agora-harness-codex@sha256:0f0ef3c44884e4604ba5cb9686a0a1c786227604a080bdf5b73afe7cc9a87f0a
   versions: codex 0.165.0, codex-acp 2.5.0
-  source: arnaultbretagne/agora main ea042cb
-  inputs: "3c87ce91480846bc"
+  source: arnaultbretagne/agora main 42bed97
+  inputs: "f4469dde469e925a"
