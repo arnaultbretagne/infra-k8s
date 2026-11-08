@@ -36,16 +36,19 @@ binds:
             issuer: agora
             audiences: [agora-gateway]
             jwks: { file: /etc/agentgateway/jwks/jwks.json }
-          # GitHub has two routes per host: one for what a grant covers, one for the rest. This header,
-          # always overwritten here and removed before GitHub, says which: "covered" when the rule of
-          # the routes with a credential would let the request through. It only steers: each route
-          # checks the request again, so a header the sandbox sends itself gains nothing.
+          # GitHub has three routes per host: one per identity for what a grant covers, one for the rest
+          # (docs/specs/credentials.md on arnaultbretagne/agora, "GitHub identities"). This header, always
+          # overwritten here and removed before GitHub, says which: "contributor" when the rule of the routes
+          # with a credential would let the request through with a grant of the contributor's — one naming no
+          # identity is —, else "reviewer" when it would with one of the reviewer's. It only steers: each
+          # route checks the request again, against its own identity's grants, so a header the sandbox sends
+          # itself gains nothing. `has(g.identity)` must stay: 1.6.0's `exists` stops at the first grant that errors.
           transformations:
             conditional:
               - condition: 'request.host == "api.github.com" || request.host == "github.com"'
                 request:
                   set:
-                    x-gateway-grant: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods)) ? "covered" : "none"'
+                    x-gateway-grant: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && (!has(g.identity) || g.identity == "contributor")) ? "contributor" : (jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "reviewer") ? "reviewer" : "none")'
         routes:
             # Claude's usage limits (5-hour and weekly windows): the cluster's own login, kept alive by
             # claude-refresher.yaml — the setup-token below lacks the `user:profile` scope this one path
@@ -189,13 +192,15 @@ binds:
                   key:
                     value: { file: /etc/agentgateway/previews/access_token }
                     location: { header: { name: authorization, prefix: "Bearer " } }
-            # GitHub REST, what a grant covers (GraphQL stays closed: no grant covers /graphql). A header
-            # match outranks the route without one for the same host.
+            # GitHub REST, what a grant covers, as Agora's GitHub Apps (GraphQL stays closed: no grant covers
+            # /graphql). Each App's installation token, minted every 15 minutes by github-refresher.yaml, is
+            # watched like the other credentials. A header match outranks the route without one for the same
+            # host. The contributor (agora-contributor[bot]): read and write.
             - name: github-api
               hostnames: [api.github.com]
               matches:
                 - headers:
-                    - { name: x-gateway-grant, value: { exact: covered } }
+                    - { name: x-gateway-grant, value: { exact: contributor } }
               backends:
                 - dynamic: {}
                   policies:
@@ -203,21 +208,43 @@ binds:
               policies:
                 authorization:
                   rules:
-                    # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
-                    # and some grant of the JWT covers this host, path and query, and method.
-                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    # The rule of every route with a credential, and the grant this identity's.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && (!has(g.identity) || g.identity == "contributor"))'
                 requestHeaderModifier:
                   remove: [x-gateway-grant]
                 backendAuth:
                   key:
-                    value: { file: /etc/agentgateway/credentials/github }
+                    value: { file: /etc/agentgateway/github/contributor }
                     location: { header: { name: authorization, prefix: "Bearer " } }
-            # git smart HTTP, what a grant covers: Basic x-access-token:<PAT>.
+            # The reviewer (agora-reviewer[bot]): review. Its App reads code and reviews pull requests; it cannot
+            # push or merge, whatever the grant lets through.
+            - name: github-api-reviewer
+              hostnames: [api.github.com]
+              matches:
+                - headers:
+                    - { name: x-gateway-grant, value: { exact: reviewer } }
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # The rule of every route with a credential, and the grant this identity's.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "reviewer")'
+                requestHeaderModifier:
+                  remove: [x-gateway-grant]
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/github/reviewer }
+                    location: { header: { name: authorization, prefix: "Bearer " } }
+            # git smart HTTP, what a grant covers: Basic x-access-token:<installation token>, base64, as the
+            # refresher writes it.
             - name: github-git
               hostnames: [github.com]
               matches:
                 - headers:
-                    - { name: x-gateway-grant, value: { exact: covered } }
+                    - { name: x-gateway-grant, value: { exact: contributor } }
               backends:
                 - dynamic: {}
                   policies:
@@ -225,19 +252,40 @@ binds:
               policies:
                 authorization:
                   rules:
-                    # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
-                    # and some grant of the JWT covers this host, path and query, and method.
-                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                    # The rule of every route with a credential, and the grant this identity's.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && (!has(g.identity) || g.identity == "contributor"))'
                 requestHeaderModifier:
                   remove: [x-gateway-grant]
                 backendAuth:
                   key:
-                    value: { file: /etc/agentgateway/credentials/github-basic }
+                    value: { file: /etc/agentgateway/github/contributor-basic }
                     location: { header: { name: authorization, prefix: "Basic " } }
-            # Public GitHub through the Internet: what no grant covers, read only, with the same PAT. A
-            # fine-grained PAT reads every public repository, so a repository given no grant reads as
-            # the public sees it. Reads only, because the PAT can write to the repositories offered;
-            # GraphQL stays closed (always a POST). Open to a grant on "*" (Agora's `internet` profile).
+            # The same, as the reviewer: clone and fetch.
+            - name: github-git-reviewer
+              hostnames: [github.com]
+              matches:
+                - headers:
+                    - { name: x-gateway-grant, value: { exact: reviewer } }
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # The rule of every route with a credential, and the grant this identity's.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "reviewer")'
+                requestHeaderModifier:
+                  remove: [x-gateway-grant]
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/github/reviewer-basic }
+                    location: { header: { name: authorization, prefix: "Basic " } }
+            # Public GitHub through the Internet: what no grant covers, read only, with a token of the
+            # contributor's App narrowed to its public repositories, with read permissions: it reads every
+            # public repository on GitHub, none of the operator's private ones (the Apps are installed on all
+            # of them). Reads only all the same; GraphQL stays closed (always a POST). Open to a grant on "*"
+            # (Agora's `internet` profile).
             - name: github-api-public
               hostnames: [api.github.com]
               backends:
@@ -252,7 +300,7 @@ binds:
                   remove: [x-gateway-grant]
                 backendAuth:
                   key:
-                    value: { file: /etc/agentgateway/credentials/github }
+                    value: { file: /etc/agentgateway/github/public }
                     location: { header: { name: authorization, prefix: "Bearer " } }
             # git smart HTTP through the Internet: clone and fetch (git-upload-pack, which POSTs too),
             # never push (git-receive-pack, from its first GET on).
@@ -270,7 +318,7 @@ binds:
                   remove: [x-gateway-grant]
                 backendAuth:
                   key:
-                    value: { file: /etc/agentgateway/credentials/github-basic }
+                    value: { file: /etc/agentgateway/github/public-basic }
                     location: { header: { name: authorization, prefix: "Basic " } }
             # The cluster's API server, for `kubernetes:read` (docs/specs/credentials.md on arnaultbretagne/agora,
             # "Kubernetes"). `kubernetes.agora.internal` resolves nowhere: only this route knows it. The grant

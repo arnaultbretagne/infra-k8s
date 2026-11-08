@@ -65,6 +65,8 @@ spec:
             - { name: ca, mountPath: /etc/agentgateway/ca, readOnly: true }
             # Watched by the gateway: rotating a credential needs no restart.
             - { name: credentials, mountPath: /etc/agentgateway/credentials, readOnly: true }
+            # The GitHub Apps' installation tokens, rewritten by github-refresher every 15 minutes: watched the same way.
+            - { name: github, mountPath: /etc/agentgateway/github, readOnly: true }
             # The previews' token, rewritten by previews-refresher every 5 minutes: watched the same way.
             - { name: previews, mountPath: /etc/agentgateway/previews, readOnly: true }
             # The ChatGPT session's access token, rewritten by chatgpt-refresher: watched the same way.
@@ -102,6 +104,13 @@ spec:
         - name: credentials
           secret:
             secretName: upstream-credentials
+            defaultMode: 0440
+        # Created empty by Flux, filled by github-refresher (github-refresher.yaml). Optional: the gateway starts
+        # without it, GitHub then answers 401.
+        - name: github
+          secret:
+            secretName: github-tokens
+            optional: true
             defaultMode: 0440
         # Created empty by Flux, filled by previews-refresher (previews-refresher.yaml).
         - name: previews

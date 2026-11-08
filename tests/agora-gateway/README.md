@@ -1,4 +1,4 @@
-# agora-gateway: the vault and agora routes, end to end
+# agora-gateway: the vault, agora and GitHub routes, end to end
 
 The proof that the gateway's `vault` route works. There is no preview of agora-gateway (ADR 0017), so this
 test, run by `.github/workflows/agora-gateway-e2e.yml` on every pull request touching the gateway, the vault
@@ -38,6 +38,28 @@ arnaultbretagne/agora) — with a stand-in for the server's port 8082 that recor
 | `internet` alone, `anthropic` alone, no profile; a token used from another address | 403, the server never reached. |
 | `/mcp/`, `/mcp?x=1`, `/api/workstreams`, `..`, `%2e`, `PUT` | 403, the server never reached. |
 | The gateway's log | Route `agora`, the execution. |
+
+`github-routes.test.mjs` does the same for GitHub's six routes (`docs/specs/credentials.md` on arnaultbretagne/agora,
+"GitHub identities"): each keeps its hostnames, matches and policies, its backend moved to a stand-in for both GitHub
+hosts that records which of the refresher's tokens each request arrived with.
+
+| Case | Expected |
+| --- | --- |
+| `github:A:write`, `github:A:read` | REST and git as the contributor (`github-api`, `github-git`). |
+| `github:B:review` | REST — a review, a comment — and clone and fetch as the reviewer (`github-api-reviewer`, `github-git-reviewer`); a push, GraphQL, another repository: 403. |
+| Write on A and review on B; write and review on A; read and review on A | Each repository its own identity; write and review: the contributor; read and review: the reads as the contributor, a review as the reviewer. |
+| `internet` | What no grant covers, read with the public token (`github-api-public`, `github-git-public`); a write or a push: 403; without `internet`: 403. |
+| `x-gateway-grant` forged by the sandbox | Changes nothing; never reaches GitHub. |
+| A token from an older Agora, its grants naming no identity | The contributor, as before. |
+| A token used from another address | 403. |
+| What GitHub receives | One of the three tokens, never the sandbox's `Authorization`; the operator's PAT is on no route. |
+
+`github-refresher.test.mjs` runs the GitHub tokens' refresher, its script as `apps/agora-gateway/github-refresher.yaml`
+ships it, against a stand-in GitHub API and a stand-in API server: each App's JWT signed with its own key, its
+installation token bought, a third token narrowed to the contributor's public repositories (every page listed) with
+read permissions; all three written to `github-tokens` with git's Basic form and the Secret's other keys, never
+logged; exit 4 a key missing, 1 refused, 2 unable to write, 3 a token that would not outlive two runs; and every file
+the gateway's GitHub routes read is a key the refresher writes, on the volume the gateway mounts.
 
 `vault-auth.test.mjs` runs obsidian-mcp v0.4.0's own `config.ts` and `auth.ts` (obsidian-stack at its tag) on the
 environment `apps/obsidian` deploys. Its tokens have the shape Pocket-ID v2.18.0 gives them. It checks that:
