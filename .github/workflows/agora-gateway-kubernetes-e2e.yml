@@ -77,9 +77,9 @@ jobs:
       - name: kubectl, kind and agentgateway, checked against their sha256
         run: |
           mkdir -p "$RUNNER_TEMP/bin"
-          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
-          curl -fsSL -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
-          curl -fsSL -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
           echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
           echo "$KIND_SHA256  $RUNNER_TEMP/bin/kind" | sha256sum -c -
           echo "$AGENTGATEWAY_SHA256  $RUNNER_TEMP/bin/agentgateway" | sha256sum -c -

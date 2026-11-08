@@ -96,11 +96,11 @@ jobs:
       - name: kubectl, kind, helm, flux-operator and agentgateway, checked against their sha256
         run: |
           mkdir -p "$RUNNER_TEMP/bin" "$RUNNER_TEMP/dl"
-          curl -fsSL -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
-          curl -fsSL -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
-          curl -fsSL -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
-          curl -fsSL -o "$RUNNER_TEMP/dl/flux-operator.tgz" "$FLUX_OPERATOR_URL"
-          curl -fsSL -o "$RUNNER_TEMP/dl/helm.tgz" "$HELM_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/agentgateway" "$AGENTGATEWAY_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/dl/flux-operator.tgz" "$FLUX_OPERATOR_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/dl/helm.tgz" "$HELM_URL"
           echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
           echo "$KIND_SHA256  $RUNNER_TEMP/bin/kind" | sha256sum -c -
           echo "$AGENTGATEWAY_SHA256  $RUNNER_TEMP/bin/agentgateway" | sha256sum -c -
@@ -124,7 +124,7 @@ jobs:
       - name: kind, Gateway API and Traefik as infrastructure/gateway installs it
         run: |
           kind create cluster --name kind --image "$KIND_NODE_IMAGE" --config tests/agora-gateway-previews/kind.yaml --wait 180s
-          curl -fsSL -o "$RUNNER_TEMP/dl/gateway-api.yaml" "$GATEWAY_API_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/dl/gateway-api.yaml" "$GATEWAY_API_URL"
           echo "$GATEWAY_API_SHA256  $RUNNER_TEMP/dl/gateway-api.yaml" | sha256sum -c -
           kubectl apply --server-side -f "$RUNNER_TEMP/dl/gateway-api.yaml"
           helm repo add traefik https://traefik.github.io/charts
