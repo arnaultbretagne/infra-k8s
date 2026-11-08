@@ -40,7 +40,8 @@ binds:
           # (docs/specs/credentials.md on arnaultbretagne/agora, "GitHub identities"). This header, always
           # overwritten here and removed before GitHub, says which: "contributor" when the rule of the routes
           # with a credential would let the request through with a grant of the contributor's — one naming no
-          # identity is —, else "reviewer" when it would with one of the reviewer's. It only steers: each
+          # identity is —, else "reviewer" when it would with one of the reviewer's, else "operator" with Agora's own
+          # `merge` grant, which no execution is ever given (docs/specs/merge.md on arnaultbretagne/agora). It only steers: each
           # route checks the request again, against its own identity's grants, so a header the sandbox sends
           # itself gains nothing. `has(g.identity)` must stay: 1.6.0's `exists` stops at the first grant that errors.
           transformations:
@@ -48,7 +49,7 @@ binds:
               - condition: 'request.host == "api.github.com" || request.host == "github.com"'
                 request:
                   set:
-                    x-gateway-grant: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && (!has(g.identity) || g.identity == "contributor")) ? "contributor" : (jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "reviewer") ? "reviewer" : "none")'
+                    x-gateway-grant: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && (!has(g.identity) || g.identity == "contributor")) ? "contributor" : (jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "reviewer") ? "reviewer" : (jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "operator") ? "operator" : "none"))'
         routes:
             # Claude's usage limits (5-hour and weekly windows): the cluster's own login, kept alive by
             # claude-refresher.yaml — the setup-token below lacks the `user:profile` scope this one path
@@ -216,8 +217,8 @@ binds:
                   key:
                     value: { file: /etc/agentgateway/github/contributor }
                     location: { header: { name: authorization, prefix: "Bearer " } }
-            # The reviewer (agora-reviewer[bot]): review. Its App reads code and reviews pull requests; it cannot
-            # push or merge, whatever the grant lets through.
+            # The reviewer (agora-reviewer[bot]): review. Its approval is the one review main requires; it cannot merge:
+            # main's ruleset restricts updates to the operator.
             - name: github-api-reviewer
               hostnames: [api.github.com]
               matches:
@@ -237,6 +238,30 @@ binds:
                 backendAuth:
                   key:
                     value: { file: /etc/agentgateway/github/reviewer }
+                    location: { header: { name: authorization, prefix: "Bearer " } }
+            # The operator, for the merge card alone (docs/specs/merge.md on arnaultbretagne/agora): Agora's server merges
+            # a pull request the person clicked Merge on, as the operator — the one account main's ruleset lets update it.
+            # Only Agora's own `merge` grant names this identity: a pull request and its reviews read, its merge, from the
+            # server's own address. The operator's PAT, from upstream-credentials.
+            - name: github-api-operator
+              hostnames: [api.github.com]
+              matches:
+                - headers:
+                    - { name: x-gateway-grant, value: { exact: operator } }
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # The rule of every route with a credential, and the grant the operator's.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods) && has(g.identity) && g.identity == "operator")'
+                requestHeaderModifier:
+                  remove: [x-gateway-grant]
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/credentials/github }
                     location: { header: { name: authorization, prefix: "Bearer " } }
             # git smart HTTP, what a grant covers: Basic x-access-token:<installation token>, base64, as the
             # refresher writes it.

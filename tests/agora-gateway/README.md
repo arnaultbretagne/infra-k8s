@@ -51,8 +51,9 @@ hosts that records which of the refresher's tokens each request arrived with.
 | `internet` | What no grant covers, read with the public token (`github-api-public`, `github-git-public`); a write or a push: 403; without `internet`: 403. |
 | `x-gateway-grant` forged by the sandbox | Changes nothing; never reaches GitHub. |
 | A token from an older Agora, its grants naming no identity | The contributor, as before. |
+| Agora's own `merge` grant | A pull request and its reviews read and its merge as the operator (`github-api-operator`, the PAT); a review, a write, a push: 403; an execution forging `x-gateway-grant: operator`: its own identity. |
 | A token used from another address | 403. |
-| What GitHub receives | One of the three tokens, never the sandbox's `Authorization`; the operator's PAT is on no route. |
+| What GitHub receives | One of the four credentials, never the sandbox's `Authorization`; the operator's PAT on `github-api-operator` alone. |
 
 `github-refresher.test.mjs` runs the GitHub tokens' refresher, its script as `apps/agora-gateway/github-refresher.yaml`
 ships it, against a stand-in GitHub API and a stand-in API server: each App's JWT signed with its own key, its

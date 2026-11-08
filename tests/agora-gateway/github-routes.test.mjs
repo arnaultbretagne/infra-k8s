@@ -28,10 +28,10 @@ import { parse, parseAllDocuments, stringify } from 'yaml'
 const SHA256 = '496ed27e6a96b55a9ad7cabe5c2be7172511f44a3cb113e533d22bf93a7f079d' // agentgateway-linux-amd64 v1.6.0
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 // What each credential file holds in the test: a name the stand-in can tell apart, as the refresher writes it.
-const TOKENS = { contributor: 'ghs_contributor', reviewer: 'ghs_reviewer', public: 'ghs_public' }
+const TOKENS = { contributor: 'ghs_contributor', reviewer: 'ghs_reviewer', public: 'ghs_public', operator: 'ghp_operator' }
 const CREDENTIALS = {
-  ...Object.fromEntries(Object.entries(TOKENS).map(([k, v]) => [k, v])),
-  ...Object.fromEntries(Object.entries(TOKENS).map(([k, v]) => [`${k}-basic`, Buffer.from(`x-access-token:${v}`).toString('base64')])),
+  ...Object.fromEntries(Object.entries(TOKENS).filter(([k]) => k !== 'operator').map(([k, v]) => [k, v])),
+  ...Object.fromEntries(Object.entries(TOKENS).filter(([k]) => k !== 'operator').map(([k, v]) => [`${k}-basic`, Buffer.from(`x-access-token:${v}`).toString('base64')])),
 }
 
 async function freePort() {
@@ -96,7 +96,9 @@ before(async () => {
   const objects = parseAllDocuments(rendered).map((doc) => doc.toJS())
   const configMap = (name) => objects.find((o) => o.kind === 'ConfigMap' && new RegExp(`^${name}(-[a-z0-9]{10})?$`).test(o.metadata.name))
   const deployed = configMap('gateway-config').data['config.yaml']
-  assert.ok(!deployed.includes('/etc/agentgateway/credentials/github'), 'the operator’s PAT is on no route')
+  // The operator's PAT: one route reads it, the one for Agora's own `merge` grant.
+  const routes = parse(deployed).binds.find((bind) => bind.port === 443).listeners[0].routes
+  assert.deepEqual(routes.filter((r) => r.policies?.backendAuth?.key?.value?.file === '/etc/agentgateway/credentials/github').map((r) => r.name), ['github-api-operator'])
   const kid = JSON.parse(configMap('grants-jwks').data['jwks.json']).keys[0].kid
 
   // Ports, files, and the GitHub routes' backend, local; nothing else touched.
@@ -109,7 +111,7 @@ before(async () => {
   const listener = config.binds.find((bind) => bind.port === 443).listeners[0]
   const jwt = listener.policies.jwtAuth
   const github = listener.routes.filter((r) => r.name.startsWith('github-'))
-  assert.deepEqual(github.map((r) => r.name), ['github-api', 'github-api-reviewer', 'github-git', 'github-git-reviewer', 'github-api-public', 'github-git-public'])
+  assert.deepEqual(github.map((r) => r.name), ['github-api', 'github-api-reviewer', 'github-api-operator', 'github-git', 'github-git-reviewer', 'github-api-public', 'github-git-public'])
   for (const route of github) {
     assert.deepEqual(route.backends, [{ dynamic: {}, policies: { backendTLS: {} } }], `${route.name}: to GitHub itself`)
     route.backends = [{ host: `127.0.0.1:${githubPort}` }]
@@ -117,7 +119,7 @@ before(async () => {
   const text = stringify(config)
   for (const file of new Set([...text.matchAll(new RegExp(`${root}[^ }\\n"']+`, 'g'))].map((m) => m[0]))) {
     mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, file.startsWith(`${root}github/`) ? CREDENTIALS[file.slice(`${root}github/`.length)] : 'stand-in')
+    writeFileSync(file, file.startsWith(`${root}github/`) ? CREDENTIALS[file.slice(`${root}github/`.length)] : file === `${root}credentials/github` ? TOKENS.operator : 'stand-in')
   }
   const ca = makeCa(join(work, 'etc/ca'))
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
@@ -257,6 +259,29 @@ describe('the GitHub routes on agentgateway 1.6.0 (C69)', () => {
     assert.deepEqual(await send(null, { token, host: 'github.com', path: `/${A}.git/git-receive-pack`, method: 'POST' }).then((r) => [r.status, r.as]), [200, 'contributor-basic'])
   })
 
+  it('Agora’s own merge grant: a pull request and its reviews read and its merge, as the operator, nothing else; an execution never reaches the operator', async () => {
+    const { token } = await ctx.signer.mint({ label: 'agora merge', ttlSeconds: 300, profiles: ['merge'], address: '127.0.0.1' })
+    const cases = [
+      [{ path: `/repos/${A}/pulls/7` }, 'operator'],
+      [{ path: `/repos/${A}/pulls/7/reviews?per_page=100` }, 'operator'],
+      [{ path: `/repos/${A}/pulls/7/merge`, method: 'PUT' }, 'operator'],
+      [{ path: `/repos/${A}/pulls/7/reviews`, method: 'POST' }, null],
+      [{ path: `/repos/${A}/contents/a.txt`, method: 'PUT' }, null],
+      [{ path: `/repos/${A}/pulls/7`, method: 'PATCH' }, null],
+      [{ host: 'github.com', path: `/${A}.git/git-receive-pack`, method: 'POST' }, null],
+    ]
+    for (const [request, expected] of cases) {
+      const { status, as } = await send(null, { ...request, token })
+      assert.deepEqual([status, as], expected === null ? [403, null] : [200, expected], `merge: ${request.method ?? 'GET'} ${request.path}`)
+    }
+    // An execution with write, forging the operator: still the contributor; with review: still the reviewer.
+    assert.deepEqual(await send([`github:${A}:write`], { path: `/repos/${A}/pulls/7/merge`, method: 'PUT', headers: { 'x-gateway-grant': 'operator' } }).then((r) => [r.status, r.as]), [200, 'contributor'])
+    assert.deepEqual(await send([`github:${B}:review`], { path: `/repos/${B}/pulls/3/merge`, method: 'PUT', headers: { 'x-gateway-grant': 'operator' } }).then((r) => [r.status, r.as]), [200, 'reviewer'])
+    // The merge grant from another address: 403.
+    const away = (await ctx.signer.mint({ label: 'agora merge', ttlSeconds: 300, profiles: ['merge'], address: '10.244.9.9' })).token
+    assert.deepEqual(await send(null, { token: away, path: `/repos/${A}/pulls/7` }).then((r) => [r.status, r.as]), [403, null])
+  })
+
   it('a token used from another address: 403, GitHub never reached', async () => {
     const { token } = await ctx.signer.mint({ label: `agora ${randomUUID()}`, ttlSeconds: 600, profiles: [`github:${A}:write`, `github:${B}:review`, 'internet'], address: '10.244.9.9' })
     for (const path of [`/repos/${A}`, `/repos/${B}/pulls/3/reviews`, '/repos/someone/else']) {
@@ -264,11 +289,11 @@ describe('the GitHub routes on agentgateway 1.6.0 (C69)', () => {
     }
   })
 
-  it('no request arrived with the sandbox’s own Authorization, or anything but the three tokens; the gateway logs each route', () => {
+  it('no request arrived with the sandbox’s own Authorization, or anything but the four credentials; the gateway logs each route', () => {
     assert.ok(ctx.stand.seen.length > 20)
     assert.ok(ctx.stand.seen.every((s) => !s.as.startsWith('unknown')), JSON.stringify(ctx.stand.seen.filter((s) => s.as.startsWith('unknown'))))
     const lines = ctx.log.join('').split('\n')
-    for (const route of ['github-api', 'github-api-reviewer', 'github-git', 'github-git-reviewer', 'github-api-public', 'github-git-public']) {
+    for (const route of ['github-api', 'github-api-reviewer', 'github-api-operator', 'github-git', 'github-git-reviewer', 'github-api-public', 'github-git-public']) {
       assert.ok(lines.some((l) => l.includes(`route=default/${route} `) || l.endsWith(`route=default/${route}`)), route)
     }
   })
