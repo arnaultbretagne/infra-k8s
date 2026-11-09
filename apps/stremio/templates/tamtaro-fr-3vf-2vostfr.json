@@ -4,9 +4,9 @@
     "name": "Tam-Taro FR · 3 VF + 2 VO-STFR",
     "author": "Arnault · Tam-Taro",
     "source": "external",
-    "version": "3.2.1002",
+    "version": "3.2.1302",
     "category": "Debrid",
-    "description": "Classement Tam-Taro (Complete SEL Setup 3.2.10), préférence française, source StremThru Torz seule, TorBox. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français mais avec des sous-titres français signalés. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 60 Mb/s pour le port réseau 100 Mb/s de la TV.",
+    "description": "Classement Tam-Taro (Complete SEL Setup 3.2.13), préférence française, source StremThru Torz seule, TorBox. Au plus 3 vidéos avec une piste audio française, puis au plus 2 vidéos sans audio français mais avec des sous-titres français signalés. Chaque groupe garde la 4K si elle existe, sinon la 1080p. Débit moyen plafonné à 60 Mb/s pour le port réseau 100 Mb/s de la TV.",
     "services": [
       "torbox"
     ],
@@ -27,11 +27,11 @@
     "appliedTemplates": [
       {
         "id": "tamtaro.complete",
-        "version": "3.2.10"
+        "version": "3.2.13"
       }
     ],
     "addonName": "Tam-Taro FR",
-    "addonDescription": "Custom AIOStreams powered by Tamtaro SEL Setup v3.2.10. Features advanced filtering with Stream Expression Language and smart sorting with Vidhin's Regex Patterns. Your personal all-in-one setup for the perfect streaming experience.",
+    "addonDescription": "Custom AIOStreams powered by Tamtaro SEL Setup v3.2.13. Features advanced filtering with Stream Expression Language and smart sorting with Vidhin's Regex Patterns. Your personal all-in-one setup for the perfect streaming experience.",
     "addonLogo": "https://raw.githubusercontent.com/Tam-Taro/SEL-Filtering-and-Sorting/refs/heads/main/logo/aios.png",
     "excludedResolutions": [],
     "includedResolutions": [],
@@ -252,11 +252,11 @@
         "enabled": true
       },
       {
-        "expression": "/*𝚃𝚊𝚖𝚝𝚊𝚛𝚘 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚎 𝚂𝙴𝙻 𝚂𝚎𝚝𝚞𝚙 𝚟3.2.10: 𝚂𝙴𝙻𝚎𝚌𝚝 3 𝙳𝚎𝚋𝚛𝚒𝚍·𝙷𝚃𝚃𝙿·𝙿2𝙿*/ []",
+        "expression": "/*𝚃𝚊𝚖𝚝𝚊𝚛𝚘 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚎 𝚂𝙴𝙻 𝚂𝚎𝚝𝚞𝚙 𝚟3.2.13: 𝚂𝙴𝙻𝚎𝚌𝚝 3 𝙳𝚎𝚋𝚛𝚒𝚍·𝙷𝚃𝚃𝙿·𝙿2𝙿*/ []",
         "enabled": true
       },
       {
-        "expression": "/*𝚃𝚊𝚖𝚝𝚊𝚛𝚘 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚎 𝚂𝙴𝙻 𝚂𝚎𝚝𝚞𝚙 𝚟3.2.10: 𝚂𝙴𝙻𝚎𝚌𝚝 3 𝚄𝚜𝚎𝚗𝚎𝚝*/ []",
+        "expression": "/*𝚃𝚊𝚖𝚝𝚊𝚛𝚘 𝙲𝚘𝚖𝚙𝚕𝚎𝚝𝚎 𝚂𝙴𝙻 𝚂𝚎𝚝𝚞𝚙 𝚟3.2.13: 𝚂𝙴𝙻𝚎𝚌𝚝 3 𝚄𝚜𝚎𝚗𝚎𝚝*/ []",
         "enabled": true
       },
       {
@@ -853,7 +853,7 @@
       },
       {
         "id": "torbox-down",
-        "url": "https://uptime.ibbylabs.dev/v1/health/torbox",
+        "url": "https://uptime.ibbylabs.dev/v1/health/torbox?degraded=down",
         "name": "Torbox",
         "expect": {
           "status": "503",
