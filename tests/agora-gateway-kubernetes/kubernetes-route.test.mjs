@@ -36,7 +36,8 @@ const run = `${Date.now()}`
 const ANONYMOUS_PROBE = 'agora-e2e-anonymous-probe'
 
 const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
-const admin = (args, input) => execFileSync(KUBECTL, args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'] })
+// Each layer's render is read whole, and `apps` alone is past Node's 1 MiB default (the cv site, the templates).
+const admin = (args, input) => execFileSync(KUBECTL, args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 256 << 20 })
 
 async function freePort() {
   const server = createServer()
