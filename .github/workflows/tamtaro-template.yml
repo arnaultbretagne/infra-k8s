@@ -1,8 +1,8 @@
 # Regenerates the Tam-Taro templates (apps/stremio/templates/tamtaro-fr-*.json, one per
 # overlay in tamtaro-fr/) from Tam-Taro's latest template (see apps/stremio/templates/README.md). When the result changed, it opens or
-# updates one pull request with TEMPLATES_PR_TOKEN: a fine-grained token on this
-# repository with "Contents" and "Pull requests" read and write. Without that secret the
-# run fails instead, so an upstream change is still noticed. Nothing is merged here.
+# updates one pull request as agora-contributor, the GitHub App that proposes code
+# (apps/agora-gateway/github-refresher.yaml): a token minted for the run from the App's private key, secret
+# CONTRIBUTOR_APP_PRIVATE_KEY, for this repository's contents and pull requests only. Only the operator merges.
 name: Tam-Taro template
 
 on:
@@ -21,7 +21,6 @@ env:
   TEMPLATE: apps/stremio/templates/tamtaro-fr-3vf-2vostfr.json
   TEMPLATES: apps/stremio/templates/tamtaro-fr-*.json
   BRANCH: auto/tamtaro-template
-  HAS_TOKEN: ${{ secrets.TEMPLATES_PR_TOKEN != '' }}
 
 jobs:
   regenerate:
@@ -50,20 +49,25 @@ jobs:
             git diff --stat -- $TEMPLATES
           fi
 
-      - name: Report a change without a token
-        if: steps.diff.outputs.changed == 'true' && env.HAS_TOKEN != 'true'
-        run: |
-          echo "::error::Tam-Taro's template changed. Set TEMPLATES_PR_TOKEN, or run generate.mjs and open the pull request by hand."
-          exit 1
+      - name: A token as agora-contributor
+        id: token
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          # agora-contributor, App 5666338.
+          client-id: Iv23liAjK9DwbYJyOHA6
+          private-key: ${{ secrets.CONTRIBUTOR_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Open or update the pull request
-        if: steps.diff.outputs.changed == 'true' && env.HAS_TOKEN == 'true'
+        if: steps.diff.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.TEMPLATES_PR_TOKEN }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           version=$(node -p "require('./$TEMPLATE').metadata.version")
-          git config user.name "tamtaro-template"
-          git config user.email "tamtaro-template@users.noreply.github.com"
+          git config user.name "agora-contributor[bot]"
+          git config user.email "354025670+agora-contributor[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"
           git add $TEMPLATES
           git commit -m "chore(stremio): regenerate the Tam-Taro FR templates ($version)"
