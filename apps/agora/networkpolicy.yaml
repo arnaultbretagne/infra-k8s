@@ -1,6 +1,6 @@
 # Default-deny plus the flows of the server: Traefik → oauth2-proxy → server; the server reaches the
-# Kubernetes API (claims), the sandboxes' bridge port, its database and the gateway (the accounts'
-# limits), nothing else. The other half of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml,
+# Kubernetes API (claims), the sandboxes' bridge port, its database, the gateway (the accounts'
+# limits) and R2 (the files), nothing else. The other half of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml,
 # of the gateway's apps/agora-gateway/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -92,6 +92,11 @@ spec:
             app.kubernetes.io/name: prefect-server
       toPorts:
         - ports: [{ port: "4200", protocol: TCP }]
+    # R2, where Agora's files live (Agora's docs/specs/files.md): the bucket `agora-files` on
+    # *.r2.cloudflarestorage.com. HTTPS to the world, as for the other apps until toFQDNs is adopted.
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

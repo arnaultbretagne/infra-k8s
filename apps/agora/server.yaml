@@ -112,10 +112,16 @@ spec:
             - { name: TEAM_PREFECT_API, value: "http://prefect-server.prefect.svc.cluster.local:4200/api" }
             - { name: TEAM_DEPLOYMENT, value: lead/main }
             - { name: TEAM_PREFECT_UI, value: "https://prefect.bretagne.dev" }
-          # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL.
+            # Agora's docs/specs/files.md, "The server": the files live in R2, in the bucket agora-files; the
+            # server alone writes there (networkpolicy.yaml), with the token of files.secrets.yaml.
+            - { name: FILES_ENDPOINT, value: "https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com" }
+            - { name: FILES_BUCKET, value: agora-files }
+          # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL; FILES_ACCESS_KEY_ID, FILES_SECRET_ACCESS_KEY.
           envFrom:
             - secretRef:
                 name: log
+            - secretRef:
+                name: files
           startupProbe:
             httpGet: { path: /healthz, port: http }
             failureThreshold: 20
