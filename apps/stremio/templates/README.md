@@ -69,9 +69,9 @@ with `NODE_OPTIONS=--max-http-header-size=262144`, not through the HEAD shim. St
 profiles never send the template in a header, so the deployment needs no such option.
 
 `.github/workflows/tamtaro-template.yml` regenerates the template every day. When
-Tam-Taro changed something, it opens a pull request if the `TEMPLATES_PR_TOKEN` secret is
-set, and fails otherwise so the change is still noticed. Run `check-live.mjs` before
-merging such a pull request.
+Tam-Taro changed something, it opens or updates one pull request as `agora-contributor`,
+with the App's private key in the `CONTRIBUTOR_APP_PRIVATE_KEY` secret. Run
+`check-live.mjs` before merging such a pull request.
 
 Checked on AIOStreams 2.35.9: the template loads without errors, its formatter
 renders, and searches return the expected selection. Since 2.35, cropped scope

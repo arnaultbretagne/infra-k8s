@@ -7,7 +7,8 @@
 # permissions, serves the public routes. Minting spends nothing: a run that fails, or is retried, loses nothing.
 #
 # The private keys are in `github-apps` (github-apps.secrets.yaml), mounted here and nowhere else: never in the
-# gateway, never in a sandbox. The tokens go to `github-tokens`, which only the gateway mounts and watches, each
+# gateway, never in a sandbox. Outside the cluster, the contributor's key is also this repository's Actions secret
+# CONTRIBUTOR_APP_PRIVATE_KEY, for the Tam-Taro workflow: a rotation replaces it there too. The tokens go to `github-tokens`, which only the gateway mounts and watches, each
 # also as git's Basic credential. Logs dates, counts and error codes, never a token.
 apiVersion: v1
 kind: ServiceAccount
