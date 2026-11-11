@@ -111,3 +111,61 @@ spec:
                       path: assets/rolldown-runtime-vfrPO-fZ.js.gz
                     - key: assets__assistant-ui-CcdakA0V.css.gz
                       path: assets/assistant-ui-CcdakA0V.css.gz
+              - configMap:
+                  name: team-demo-2
+                  items:
+                    - key: subagents__assets__assistant-ui-CcdakA0V.css.gz
+                      path: subagents/assets/assistant-ui-CcdakA0V.css.gz
+                    - key: subagents__assets__assistant-ui-DwSM9dX_.js.gz
+                      path: subagents/assets/assistant-ui-DwSM9dX_.js.gz
+                    - key: subagents__assets__index-BqP1JhCU.js.gz
+                      path: subagents/assets/index-BqP1JhCU.js.gz
+                    - key: subagents__assets__index-Da2J7ICT.css.gz
+                      path: subagents/assets/index-Da2J7ICT.css.gz
+                    - key: subagents__assets__markdown-D4ZLtT0v.js.gz
+                      path: subagents/assets/markdown-D4ZLtT0v.js.gz
+                    - key: subagents__assets__react-D65vFmZi.js.gz
+                      path: subagents/assets/react-D65vFmZi.js.gz
+                    - key: subagents__assets__rolldown-runtime-qXqUbbKo.js.gz
+                      path: subagents/assets/rolldown-runtime-qXqUbbKo.js.gz
+                    - key: subagents__assets__vendor-B0r_u4M5.js.gz
+                      path: subagents/assets/vendor-B0r_u4M5.js.gz
+              - configMap:
+                  name: team-demo-3
+                  items:
+                    - key: subagents__assets__inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
+                      path: subagents/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2.gz
+                    - key: subagents__assets__inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+                      path: subagents/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2.gz
+                    - key: subagents__assets__inter-greek-ext-wght-normal-DlzME5K_.woff2.gz
+                      path: subagents/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2.gz
+                    - key: subagents__assets__inter-greek-wght-normal-CkhJZR-_.woff2.gz
+                      path: subagents/assets/inter-greek-wght-normal-CkhJZR-_.woff2.gz
+                    - key: subagents__assets__inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
+                      path: subagents/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2.gz
+                    - key: subagents__assets__inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+                      path: subagents/assets/inter-latin-wght-normal-Dx4kXJAl.woff2.gz
+                    - key: subagents__assets__inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz
+                      path: subagents/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz
+                      path: subagents/assets/jetbrains-mono-cyrillic-ext-wght-normal-EocZY2iu.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
+                      path: subagents/assets/jetbrains-mono-cyrillic-wght-normal-D73BlboJ.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz
+                      path: subagents/assets/jetbrains-mono-greek-wght-normal-Bw9x6K1M.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                      path: subagents/assets/jetbrains-mono-latin-ext-wght-normal-DBQx-q_a.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
+                      path: subagents/assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2.gz
+                    - key: subagents__assets__jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz
+                      path: subagents/assets/jetbrains-mono-vietnamese-wght-normal-Bt-aOZkq.woff2.gz
+                    - key: subagents__assets__newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
+                      path: subagents/assets/newsreader-latin-ext-wght-normal-C-3rgBeH.woff2.gz
+                    - key: subagents__assets__newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
+                      path: subagents/assets/newsreader-latin-wght-normal-CCVVNp6i.woff2.gz
+                    - key: subagents__assets__newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
+                      path: subagents/assets/newsreader-vietnamese-wght-normal-Czsa-EzN.woff2.gz
+                    - key: subagents__favicon.svg.gz
+                      path: subagents/favicon.svg.gz
+                    - key: subagents__index.html
+                      path: subagents/index.html
