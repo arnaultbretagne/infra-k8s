@@ -1,0 +1,50 @@
+# Catalogue entry (ADR 0017 v4 §2): Ignis (github.com/Nystik-gh/ignis), Obsidian as a web app. Not in
+# production yet: this entry exists to try it. Label an infra-k8s PR `preview/ignis` to get
+# https://pr-<n>-ignis.preview.bretagne.dev.
+#
+# The preview works on an empty vault, never on the real one: a preview gets no PVC, the vault's PVC
+# lives in `obsidian`, and plugging Obsidian Sync in would need its token in the preview namespace and
+# make a second sync writer on the vault. Ignis has no authentication of its own; the preview's gate is
+# its only lock, which is the gate's job (ADR 0017 v4 §7).
+#
+# internet: the workload downloads Obsidian from its official GitHub releases at start (Obsidian is
+# not in the image, its licence forbids it), and Obsidian fetches community plugins and themes. With
+# data: none there is nothing of ours for it to send out.
+#
+# urlEnv: WS_ORIGINS gets the preview's origin, so Ignis refuses a WebSocket opened by another site.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-ignis
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview/ignis"]
+    limit: 1
+  defaultValues:
+    app: ignis
+    repo: https://github.com/arnaultbretagne/infra-k8s
+    source: pr
+    path: apps/ignis/workload
+    image: ""
+    service: ignis
+    port: "8080"
+    urlDeployment: ignis
+    urlContainer: ignis
+    urlEnv: WS_ORIGINS
+    internet: true
+    data: none
+    dbCluster: ""
+    dbName: ""
+    dbOwner: ""
+    backupPath: ""
+    dbSize: ""
+    dbImage: ""
