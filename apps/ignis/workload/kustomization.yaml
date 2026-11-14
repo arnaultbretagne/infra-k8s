@@ -1,0 +1,7 @@
+# The workload alone (ADR 0017 v4 §13): what a preview applies, from the PR's commit, into
+# pv-ignis-pr<n> (catalogue entry ignis). Not listed in apps/kustomization.yaml: Ignis is not in
+# production. Its going there is a decision of its own, with the real vault and its sync.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ignis.yaml
