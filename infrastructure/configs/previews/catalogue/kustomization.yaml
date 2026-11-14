@@ -7,3 +7,4 @@ resources:
   - preview-demo.yaml
   - rss.yaml
   - cv.yaml
+  - ignis.yaml
