@@ -1,0 +1,157 @@
+# Ignis (github.com/Nystik-gh/ignis): the real Obsidian app served to a browser, its Electron and Node
+# APIs replaced by a shim that talks to this server over HTTP and a WebSocket. It has no
+# authentication: whatever reaches it reads and writes every vault. Here the preview's gate does.
+#
+# The image's entrypoint runs as root (useradd, chown, then gosu), which PSS restricted refuses. So it
+# is not used, and its two steps are done here:
+#   - `obsidian`, an init container, downloads the Obsidian release the image is pinned to
+#     (IGNIS_OBSIDIAN_PIN, 1.14.4 for 0.9.0) from Obsidian's GitHub releases and unpacks it, as the
+#     entrypoint does. Obsidian is not in the image: its licence forbids redistribution.
+#   - `ignis` starts the server directly.
+# What is left out is the entrypoint's `npm install -g obsidian-headless`: no headless sync here.
+#
+# Everything it writes sits in emptyDirs: the vaults (/vaults, an empty "My Vault" created at start),
+# its settings (/data), Obsidian (/app/obsidian-app). A restart of the pod starts from scratch.
+# WS_ORIGINS is the preview's own origin, set by the catalogue entry (urlEnv); when it is unset the
+# server checks no Origin at all.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ignis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ignis
+  template:
+    metadata:
+      labels:
+        app: ignis
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: obsidian
+          image: nobbe/ignis:0.9.0
+          command:
+            - bash
+            - -ceu
+            - |
+              v="$IGNIS_OBSIDIAN_PIN"
+              echo "downloading Obsidian $v"
+              curl -fsSL "https://github.com/obsidianmd/obsidian-releases/releases/download/v$v/obsidian-$v.asar.gz" \
+                | gunzip > /tmp/obsidian.asar
+              npx --yes @electron/asar@4.3.2 extract /tmp/obsidian.asar /app/obsidian-app
+              rm -f /tmp/obsidian.asar
+              test -f /app/obsidian-app/index.html
+              echo "$v" > /app/obsidian-app/.obsidian-version
+              echo "Obsidian $v ready"
+          env:
+            - name: HOME
+              value: /tmp
+            - name: npm_config_update_notifier
+              value: "false"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: obsidian
+              mountPath: /app/obsidian-app
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: ignis
+          image: nobbe/ignis:0.9.0
+          command: ["node", "/app/apps/ignis-server/server/index.js"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: VAULT_ROOT
+              value: /vaults
+            - name: DATA_ROOT
+              value: /data
+            - name: OBSIDIAN_ASSETS_PATH
+              value: /app/obsidian-app
+            - name: AUTO_CREATE_DEFAULT
+              value: "true"
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 768Mi
+          startupProbe:
+            httpGet:
+              path: /api/version
+              port: 8080
+            failureThreshold: 24
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/version
+              port: 8080
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/version
+              port: 8080
+            periodSeconds: 10
+          volumeMounts:
+            - name: obsidian
+              mountPath: /app/obsidian-app
+              readOnly: true
+            - name: vaults
+              mountPath: /vaults
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: obsidian
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: vaults
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ignis
+spec:
+  selector:
+    app: ignis
+  ports:
+    - port: 8080
+      targetPort: 8080
