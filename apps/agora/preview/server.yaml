@@ -1,0 +1,90 @@
+# The preview's server: the same image as production, run with PREVIEW=true. Not one of production's
+# variables, Secrets or mounts: no ServiceAccount of its own (the template turns off the token), no
+# signing or grants key, no log logins, no R2, no gateway. Its one credential is the uri of the
+# preview's own empty database, in the Secret agora-pg-app that the template writes into
+# pv-agora-pr<n> (ADR 0017 v4 §9). The template adds runtimeClassName kata, bretagne-low and
+# automountServiceAccountToken: false. One replica, Recreate: the log admits one owner, and a second
+# server would exit on dispatch_owner_exists.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          # No tag here: the preview's Kustomization sets it to the PR's full commit SHA. The package
+          # is public, so no pull secret.
+          image: ghcr.io/arnaultbretagne/agora-server
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - { name: PREVIEW, value: "true" }
+            - name: PREVIEW_DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: agora-pg-app, key: uri }
+            # Node's heap below the container's limit, as in production; the mock agents share it.
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            # The empty database is created in the same render: give it two minutes.
+            failureThreshold: 40
+            periodSeconds: 3
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 30
+          # As in production (the contract asks for the same): the server and up to MAX_ACTIVE (4) mock
+          # agents in one container. Kata sizes the VM at this limit + 32 Mi; the preview's quota counts
+          # Kata's overhead (100m, 256 Mi) on top.
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        # Each mock sandbox's home and the mock agent's native files.
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi
+---
+# Port 8080 only: the client, the API and /healthz. 8081 (anchors) and 8082 (MCP) still listen, but in a
+# preview only the server itself calls them, over the loopback: they are not exposed.
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+spec:
+  selector:
+    app: server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

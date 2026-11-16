@@ -17,7 +17,7 @@ spec:
     name: preview-github
   filter:
     labels: ["preview/rss"]
-    limit: 1 # 2 until ignis joined the catalogue: the entries add up to 4 at most
+    limit: 1 # 2 until ignis joined the catalogue: the entries add up to 5 at most (4 until agora joined)
   defaultValues:
     _comment: >-
       restore + internet: Miniflux fetches feeds, so the PR's code could send the copy out. Accepted:

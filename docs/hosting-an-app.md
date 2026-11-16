@@ -511,7 +511,8 @@ The desired state lives in `apps/pocket-id/oidc-reconciler/spec.json` (name, cal
 ## 14. Previews — a live URL for a pull request (ADR 0017 v4)
 
 > **Status: live since 2026-10-23,** proven end to end on a test PR. The catalogue holds
-> `preview-demo`, `rss` and `cv`. The bare label `preview` starts nothing in `infra-k8s`.
+> `rss`, `cv`, `ignis` and `agora` (label `preview` on an `arnaultbretagne/agora` PR). The bare label
+> `preview` starts nothing in `infra-k8s`.
 
 A preview is an environment for one pull request, at `https://pr-<n>-<app>.preview.bretagne.dev`,
 behind Pocket-ID (group `admin`). Flux creates it when the PR carries the app's label, re-renders it
@@ -574,7 +575,7 @@ manifest for one preview.
    `internet: true` explains in `_comment` why its data may be exposed.
 4. **App repositories** (`source: main`): the app's CI pushes `<image>:<full commit SHA>` for every
    PR commit.
-5. **Keep the cap.** The `filter.limit` values of all entries add up to 4 at most.
+5. **Keep the cap.** The `filter.limit` values of all entries add up to 5 at most.
 
 ### 14.3 Never in the catalogue
 
@@ -585,4 +586,6 @@ Do not propose an entry for:
 - `agora-gateway`;
 - controllers, or any `infra`-profile namespace.
 
-Agora is deferred until it has its own design (ADR 0017 v4 §3).
+Agora's own entry, `agora`, previews only its server, with a mock agent and invented data (ADR 0017,
+amendment 2026-11-16). Its production server, its sandboxes (`agora-sandboxes`) and `agora-gateway` stay
+out of every preview.

@@ -92,9 +92,10 @@ function writeSecretVolume(dir, files) {
   }
 }
 
-/** The ResourceSet rendered by flux-operator for one preview of the catalogue entry, as the cluster renders it. */
+/** The ResourceSet rendered by flux-operator for one preview of the e2e's own entry (preview-demo-entry.yaml, the
+ * former catalogue entry preview-demo), with the template as the cluster renders it. */
 function render(resourceset) {
-  const provider = parse(readFileSync(join(REPO, `infrastructure/configs/previews/catalogue/${APP}.yaml`), 'utf8'))
+  const provider = parse(readFileSync(join(REPO, 'tests/agora-gateway-previews/preview-demo-entry.yaml'), 'utf8'))
   const inputs = [{ ...provider.spec.defaultValues, id: PR, sha: '0123456789abcdef0123456789abcdef01234567', branch: 'feat/x', author: 'someone', title: 'a change' }]
   const dir = mkdtempSync(join(tmpdir(), 'rset-'))
   writeFileSync(join(dir, 'inputs.yaml'), stringify(inputs))
