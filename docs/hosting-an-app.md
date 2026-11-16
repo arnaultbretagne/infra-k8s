@@ -574,7 +574,7 @@ manifest for one preview.
    `internet: true` explains in `_comment` why its data may be exposed.
 4. **App repositories** (`source: main`): the app's CI pushes `<image>:<full commit SHA>` for every
    PR commit.
-5. **Keep the cap.** The `filter.limit` values of all entries add up to 4 at most.
+5. **Keep the cap.** The `filter.limit` values of all entries add up to 5 at most.
 
 ### 14.3 Never in the catalogue
 

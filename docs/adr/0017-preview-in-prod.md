@@ -555,7 +555,7 @@ its copy never reaches production.
 | LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi`, max limit `1Gi` |
 | ResourceQuota, `preview-system` | `requests.memory: 2Gi`, `limits.memory: 4Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "4"` |
 | Per entry | `filter.limit: 2` |
-| Whole catalogue | The sum of all entries' `filter.limit` stays at 4 or below |
+| Whole catalogue | The sum of all entries' `filter.limit` stays at 5 or below (4 until 2026-11-16, see the amendment of that date) |
 | Priority | `bretagne-low` for workloads, gates and preview databases: they are evicted first |
 
 With Kata's overhead counted, a preview realistically runs two or three pods. The node was at 51 %
