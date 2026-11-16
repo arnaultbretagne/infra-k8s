@@ -586,4 +586,6 @@ Do not propose an entry for:
 - `agora-gateway`;
 - controllers, or any `infra`-profile namespace.
 
-Agora is deferred until it has its own design (ADR 0017 v4 §3).
+Agora's own entry, `agora`, previews only its server, with a mock agent and invented data (ADR 0017,
+amendment 2026-11-16). Its production server, its sandboxes (`agora-sandboxes`) and `agora-gateway` stay
+out of every preview.
