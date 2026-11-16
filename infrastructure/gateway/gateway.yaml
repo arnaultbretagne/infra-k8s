@@ -107,20 +107,6 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # Prefect (apps/prefect): the orchestrator of Agora's workflows, behind the OIDC gate
-    # (oauth2-proxy, ALLOWED_GROUPS=admin): its runs start Agora executions.
-    - name: https-prefect
-      port: 8443
-      protocol: HTTPS
-      hostname: prefect.bretagne.dev
-      tls:
-        mode: Terminate
-        certificateRefs:
-          - kind: Secret
-            name: bretagne-tls
-      allowedRoutes:
-        namespaces:
-          from: All
     # The RSS stack (apps/rss): Miniflux behind the OIDC gate (oauth2-proxy, ALLOWED_GROUPS=admin).
     - name: https-rss
       port: 8443
