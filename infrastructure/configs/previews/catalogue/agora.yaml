@@ -1,0 +1,66 @@
+# Catalogue entry (ADR 0017 v4 §2, §3): Agora's server and client, from a PR of arnaultbretagne/agora
+# labelled `preview`, at https://pr-<n>-agora.preview.bretagne.dev, e.g. to try a change of the
+# front-end on a live server.
+#
+# What it is: source main. The workload is apps/agora/preview on infra-k8s main, never the PR's
+# manifests; only the image comes from the PR, ghcr.io/arnaultbretagne/agora-server:<full commit SHA>,
+# which Agora's CI publishes for the commits of a PR labelled `preview` whose branch is in the
+# repository. The server runs with PREVIEW=true: a mock agent in its own container, conversations it
+# invents at first start, on an empty database of its own.
+#
+# What it excludes, by operator decision: no real execution, no real credential, no copy of production
+# data. None of production's Secrets (signing key, grants key, log logins, files token, registry pull,
+# gate) enters the preview namespace; the server refuses to start if it gets a variable that only
+# production sets. No Internet (internet: false), no API server, no route to agora, agora-system,
+# agora-sandboxes or agora-gateway: the template's network policy lets it reach DNS and its own
+# database only. data: empty, never restore: production's log holds every Workstream and every agent's
+# output.
+#
+# dbCluster agora-pg only names the Secret the workload mounts (agora-pg-app, its uri); with data: empty
+# nothing reads production's cluster.
+#
+# limit: 2 (§10: 2 per entry, 5 for the catalogue). Two Agora PRs of the front-end are often open at
+# once. What two cost, all other entries running too:
+#   pv-agora-pr<n>, each: requests 50m + 256Mi, limits 1Gi, plus Kata's 100m + 256Mi: 512Mi / 1.25Gi
+#     of the namespace's 2Gi / 3Gi.
+#   preview-system, each: two gates (32Mi / 128Mi each) and the database (128Mi / 512Mi), 192Mi / 768Mi,
+#     one PVC of 1Gi. With rss (restore, its plugin sidecar), cv and ignis: requests 768Mi of 2Gi, limits
+#     3Gi of 4Gi, PVCs 3 of 4, storage 4Gi of 20Gi.
+#   The node (g4, 31 GiB, 57 % used on 2026-11-16): two Agora previews request about 1.4Gi and may
+#     reach about 4Gi, all at bretagne-low, evicted first.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-agora
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/agora
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview"]
+    limit: 2
+  defaultValues:
+    app: agora
+    repo: https://github.com/arnaultbretagne/agora
+    source: main
+    path: apps/agora/preview
+    image: ghcr.io/arnaultbretagne/agora-server
+    service: server
+    port: "8080"
+    urlDeployment: ""
+    urlContainer: ""
+    urlEnv: ""
+    internet: false
+    data: empty
+    dbCluster: agora-pg
+    dbName: agora
+    dbOwner: agora_owner
+    backupPath: ""
+    dbSize: 1Gi
+    dbImage: ghcr.io/cloudnative-pg/postgresql:17.4

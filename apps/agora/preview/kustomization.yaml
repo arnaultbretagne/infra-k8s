@@ -1,0 +1,13 @@
+# Agora's preview (ADR 0017 v4, catalogue entry agora): the server of an arnaultbretagne/agora PR
+# labelled `preview`, with nothing of production. NOT listed in ../kustomization.yaml on purpose:
+# production never applies this folder. Only a preview applies it, from infra-k8s main, into
+# pv-agora-pr<n>, and the preview's Kustomization sets the image's tag to the PR's full commit SHA.
+#
+# The contract is the "Preview" section of apps/server/README.md on arnaultbretagne/agora
+# (docs/specs/preview.md): PREVIEW=true, the mock agent in the container, invented conversations
+# written at first start, no Kubernetes API, no gateway, no bucket, no Internet. The server refuses to
+# start if it gets a variable that only production sets, so nothing here comes from ../server.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - server.yaml
