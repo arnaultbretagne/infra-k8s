@@ -30,14 +30,6 @@ spec:
     - fromEntities: [host] # kubelet probes, and the scripted cases run from the node
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
-    # Prefect's worker (apps/prefect): its flows drive Workstreams through the API, without the OIDC
-    # gate, so this rule is what bounds who may act on Agora from inside the cluster.
-    - fromEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: prefect
-            app.kubernetes.io/name: prefect-worker
-      toPorts:
-        - ports: [{ port: "8080", protocol: TCP }]
     # The MCP server (Agora's docs/specs/mcp.md): the gateway alone, whose route `agora` has checked the
     # token and names the caller in x-agora-execution — which the server trusts on this port only
     # (apps/agora-gateway/networkpolicy.yaml, the other half). No other Pod, the sandboxes included; the node
@@ -84,14 +76,6 @@ spec:
             app: gateway
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
-    # Prefect's API, to start a team's run (Agora's flows.md, "Launching from Agora"); the other half
-    # is apps/prefect/networkpolicy.yaml.
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: prefect
-            app.kubernetes.io/name: prefect-server
-      toPorts:
-        - ports: [{ port: "4200", protocol: TCP }]
     # R2, where Agora's files live (Agora's docs/specs/files.md): the bucket `agora-files` on
     # *.r2.cloudflarestorage.com. HTTPS to the world, as for the other apps until toFQDNs is adopted.
     - toEntities: [world]

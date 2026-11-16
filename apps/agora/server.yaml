@@ -94,7 +94,7 @@ spec:
             # grants narrow them; a write offered offers the review too, as agora-reviewer. `internet` is the gateway's route without hosts, public addresses only
             # (apps/agora-gateway): off unless picked for an execution. `vault:write` covers `vault:read` too (the
             # vault MCP, route `vault`); `kubernetes:read` reads the cluster (route `kubernetes`); `previews`
-            # reaches the previews through their gateway gate (route `previews`), and the flows' judge is given it;
+            # reaches the previews through their gateway gate (route `previews`), and a judge is given it;
             # `agora:read` opens Agora's own MCP server to the agent — search and read its person's Workstreams (route `agora`);
             # `agora:delegate` lets it hand work to another agent there, a sub-stream of its Workstream, rights beyond its own
             # waiting for the person's Approve (Agora's docs/specs/delegation.md).
@@ -106,12 +106,6 @@ spec:
               valueFrom:
                 fieldRef: { fieldPath: status.podIP }
             - { name: GATEWAY_CA_FILE, value: /etc/agora/gateway-ca/ca.pem }
-            # Agora's docs/specs/flows.md, "Launching from Agora": a team picked in the client starts the
-            # flow `lead` on Prefect (apps/prefect), in-cluster; the members' Workstreams go to the
-            # person's own agents folder (docs/specs/log.md, "HTTP").
-            - { name: TEAM_PREFECT_API, value: "http://prefect-server.prefect.svc.cluster.local:4200/api" }
-            - { name: TEAM_DEPLOYMENT, value: lead/main }
-            - { name: TEAM_PREFECT_UI, value: "https://prefect.bretagne.dev" }
             # Agora's docs/specs/files.md, "The server": the files live in R2, in the bucket agora-files; the
             # server alone writes there (networkpolicy.yaml), with the token of files.secrets.yaml.
             - { name: FILES_ENDPOINT, value: "https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com" }

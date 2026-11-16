@@ -100,13 +100,6 @@
       "pkceEnabled": true
     },
     {
-      "_comment": "Prefect (apps/prefect, prefect.bretagne.dev), the orchestrator of Agora's workflows, gated via oauth2-proxy: its runs start Agora executions, so operators only. Secret bootstrapped the same way as 'onecli' (created 2026-10-07).",
-      "name": "prefect",
-      "callbackURLs": ["https://prefect.bretagne.dev/oidc/callback"],
-      "allowedGroups": ["admin"],
-      "pkceEnabled": false
-    },
-    {
       "_comment": "The RSS stack (apps/rss, rss.bretagne.dev): Miniflux, gated via oauth2-proxy, which signs the user in from the e-mail it passes. Secret bootstrapped the same way as 'onecli' (created 2026-10-07).",
       "name": "rss",
       "callbackURLs": ["https://rss.bretagne.dev/oidc/callback"],
