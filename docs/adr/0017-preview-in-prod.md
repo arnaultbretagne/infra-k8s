@@ -390,9 +390,10 @@ These apps never get an entry:
 | `agora-gateway` | Holds every upstream credential of the agents |
 | Controllers and every `infra`-profile namespace | Cluster-wide by nature (body, Open Questions §1) |
 
-Agora is not excluded but deferred: besides its gate's, its server holds four SOPS secrets (signing
-key, grants key, log, registry pull) and creates executions in `agora-sandboxes`. Its entry needs its
-own design.
+Agora was deferred here, because its production server holds four SOPS secrets (signing key, grants
+key, log, registry pull) and creates executions in `agora-sandboxes`. It has had its own entry since
+2026-11-16, which takes none of that: see the amendment of that date. Its production server, its
+sandboxes and its gateway stay out of every preview.
 
 ### 4. One namespace per preview, and `preview-system`
 
@@ -668,7 +669,7 @@ cause of a hung VM would have the same effect.
 **Still open:**
 - ~~how test agents reach previews (§7)~~: settled on 2026-10-27, see that amendment;
 - whether to narrow who may set the label (§1);
-- Agora's entry (§3).
+- ~~Agora's entry (§3)~~: settled on 2026-11-16, see that amendment.
 
 ## Amendment 2026-10-27 — the gateway gate: how test agents reach previews
 
@@ -698,3 +699,58 @@ secret enters a `pv-*` namespace. The contract is Agora's `docs/specs/credential
   the new one, put it in `previews-client`, then delete the old one.
 - **Network.** Gateway gate → its workload: the entry's port, like the browser gate. Gateway gate → Pocket-ID: as the
   browser gate. `previews-refresher` → Pocket-ID in the cluster, port 1411. The gateway's own egress is unchanged.
+
+## Amendment 2026-11-16 — Agora's entry
+
+Settles §3's deferral and §14's last open point but one. The operator decided three things: a preview of
+Agora runs a mock agent only, with no real execution and no real credential; its data is invented,
+written by the server itself at its first start, never a copy of production; and an image exists only
+for the PRs labelled `preview`. The contract of that image is the "Preview" section of
+`apps/server/README.md` on `arnaultbretagne/agora` (PR #212).
+
+**What the entry is** (`infrastructure/configs/previews/catalogue/agora.yaml`):
+
+| Field | Value | Why |
+| --- | --- | --- |
+| `repo`, label | `arnaultbretagne/agora`, `preview` | A repository that holds a single app (§2) |
+| `source` | `main` | The workload is `apps/agora/preview` on `infra-k8s` `main`, never the PR's manifests; only the image's tag comes from the PR |
+| `image` | `ghcr.io/arnaultbretagne/agora-server` | Tagged with the PR's full commit SHA by Agora's CI; a public package, no pull secret |
+| `data` | `empty` | The server applies its schema and writes its invented conversations itself, as the owner of its own database |
+| `internet` | `false` | The server in preview calls nothing outside its Pod but its database |
+| `urlEnv` | empty | The server needs no public URL |
+| `limit` | `2` | See the quotas below |
+
+**The workload** (`apps/agora/preview/`) is not a split of production's, as §13 asks of the other apps:
+the preview server refuses to start if it gets any variable that only production sets, so it cannot
+share production's Deployment. It is a Deployment and a Service of its own, `server` on port 8080,
+with `PREVIEW=true` and `PREVIEW_DATABASE_URL` from the `uri` of the Secret `agora-pg-app` that
+the template writes (§9). One replica, `Recreate`; user 10001, every capability dropped, a read-only
+root filesystem and an `emptyDir` on `/tmp`; requests 50m and 256 Mi, limit 1 Gi, as in production.
+`apps/agora/kustomization.yaml` does not list it: production renders exactly the same objects.
+
+**What the entry excludes:**
+- every production Secret of Agora: the signing key, the grants key, the log's logins, the files
+  token, the registry pull secret, the gate's. Only the template's own `agora-pg-app` enters
+  `pv-agora-pr<n>`;
+- production's database, `agora-pg` in `agora-system`: `dbCluster` only names the preview's Secret,
+  and `data: restore` is never to be set on this entry, because production's log holds every Workstream
+  and every agent's output;
+- the API server, the Internet, `agora`, `agora-system`, `agora-sandboxes` and `agora-gateway`: the
+  template's policy lets the workload reach DNS and its own database only (§8);
+- real executions: the server's one pool is the mock agent, inside its own container.
+
+**The quotas, and the catalogue's cap.** The operator raised the cap of the whole catalogue from 4 to
+5 (§10) and removed `preview-demo` from it; `cv` covers the same path. With rss 1, cv 1, ignis 1 and
+agora 2, every entry running at once:
+
+| Where | Two Agora previews | With the other entries | Ceiling |
+| --- | --- | --- | --- |
+| `pv-agora-pr<n>`, each | requests 512 Mi, limits 1.25 Gi, Kata's overhead counted | — | 2 Gi / 3 Gi |
+| `preview-system`, memory | requests 384 Mi, limits 1.5 Gi (two gates and a database each) | requests 768 Mi, limits 3 Gi | 2 Gi / 4 Gi |
+| `preview-system`, PVCs | 2 (1 Gi each) | 3, 4 Gi | 4, 20 Gi |
+
+**Proven before merge:** the template rendered for this entry with the flux-operator CLI; every object
+accepted by the cluster's schemas; the workload simulated with the template's patches. **Left to the
+first real run:** that the image starts under Kata on the database the template creates, that both
+gates reach it, and that removal leaves nothing behind.
+
