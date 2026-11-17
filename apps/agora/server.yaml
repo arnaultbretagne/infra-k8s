@@ -116,9 +116,11 @@ spec:
                 name: log
             - secretRef:
                 name: files
+          # A projector version bump rebuilds every projection before the server answers: about 61 s
+          # for 490,000 entries in 2026-11 (Agora PR #214). 300 s leaves room for the log to grow.
           startupProbe:
             httpGet: { path: /healthz, port: http }
-            failureThreshold: 20
+            failureThreshold: 100
             periodSeconds: 3
           readinessProbe:
             httpGet: { path: /healthz, port: http }
