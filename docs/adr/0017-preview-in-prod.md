@@ -367,6 +367,9 @@ single-app case, and nothing here is code of ours.
 | `dbName`, `dbOwner` | `miniflux`, `miniflux` | The database and its owner; the preview's `-app` Secret is generated for them |
 | `backupPath` | `miniflux` | With `restore`, the folder under `s3://bretagne-pg-backups/` |
 | `dbSize` | `2Gi` | Storage of the preview's database |
+| `requestsCpu`, `requestsMemory`, `limitsMemory` | `500m`, `2Gi`, `3Gi` | The preview namespace's quota (§10), Kata's overhead of 100m / 256 Mi per Pod included. These standard values fit a small app; a heavier one declares what it needs |
+| `containerMemoryMax` | `1Gi` | The largest memory limit a container of the preview may set |
+| `containerCpuLimit` | `""` | The CPU limit given to every container that sets none; empty for none. Kata gives a Pod's VM one vCPU plus the sum of its CPU limits, so without it each Pod runs on one vCPU. At least the workload's largest CPU request |
 | `dbImage` | `ghcr.io/cloudnative-pg/postgresql:17.4` | The production cluster's PostgreSQL image. A base backup only restores into the same major version: the first `restore` preview, left on the operator's default (18), failed with "control file appears to be corrupt" |
 | `_comment` | | Why the entry is acceptable; mandatory when `data: restore` and `internet: true` are combined (§9) |
 
@@ -552,8 +555,8 @@ its copy never reaches production.
 
 | Guardrail | Value |
 |---|---|
-| ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu: 500m`, `requests.memory: 2Gi`, `limits.memory: 3Gi`, `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
-| LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi`, max limit `1Gi` |
+| ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu`, `requests.memory`, `limits.memory` from the entry (§2; standard `500m`, `2Gi`, `3Gi`), `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
+| LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi` plus the entry's `containerCpuLimit` when set, max limit the entry's `containerMemoryMax` (standard `1Gi`) |
 | ResourceQuota, `preview-system` | `requests.memory: 3Gi`, `limits.memory: 10Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "10"` (2 Gi / 4 Gi / 4 PVCs until 2026-11-18) |
 | Per entry | `filter.limit: 2` |
 | Whole catalogue | The sum of all entries' `filter.limit` stays at 10 or below (4 until 2026-11-16, 5 until 2026-11-18, see the amendments of those dates) |
@@ -780,3 +783,33 @@ request about 6 Gi, the node about 70 %. The ceilings allow more (2 Gi per names
 allocatable memory the scheduler leaves the last previews' pods pending, and under memory pressure
 `bretagne-low` evicts the previews first. Memory limits, already overcommitted, grow by about 2 Gi per
 preview.
+
+## Amendment 2026-11-18 — an entry sets its preview's size
+
+The operator's rule: a preview that cannot hold the app it previews is useless. Until now every
+preview had the same namespace quota and at most 1 Gi per container. An app above that, such as the
+speech bricks (a speech-to-text server estimated at 5 Gi of requests and a 7 Gi limit), could not be
+previewed at all, and its proof moved to a throwaway cluster in CI.
+
+Each entry now declares five more fields (§2): `requestsCpu`, `requestsMemory` and `limitsMemory`
+(the namespace's quota), `containerMemoryMax` (the LimitRange's `max`) and `containerCpuLimit` (the
+LimitRange's default CPU limit, empty for none). The existing entries declare the former fixed
+values. Checked with the flux-operator CLI v0.61.0, the cluster's version: their previews render
+byte for byte as before.
+
+**Measured on g4 on 2026-11-18,** in a throwaway namespace deleted after the probe:
+
+| Pod's limits | The guest sees |
+| --- | --- |
+| memory 7 Gi, no CPU limit | 6.8 Gi, 1 vCPU: the VM boots |
+| CPU 2 | 3 vCPUs |
+| CPU 4 | 5 vCPUs |
+
+A Pod's VM has one vCPU plus the sum of its CPU limits. Production sets no CPU limit (hosting §4),
+which on Kata means one vCPU. `containerCpuLimit` is how a preview gets more. It applies only to
+containers that set no CPU limit, so it must be at least the workload's largest CPU request.
+
+**Who decides a size:** the entry lives on `main` and only the operator merges it, so a size is
+reviewed with the rest of the entry. A heavy entry keeps `filter.limit: 1`. Its requests stay
+reserved on the node for as long as the preview lives (31 Gi allocatable, 55 % requested on
+2026-11-18), and under memory pressure `bretagne-low` evicts it first.
