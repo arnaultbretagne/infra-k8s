@@ -53,6 +53,7 @@ test('the oauth2-proxy admits the group admin only, in front of the playground',
   assert.equal(env.OAUTH2_PROXY_UPSTREAMS, 'http://speech-playground.speech-playground.svc.cluster.local:8080')
   assert.equal(env.OAUTH2_PROXY_REDIRECT_URL, 'https://speech.bretagne.dev/oidc/callback')
   assert.match(env.OAUTH2_PROXY_SCOPE, /\bgroups\b/)
+  assert.equal(env.OAUTH2_PROXY_UPSTREAM_TIMEOUT, '120s', 'as long as the server waits for its service')
   assert.deepEqual(env.OAUTH2_PROXY_CLIENT_ID, { secretKeyRef: { name: 'oauth2-proxy-client', key: 'client_id', optional: true } })
   assert.deepEqual(env.OAUTH2_PROXY_CLIENT_SECRET, { secretKeyRef: { name: 'oauth2-proxy-client', key: 'client_secret', optional: true } })
   assert.ok(proxy.args.includes('--cookie-secret-file=/cookie/secret'))
