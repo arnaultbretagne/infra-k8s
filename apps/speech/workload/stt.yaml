@@ -1,7 +1,8 @@
 # The STT brick: speaches serving Parakeet TDT 0.6B v3 (ONNX, fp32) and Whisper large-v3-turbo (CTranslate2,
 # int8) behind POST /v1/audio/transcriptions. Both models are downloaded from Hugging Face at start
-# (PRELOAD_MODELS, before the server listens), loaded into memory by the postStart hook before the pod is Ready,
-# and then kept (STT_MODEL_TTL=-1): the memory a pod holds from Ready on is its models' memory.
+# (PRELOAD_MODELS: to the disk only, before the server listens, so a request never waits on a download).
+# Memory on demand: a model is loaded into RAM by its first request and unloaded after STT_MODEL_TTL seconds
+# without one; nothing loads a model at start. At rest the pod holds the server alone.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,8 +43,12 @@ spec:
           env:
             - name: PRELOAD_MODELS
               value: '["istupakov/parakeet-tdt-0.6b-v3-onnx","deepdml/faster-whisper-large-v3-turbo-ct2"]'
+            # Unload a model after 5 min without a request (speaches' own default; each model has its own clock).
+            # Long enough to cover a comparison session, where requests come minutes apart, without paying a
+            # reload each time (Parakeet takes ~34 s to load, Whisper ~10 s, Kokoro ~2 s, measured on the preview);
+            # short enough that the RAM comes back soon after a test, and that the unload can be measured.
             - name: STT_MODEL_TTL
-              value: "-1"
+              value: "300"
             - name: WHISPER__INFERENCE_DEVICE
               value: cpu
             - name: WHISPER__COMPUTE_TYPE
@@ -56,36 +61,6 @@ spec:
               value: "1"
             - name: MPLCONFIGDIR
               value: /tmp
-          # Loads the models into memory before the pod is Ready (the kubelet runs no probe until postStart
-          # returns), so Ready means "answers at once", and a pod takes its full memory at start, not at the
-          # first request. A model that fails to load fails the hook: the container restarts, CrashLoop alerts.
-          lifecycle:
-            postStart:
-              exec:
-                command:
-                  - python
-                  - -c
-                  - |
-                    import sys, time, urllib.error, urllib.request
-                    base = "http://127.0.0.1:8000"
-                    deadline = time.time() + 1800  # the downloads come first (PRELOAD_MODELS)
-                    while True:
-                        try:
-                            urllib.request.urlopen(base + "/health", timeout=5)
-                            break
-                        except Exception:
-                            if time.time() > deadline:
-                                sys.exit("speaches never answered /health")
-                            time.sleep(5)
-                    for model in sys.argv[1:]:  # python -c: argv[0] is "-c", the models follow
-                        req = urllib.request.Request(base + "/api/ps/" + model, method="POST")
-                        try:
-                            urllib.request.urlopen(req, timeout=900)
-                        except urllib.error.HTTPError as e:
-                            if e.code != 409:  # 409: already loaded
-                                raise
-                  - istupakov/parakeet-tdt-0.6b-v3-onnx
-                  - deepdml/faster-whisper-large-v3-turbo-ct2
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -94,18 +69,19 @@ spec:
               drop: [ALL]
             seccompProfile:
               type: RuntimeDefault
-          # Measured on the preview of #371 (Kata, 2026-11-18, 47 samples over 15 min after Ready, both models
-          # loaded): working set 6451 Mi, steady, peak = p95 = 6451 Mi; CPU 2-3m at rest. Sized by hosting §4.3:
-          # request max(p95 × 1.2, peak × 0.75) = 7741 Mi → 7.75Gi; limit ≥ peak × 1.5 = 9677 Mi → 10Gi.
-          # CPU 50m: the floor for what a user waits on. No inference ran during the measure: re-measure on
-          # production traffic (§4.3, after a week).
+          # Sized for loading on demand, measured on the preview of #371 (Kata, 2026-11-18, metrics.k8s.io):
+          # 796 Mi at rest (server alone), 6451 Mi with both models loaded. The request covers the rest, the limit covers
+          # every model loaded (6451 Mi × 1.5). Not hosting §4.3, which sizes the request on the loaded working
+          # set: that would reserve the models' RAM around the clock, which on demand they do not hold. Between a
+          # first request and the unload the pod is above its request, so first in line for eviction under memory
+          # pressure, as bretagne-low means anyway. CPU 50m: the floor for what a user waits on.
           resources:
             requests:
               cpu: 50m
-              memory: 7.75Gi
+              memory: 1Gi
             limits:
               memory: 10Gi
-          # Probes start once postStart has returned: downloads and loading included, up to 30 minutes.
+          # The downloads (~4 GiB) happen before the port opens: up to 30 minutes.
           startupProbe:
             httpGet: { path: /health, port: http }
             periodSeconds: 10
