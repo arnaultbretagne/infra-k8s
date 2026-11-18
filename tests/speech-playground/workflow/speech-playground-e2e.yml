@@ -1,0 +1,52 @@
+# TO MOVE: this file belongs at .github/workflows/speech-playground-e2e.yml. It sits here because the token that
+# pushed it has no `workflows` permission, and GitHub refuses a push that creates a workflow file without it.
+#
+# The speech playground (apps/speech-playground) in kind, against a fake OpenAI-compatible service and a fake
+# Xiaomi MiMo (tests/speech-playground/README.md). There is no preview of it: this run is the proof. Everything the
+# job does is tests/speech-playground/ci.sh, so the job is fixed there, never here.
+name: speech-playground e2e
+
+on:
+  pull_request:
+    paths:
+      - apps/speech-playground/**
+      - apps/pocket-id/oidc-reconciler/spec.json
+      - apps/kustomization.yaml
+      - infrastructure/gateway/**
+      - tests/speech-playground/**
+      - .github/workflows/speech-playground-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/speech-playground/**
+      - apps/pocket-id/oidc-reconciler/spec.json
+      - apps/kustomization.yaml
+      - infrastructure/gateway/**
+      - tests/speech-playground/**
+      - .github/workflows/speech-playground-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: speech-playground-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/speech-playground/package-lock.json
+
+      - name: The speech playground in kind
+        run: tests/speech-playground/ci.sh
