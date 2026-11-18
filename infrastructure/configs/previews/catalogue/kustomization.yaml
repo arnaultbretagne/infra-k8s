@@ -8,3 +8,4 @@ resources:
   - cv.yaml
   - ignis.yaml
   - agora.yaml
+  - speech-playground.yaml
