@@ -87,12 +87,16 @@ spec:
               drop: [ALL]
             seccompProfile:
               type: RuntimeDefault
+          # Measured on the preview of #371 (Kata, 2026-11-18, 47 samples over 15 min after Ready, Kokoro
+          # loaded): working set 1424 Mi, steady, peak = p95 = 1424 Mi; CPU 2-3m at rest. Sized by hosting §4.3:
+          # request max(p95 × 1.2, peak × 0.75) = 1709 Mi → 1.75Gi; limit ≥ peak × 1.5 = 2136 Mi → 2.5Gi (no
+          # synthesis ran during the measure). CPU 50m: the floor for what a user waits on.
           resources:
             requests:
               cpu: 50m
-              memory: 1Gi
+              memory: 1.75Gi
             limits:
-              memory: 2Gi
+              memory: 2.5Gi
           startupProbe:
             httpGet: { path: /health, port: http }
             periodSeconds: 10

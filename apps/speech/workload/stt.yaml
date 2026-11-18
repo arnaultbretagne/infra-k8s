@@ -94,12 +94,17 @@ spec:
               drop: [ALL]
             seccompProfile:
               type: RuntimeDefault
+          # Measured on the preview of #371 (Kata, 2026-11-18, 47 samples over 15 min after Ready, both models
+          # loaded): working set 6451 Mi, steady, peak = p95 = 6451 Mi; CPU 2-3m at rest. Sized by hosting §4.3:
+          # request max(p95 × 1.2, peak × 0.75) = 7741 Mi → 7.75Gi; limit ≥ peak × 1.5 = 9677 Mi → 10Gi.
+          # CPU 50m: the floor for what a user waits on. No inference ran during the measure: re-measure on
+          # production traffic (§4.3, after a week).
           resources:
             requests:
-              cpu: 100m
-              memory: 5Gi
+              cpu: 50m
+              memory: 7.75Gi
             limits:
-              memory: 7Gi
+              memory: 10Gi
           # Probes start once postStart has returned: downloads and loading included, up to 30 minutes.
           startupProbe:
             httpGet: { path: /health, port: http }
