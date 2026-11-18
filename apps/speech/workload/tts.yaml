@@ -1,6 +1,6 @@
 # The TTS brick: speaches serving Kokoro 82M v1.0 (ONNX) behind POST /v1/audio/speech, with its French voice
-# ff_siwis. The model is downloaded from Hugging Face at start (PRELOAD_MODELS), loaded on first use and then
-# kept (TTS_MODEL_TTL=-1).
+# ff_siwis. The model is downloaded from Hugging Face at start (PRELOAD_MODELS), loaded into memory by the
+# postStart hook before the pod is Ready, and then kept (TTS_MODEL_TTL=-1).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,6 +50,35 @@ spec:
               value: "1"
             - name: MPLCONFIGDIR
               value: /tmp
+          # Loads the models into memory before the pod is Ready (the kubelet runs no probe until postStart
+          # returns), so Ready means "answers at once", and a pod takes its full memory at start, not at the
+          # first request. A model that fails to load fails the hook: the container restarts, CrashLoop alerts.
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - python
+                  - -c
+                  - |
+                    import sys, time, urllib.error, urllib.request
+                    base = "http://127.0.0.1:8000"
+                    deadline = time.time() + 1800  # the downloads come first (PRELOAD_MODELS)
+                    while True:
+                        try:
+                            urllib.request.urlopen(base + "/health", timeout=5)
+                            break
+                        except Exception:
+                            if time.time() > deadline:
+                                sys.exit("speaches never answered /health")
+                            time.sleep(5)
+                    for model in sys.argv[1:]:  # python -c: argv[0] is "-c", the models follow
+                        req = urllib.request.Request(base + "/api/ps/" + model, method="POST")
+                        try:
+                            urllib.request.urlopen(req, timeout=900)
+                        except urllib.error.HTTPError as e:
+                            if e.code != 409:  # 409: already loaded
+                                raise
+                  - speaches-ai/Kokoro-82M-v1.0-ONNX
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
