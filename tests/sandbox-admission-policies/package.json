@@ -1,0 +1,12 @@
+{
+  "name": "sandbox-admission-policies-e2e",
+  "private": true,
+  "type": "module",
+  "description": "The sandbox admission policies (infrastructure/configs/policies) on a kind API server (README.md).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 policies.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
