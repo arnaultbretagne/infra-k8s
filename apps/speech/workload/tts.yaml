@@ -82,7 +82,7 @@ spec:
               mountPath: /home/ubuntu/.cache
             - name: tmp
               mountPath: /tmp
-            - name: model-aliases
+            - name: tts-model-aliases
               mountPath: /home/ubuntu/speaches/model_aliases.json
               subPath: model_aliases.json
               readOnly: true
@@ -93,9 +93,9 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi
-        - name: model-aliases
+        - name: tts-model-aliases
           configMap:
-            name: model-aliases
+            name: tts-model-aliases
 ---
 apiVersion: v1
 kind: Service

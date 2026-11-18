@@ -1,8 +1,0 @@
-{
-    "parakeet-tdt-0.6b-v3": "istupakov/parakeet-tdt-0.6b-v3-onnx",
-    "whisper-large-v3-turbo": "deepdml/faster-whisper-large-v3-turbo-ct2",
-    "whisper-1": "deepdml/faster-whisper-large-v3-turbo-ct2",
-    "kokoro": "speaches-ai/Kokoro-82M-v1.0-ONNX",
-    "tts-1": "speaches-ai/Kokoro-82M-v1.0-ONNX",
-    "tts-1-hd": "speaches-ai/Kokoro-82M-v1.0-ONNX"
-}

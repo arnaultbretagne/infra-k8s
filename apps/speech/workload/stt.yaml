@@ -1,7 +1,7 @@
 # The STT brick: speaches serving Parakeet TDT 0.6B v3 (ONNX, fp32) and Whisper large-v3-turbo (CTranslate2,
 # int8) behind POST /v1/audio/transcriptions. Both models are downloaded from Hugging Face at start
 # (PRELOAD_MODELS, before the server listens), loaded on first use and then kept (STT_MODEL_TTL=-1), so the
-# memory a pod holds is the memory measured in CI after one transcription per model.
+# memory a pod holds is the memory measured on the preview after one transcription per model.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,7 +89,7 @@ spec:
               mountPath: /home/ubuntu/.cache
             - name: tmp
               mountPath: /tmp
-            - name: model-aliases
+            - name: stt-model-aliases
               mountPath: /home/ubuntu/speaches/model_aliases.json
               subPath: model_aliases.json
               readOnly: true
@@ -102,9 +102,9 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi
-        - name: model-aliases
+        - name: stt-model-aliases
           configMap:
-            name: model-aliases
+            name: stt-model-aliases
 ---
 apiVersion: v1
 kind: Service
