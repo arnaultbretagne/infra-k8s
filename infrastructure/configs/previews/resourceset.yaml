@@ -45,6 +45,9 @@ spec:
         pod-security.kubernetes.io/enforce: restricted
         preview.bretagne.dev/preview: "true"
         preview.bretagne.dev/name: << $p >>
+    <<- /* The preview's size is the entry's (ADR 0017 v4 §2, §10): a small app keeps the standard
+           500m / 2Gi / 3Gi and 1Gi per container; a heavy one declares what it needs, on main, merged
+           by the operator. Kata's overhead (100m / 256Mi per Pod) counts against this quota. */>>
     ---
     apiVersion: v1
     kind: ResourceQuota
@@ -53,13 +56,16 @@ spec:
       namespace: << $ns >>
     spec:
       hard:
-        requests.cpu: 500m
-        requests.memory: 2Gi
-        limits.memory: 3Gi
+        requests.cpu: "<< inputs.requestsCpu >>"
+        requests.memory: "<< inputs.requestsMemory >>"
+        limits.memory: "<< inputs.limitsMemory >>"
         pods: "6"
         persistentvolumeclaims: "0"
         services.loadbalancers: "0"
         services.nodeports: "0"
+    <<- /* Kata gives a Pod's VM one vCPU plus the sum of its CPU limits (measured 2026-11-18: none ->
+           1, 2 -> 3, 4 -> 5). Production sets no CPU limit, so a preview gets one vCPU unless its entry
+           sets containerCpuLimit, the CPU limit of every container that declares none. */>>
     ---
     apiVersion: v1
     kind: LimitRange
@@ -70,8 +76,8 @@ spec:
       limits:
         - type: Container
           defaultRequest: { cpu: 25m, memory: 64Mi }
-          default: { memory: 256Mi }
-          max: { memory: 1Gi }
+          default: { memory: 256Mi<<- if inputs.containerCpuLimit >>, cpu: "<< inputs.containerCpuLimit >>"<<- end >> }
+          max: { memory: "<< inputs.containerMemoryMax >>" }
     ---
     apiVersion: cilium.io/v2
     kind: CiliumNetworkPolicy

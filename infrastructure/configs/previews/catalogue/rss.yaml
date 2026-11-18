@@ -17,7 +17,7 @@ spec:
     name: preview-github
   filter:
     labels: ["preview/rss"]
-    limit: 1 # 2 until ignis joined the catalogue: the entries add up to 5 at most (4 until agora joined)
+    limit: 1 # the entries add up to 10 at most (§10)
   defaultValues:
     _comment: >-
       restore + internet: Miniflux fetches feeds, so the PR's code could send the copy out. Accepted:
@@ -40,3 +40,8 @@ spec:
     backupPath: miniflux
     dbSize: 2Gi
     dbImage: ghcr.io/cloudnative-pg/postgresql:17.4
+    requestsCpu: 500m
+    requestsMemory: 2Gi
+    limitsMemory: 3Gi
+    containerMemoryMax: 1Gi
+    containerCpuLimit: ""

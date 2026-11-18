@@ -40,3 +40,8 @@ spec:
     backupPath: ""
     dbSize: ""
     dbImage: ""
+    requestsCpu: 500m
+    requestsMemory: 2Gi
+    limitsMemory: 3Gi
+    containerMemoryMax: 1Gi
+    containerCpuLimit: ""
