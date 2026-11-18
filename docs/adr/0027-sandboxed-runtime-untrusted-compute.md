@@ -119,3 +119,15 @@ any preview container whose memory limit is under 64 Mi: Kata sizes each VM at t
 kubelet's stats for the node (ADR 0017 v4 §6). The CNPG row stands, with
 one change of place: preview databases run in the trusted `preview-system` namespace, not next to the
 PR code, so the preview namespaces need no CNPG exception.
+
+## Amendment 2026-11-18 — no CNPG exception in the policy
+
+§4's "explicit exception for CNPG-managed pods" is withdrawn. The policy admitted any Pod labelled
+`cnpg.io/cluster`, and a label is set by whoever creates the Pod: any principal allowed to create Pods
+in an untrusted-compute namespace could have run one outside the sandbox by adding it. The exception
+also had nothing left to serve: no CNPG `Cluster` lives in an untrusted-compute namespace
+(`agora-runs` and `agora-sandboxes` have none; preview databases run in `preview-system`, per the
+amendment above). `untrusted-compute-requires-sandbox` now admits a Pod there only with
+`runtimeClassName` `sandboxed` or `kata`, whoever creates it. The CNPG row of §3 stands: a database
+serving untrusted compute runs unsandboxed in a trusted namespace beside it, never inside it.
+`tests/sandbox-admission-policies` runs both policies on a kind API server.
