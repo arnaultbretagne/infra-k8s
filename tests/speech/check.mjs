@@ -1,5 +1,6 @@
 // The speech bricks, end to end: each STT model transcribes the French fixture and must return every word of
-// expected-words.txt; the TTS (Kokoro, ff_siwis) must return a non-empty WAV for a French sentence.
+// expected-words.txt; the TTS (Kokoro, ff_siwis) must return a non-empty WAV, and MP3 (the playground's format),
+// for a French sentence.
 //
 //   STT_URL=http://stt TTS_URL=http://tts node tests/speech/check.mjs      # from a pod beside the bricks
 //
@@ -34,25 +35,31 @@ async function stt(model) {
   report(missing.length === 0, `STT ${model} (${((Date.now() - t0) / 1000).toFixed(1)} s): « ${text.trim()} »${missing.length ? ` — missing: ${missing.join(', ')}` : ''}`);
 }
 
-async function tts() {
+const isAudio = {
+  wav: (b) => b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WAVE',
+  mp3: (b) => b.subarray(0, 3).toString() === 'ID3' || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0),
+};
+
+async function tts(format) {
   const t0 = Date.now();
   const res = await fetch(`${TTS_URL}/v1/audio/speech`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'kokoro', voice: 'ff_siwis', input: TEXT, response_format: 'wav' }),
+    body: JSON.stringify({ model: 'kokoro', voice: 'ff_siwis', input: TEXT, response_format: format }),
     signal: AbortSignal.timeout(300_000),
   });
   const buf = Buffer.from(await res.arrayBuffer());
-  if (!res.ok) return report(false, `TTS kokoro/ff_siwis: HTTP ${res.status} ${buf.toString().slice(0, 300)}`);
-  const wav = buf.subarray(0, 4).toString() === 'RIFF' && buf.subarray(8, 12).toString() === 'WAVE';
-  report(wav && buf.length > 44 + 24000, `TTS kokoro/ff_siwis (${((Date.now() - t0) / 1000).toFixed(1)} s): ${buf.length} bytes, ${wav ? 'RIFF/WAVE' : 'not a WAV'}`);
-  if (process.env.OUT) fs.writeFileSync(process.env.OUT, buf);
+  if (!res.ok) return report(false, `TTS kokoro/ff_siwis: ${format} HTTP ${res.status} ${buf.toString().slice(0, 300)}`);
+  const ok = isAudio[format](buf);
+  // At least half a second of audio: 24 kHz 16-bit mono in WAV, a few kB in MP3.
+  report(ok && buf.length > (format === 'wav' ? 44 + 24000 : 4000), `TTS kokoro/ff_siwis ${format} (${((Date.now() - t0) / 1000).toFixed(1)} s): ${buf.length} bytes, ${ok ? 'valid header' : 'not ' + format}`);
+  if (process.env.OUT) fs.writeFileSync(`${process.env.OUT}.${format}`, buf);
 }
 
 const only = process.env.ONLY;
 for (const fn of [
   ...(only === 'tts' ? [] : STT_MODELS.map((m) => () => stt(m))),
-  ...(only === 'stt' ? [] : [tts]),
+  ...(only === 'stt' ? [] : ['wav', 'mp3'].map((f) => () => tts(f))),
 ]) {
   try { await fn(); } catch (e) { report(false, String(e)); }
 }
