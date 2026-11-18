@@ -573,6 +573,12 @@ manifest for one preview.
    `restore` copies the app's latest production backup and exposes all of that data to the PR's
    code. Set `internet: true` only if the app needs it. An entry that combines `restore` and
    `internet: true` explains in `_comment` why its data may be exposed.
+
+   Size the preview. The standard size (`500m`, `2Gi` / `3Gi`, `1Gi` per container) fits a small app.
+   A heavier app declares its own `requestsCpu`, `requestsMemory`, `limitsMemory`,
+   `containerMemoryMax` and `containerCpuLimit` (ADR 0017 v4 §2), counts Kata's 100m / 256 Mi per
+   Pod in them, and keeps `filter.limit: 1`. On Kata, the CPU limit is what gives the VM its vCPUs:
+   without `containerCpuLimit`, every Pod of the preview runs on one vCPU.
 4. **App repositories** (`source: main`): the app's CI pushes `<image>:<full commit SHA>` for every
    PR commit.
 5. **Keep the cap.** The `filter.limit` values of all entries add up to 10 at most.
