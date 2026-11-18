@@ -1,0 +1,11 @@
+# The speech playground (speech.bretagne.dev): one page to try the STT and TTS models side by side,
+# the cluster's (namespace `speech`) and external APIs (Xiaomi MiMo). Operators only (OIDC, admin).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: speech-playground
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

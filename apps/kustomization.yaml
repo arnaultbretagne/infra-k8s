@@ -24,6 +24,8 @@ resources:
   - agora-gateway
   # The RSS stack (rss.bretagne.dev, OIDC-gated): Miniflux and RSSHub.
   - rss
+  # The speech playground (speech.bretagne.dev, OIDC-gated): STT and TTS models side by side.
+  - speech-playground
   - agent-vault
   - home-assistant
   - terminal

@@ -1,0 +1,23 @@
+# speech.bretagne.dev — the speech playground: one page to try STT and TTS models side by side and
+# see their latency, the cluster's (namespace `speech`) and external APIs (Xiaomi MiMo). Config-only:
+# the public node image runs server.mjs; the models it offers are services.json, the one file to edit
+# to add one. Operators only (OIDC, admin).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: speech-playground
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - deployment.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml
+  - networkpolicy.yaml
+configMapGenerator:
+  - name: speech-playground-app
+    files:
+      - server.mjs
+      - index.html
+      - app.js
+  - name: speech-playground-config
+    files:
+      - services.json
