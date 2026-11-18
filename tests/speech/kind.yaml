@@ -1,0 +1,8 @@
+# One node, as in production. No default CNI: Cilium is installed instead, so the CiliumNetworkPolicy is
+# enforced in the test exactly as on the cluster (kube-proxy kept, as there: ADR 0006).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+nodes:
+  - role: control-plane

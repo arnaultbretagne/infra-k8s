@@ -1,0 +1,23 @@
+# Speech: two bricks, OpenAI audio API compatible, reachable only from inside the cluster.
+#   stt  POST /v1/audio/transcriptions  Parakeet TDT 0.6B v3 (multilingual) and Whisper large-v3-turbo
+#   tts  POST /v1/audio/speech          Kokoro 82M, French voice ff_siwis
+# Both run speaches (config-only, docs/hosting-an-app.md §1), one Deployment each, so either brick can be
+# scaled to zero, restarted or OOM-killed without touching the other. No HTTPRoute: the only clients are in
+# `speech-playground` (networkpolicy.yaml). Not previewable on purpose: a multi-GiB model server does not fit
+# the Kata preview budget, and its proof is CI (.github/workflows/speech-e2e.yml (now tests/speech/workflow/, see its header)), not a preview.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: speech
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - networkpolicy.yaml
+  - stt.yaml
+  - tts.yaml
+configMapGenerator:
+  # The model names clients send, mapped to the Hugging Face repositories speaches loads. Mounted over the
+  # image's own model_aliases.json (it reads it from its working directory). The hash suffix rolls both
+  # Deployments when the map changes.
+  - name: model-aliases
+    files:
+      - model_aliases.json

@@ -1,0 +1,149 @@
+# TO MOVE to .github/workflows/speech-e2e.yml: the agent that wrote it holds no `workflows` permission, so
+# GitHub refuses it a push under .github/workflows/. A person moves it (git mv) on this branch.
+# The speech bricks (apps/speech: STT and TTS, OpenAI audio API), end to end (tests/speech/README.md). There is
+# no preview of them (the catalogue is full, and a multi-GiB model server does not fit a Kata preview): this run
+# is the proof. kind with Cilium 1.20.2, the cluster's CNI and version, so the CiliumNetworkPolicy is enforced
+# and the models are downloaded through its toFQDNs rule; apps/speech applied as kustomize renders it; then
+# real requests from the playground's namespace, the memory measured, and each brick at 0 replicas in turn.
+name: speech e2e
+
+on:
+  pull_request:
+    paths:
+      - apps/speech/**
+      - apps/kustomization.yaml
+      - infrastructure/configs/priorityclasses/**
+      - tests/speech/**
+      - .github/workflows/speech-e2e.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/speech/**
+      - tests/speech/**
+      - .github/workflows/speech-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: speech-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECTL_URL: https://dl.k8s.io/release/v1.36.5/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e
+  KIND_URL: https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+  KIND_SHA256: aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d
+  HELM_URL: https://get.helm.sh/helm-v3.22.1-linux-amd64.tar.gz
+  HELM_SHA256: 896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea
+  # Kubernetes 1.36, as the cluster's k0s.
+  KIND_NODE_IMAGE: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  # As infrastructure/controllers/cilium/release.yaml.
+  CILIUM_VERSION: 1.20.2
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      # The image (~several GiB) and ~4.5 GiB of models land on the runner's disk.
+      - name: Room on the disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: kubectl, kind and helm, checked against their sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kind" "$KIND_URL"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/helm.tgz" "$HELM_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          echo "$KIND_SHA256  $RUNNER_TEMP/bin/kind" | sha256sum -c -
+          echo "$HELM_SHA256  $RUNNER_TEMP/helm.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/helm.tgz" -C "$RUNNER_TEMP" linux-amd64/helm
+          mv "$RUNNER_TEMP/linux-amd64/helm" "$RUNNER_TEMP/bin/helm"
+          chmod +x "$RUNNER_TEMP/bin/kubectl" "$RUNNER_TEMP/bin/kind"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: apps/speech and apps render, and the manifests hold the criteria
+        run: |
+          set -o pipefail
+          kubectl kustomize apps > /dev/null
+          kubectl kustomize apps/speech > "$RUNNER_TEMP/speech.yaml"
+          kubectl create --dry-run=client -o json -f "$RUNNER_TEMP/speech.yaml" > "$RUNNER_TEMP/speech.json"
+          test -z "$(grep -rl 'kind: HTTPRoute' apps/speech)"
+          node tests/speech/check-manifests.mjs "$RUNNER_TEMP/speech.json" | tee "$RUNNER_TEMP/checks.txt"
+          {
+            echo '### apps/speech, as rendered'
+            echo '```'
+            cat "$RUNNER_TEMP/checks.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: kind, with Cilium
+        run: |
+          kind create cluster --name speech --image "$KIND_NODE_IMAGE" --config tests/speech/kind.yaml --wait 0s
+          helm repo add cilium https://helm.cilium.io
+          helm install cilium cilium/cilium --version "$CILIUM_VERSION" --namespace kube-system \
+            --set kubeProxyReplacement=false --set ipam.mode=kubernetes --set operator.replicas=1 \
+            --set image.pullPolicy=IfNotPresent --wait --timeout 10m
+          kubectl -n kube-system rollout status ds/cilium --timeout=5m
+          kubectl wait --for=condition=Ready nodes --all --timeout=5m
+          kubectl -n kube-system rollout status deploy/coredns --timeout=5m
+          kubectl apply -f infrastructure/configs/priorityclasses/priorityclasses.yaml
+
+      - name: apps/speech applied, models downloaded through the policy
+        run: |
+          kubectl apply -f tests/speech/clients.yaml
+          kubectl -n speech-playground create configmap fixtures --from-file=tests/speech/fixtures/
+          kubectl -n speech-outsider create configmap fixtures --from-file=tests/speech/fixtures/
+          kubectl apply --server-side -f "$RUNNER_TEMP/speech.yaml"
+          kubectl -n speech get cnp
+          kubectl wait --for=condition=Ready -n speech-playground pod/client --timeout=5m
+          kubectl wait --for=condition=Ready -n speech-outsider pod/client --timeout=5m
+          kubectl wait --for=condition=Ready -n flux-system pod/source-controller --timeout=5m
+          start=$SECONDS
+          kubectl -n speech rollout status deploy/tts --timeout=30m
+          echo "tts ready after $((SECONDS - start)) s"
+          kubectl -n speech rollout status deploy/stt --timeout=40m
+          echo "stt ready after $((SECONDS - start)) s"
+          kubectl -n speech get pods -o wide
+
+      - name: The bricks, end to end
+        env:
+          REPORT: ${{ runner.temp }}/report.md
+          ARTIFACTS: ${{ runner.temp }}/artifacts
+        run: |
+          mkdir -p "$ARTIFACTS"
+          tests/speech/e2e.sh
+          status=$?
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          cp "$REPORT" "$ARTIFACTS/"
+          exit $status
+
+      - name: State, on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n speech describe pods || true
+          for app in stt tts; do kubectl -n speech logs -l app=$app --tail=300 --all-containers || true; done
+          kubectl -n speech get cnp -o yaml || true
+          kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg fqdn cache list || true
+          kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg metrics list -o json 2>/dev/null | grep -i drop | head -50 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: speech-e2e
+          path: ${{ runner.temp }}/artifacts
+          if-no-files-found: ignore
