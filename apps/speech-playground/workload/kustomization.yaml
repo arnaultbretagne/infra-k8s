@@ -1,0 +1,16 @@
+# The playground's workload, alone (docs/hosting-an-app.md §14.2): what a preview runs as it is. The
+# server (server.mjs), the page (index.html, app.js) and the one config file (services.json) are
+# ConfigMaps; editing one rolls the Deployment (name hash).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+configMapGenerator:
+  - name: speech-playground-app
+    files:
+      - server.mjs
+      - index.html
+      - app.js
+  - name: speech-playground-config
+    files:
+      - services.json
