@@ -19,13 +19,13 @@
 # dbCluster agora-pg only names the Secret the workload mounts (agora-pg-app, its uri); with data: empty
 # nothing reads production's cluster.
 #
-# limit: 2 (§10: 2 per entry, 5 for the catalogue). Two Agora PRs of the front-end are often open at
+# limit: 2 (§10: 2 per entry, 10 for the catalogue). Two Agora PRs of the front-end are often open at
 # once. What two cost, all other entries running too:
 #   pv-agora-pr<n>, each: requests 50m + 256Mi, limits 1Gi, plus Kata's 100m + 256Mi: 512Mi / 1.25Gi
 #     of the namespace's 2Gi / 3Gi.
 #   preview-system, each: two gates (32Mi / 128Mi each) and the database (128Mi / 512Mi), 192Mi / 768Mi,
-#     one PVC of 1Gi. With rss (restore, its plugin sidecar), cv and ignis: requests 768Mi of 2Gi, limits
-#     3Gi of 4Gi, PVCs 3 of 4, storage 4Gi of 20Gi.
+#     one PVC of 1Gi. With rss (restore, its plugin sidecar), cv and ignis: requests 768Mi of 3Gi, limits
+#     3Gi of 10Gi, PVCs 3 of 10, storage 4Gi of 20Gi.
 #   The node (g4, 31 GiB, 57 % used on 2026-11-16): two Agora previews request about 1.4Gi and may
 #     reach about 4Gi, all at bretagne-low, evicted first.
 apiVersion: fluxcd.controlplane.io/v1
@@ -64,3 +64,8 @@ spec:
     backupPath: ""
     dbSize: 1Gi
     dbImage: ghcr.io/cloudnative-pg/postgresql:17.4
+    requestsCpu: 500m
+    requestsMemory: 2Gi
+    limitsMemory: 3Gi
+    containerMemoryMax: 1Gi
+    containerCpuLimit: ""

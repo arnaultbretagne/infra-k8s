@@ -1,0 +1,112 @@
+# The TTS brick: speaches serving Kokoro 82M v1.0 (ONNX) behind POST /v1/audio/speech, with its French voice
+# ff_siwis. The model is downloaded from Hugging Face at start (PRELOAD_MODELS), loaded on first use and then
+# kept (TTS_MODEL_TTL=-1).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tts
+  labels:
+    app: tts
+spec:
+  replicas: 1
+  # One pod at a time, as for stt: no two copies of the model during an update.
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: tts
+  template:
+    metadata:
+      labels:
+        app: tts
+    spec:
+      priorityClassName: bretagne-low
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # the image's `ubuntu` user
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: speaches
+          image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu@sha256:2163775b6df5e451a71200e8f675fed68dbd8ab184fc604453d549e486f22fd2
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: PRELOAD_MODELS
+              value: '["speaches-ai/Kokoro-82M-v1.0-ONNX"]'
+            - name: TTS_MODEL_TTL
+              value: "-1"
+            - name: ENABLE_UI
+              value: "false"
+            - name: LOG_LEVEL
+              value: info
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: MPLCONFIGDIR
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          volumeMounts:
+            - name: cache # Hugging Face hub cache: the model
+              mountPath: /home/ubuntu/.cache
+            - name: tmp
+              mountPath: /tmp
+            - name: tts-model-aliases
+              mountPath: /home/ubuntu/speaches/model_aliases.json
+              subPath: model_aliases.json
+              readOnly: true
+      volumes:
+        - name: cache
+          emptyDir:
+            sizeLimit: 2Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: tts-model-aliases
+          configMap:
+            name: tts-model-aliases
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tts
+  labels:
+    app: tts
+spec:
+  selector:
+    app: tts
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

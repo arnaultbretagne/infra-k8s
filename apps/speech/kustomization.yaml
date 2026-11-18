@@ -1,0 +1,14 @@
+# Speech: two bricks, OpenAI audio API compatible, reachable only from inside the cluster.
+#   stt  POST /v1/audio/transcriptions  Parakeet TDT 0.6B v3 (multilingual) and Whisper large-v3-turbo
+#   tts  POST /v1/audio/speech          Kokoro 82M, French voice ff_siwis
+# Both run speaches (config-only, docs/hosting-an-app.md §1), one Deployment each. No HTTPRoute: the only
+# clients are in `speech-playground` (networkpolicy.yaml). Previewable: workload/ holds what a preview
+# applies (the speech playground's preview runs it beside the playground), the rest is production only.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: speech
+resources:
+  - namespace.yaml
+  - limitrange.yaml
+  - networkpolicy.yaml
+  - workload
