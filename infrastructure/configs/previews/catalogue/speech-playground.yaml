@@ -9,22 +9,25 @@
 # is one, shows as unavailable. Stateless (data: none).
 #
 # Size, a heavy entry (ADR 0017, amendment 2026-11-18 "an entry sets its preview's size"; hosting §14.2), Kata's
-# 100m / 256Mi per Pod counted. Estimates from #369 until measured on the preview:
-#   stt            requests 100m / 5Gi, limit 7Gi   + Kata 100m / 256Mi
-#   tts            requests  50m / 1Gi, limit 2Gi   + Kata 100m / 256Mi
-#   playground     requests  10m / 64Mi, limit 256Mi + Kata 100m / 256Mi
-#   total          requests 460m / 6.81Gi, limits 10Gi
+# 100m / 256Mi per Pod counted. stt and tts as measured on this preview (#369, 2026-11-18: working set with every
+# model loaded 6451 Mi and 1424 Mi, sized by hosting §4.3):
+#   stt            requests  50m / 7.75Gi, limit 10Gi  + Kata 100m / 256Mi
+#   tts            requests  50m / 1.75Gi, limit 2.5Gi + Kata 100m / 256Mi
+#   playground     requests  10m / 64Mi, limit 256Mi   + Kata 100m / 256Mi
+#   total          requests 410m / 10.31Gi, limits 13.5Gi
 #   + one surge Pod of the playground (RollingUpdate; every push rolls it, its ConfigMaps' hash changes):
 #                  requests 110m / 320Mi, limits 512Mi; without it the quota refuses the new Pod and the
 #                  rollout never ends. stt and tts are Recreate: no surge.
-#   -> requestsCpu 600m, requestsMemory 7.5Gi, limitsMemory 10.5Gi
-#   containerMemoryMax 7Gi: the stt container (a 7Gi Kata VM boots, measured on g4 2026-11-18).
+#   -> requestsCpu 600m (520m needed), requestsMemory 11Gi, limitsMemory 14Gi
+#   containerMemoryMax 10Gi: the stt container. A 7Gi Kata VM was measured to boot on g4 (2026-11-18); 10Gi is
+#   not measured yet: the first render of this size is that measurement.
 #   containerCpuLimit "3": none of these containers sets a CPU limit, so each VM gets 4 vCPUs instead of 1;
 #   Whisper and Parakeet on one vCPU would run past the playground's timeouts. It is above the largest CPU
-#   request (100m).
+#   request (50m).
 # The gate lives in preview-system (32Mi / 128Mi), no database. On the node (31Gi allocatable, 55 % requested on
-# 2026-11-18) this preview reserves about 7Gi for as long as it lives, at bretagne-low, evicted first: limit 1, and
-# remove the label once the test is done.
+# 2026-11-18) this preview reserves about 11Gi for as long as it lives; with production's apps/speech (9.5Gi of
+# requests) beside it, that is more than the node has free, so remove the label before #369 is merged. At
+# bretagne-low, evicted first: limit 1, and remove the label once the test is done.
 # The STT brick downloads its models before it is Ready (5 to 10 minutes): the preview's Kustomization (timeout
 # 5m) may report a failure until one of its retries, every 2 minutes, finds it Ready.
 apiVersion: fluxcd.controlplane.io/v1
@@ -70,7 +73,7 @@ spec:
     dbSize: ""
     dbImage: ""
     requestsCpu: 600m
-    requestsMemory: 7.5Gi
-    limitsMemory: 10.5Gi
-    containerMemoryMax: 7Gi
+    requestsMemory: 11Gi
+    limitsMemory: 14Gi
+    containerMemoryMax: 10Gi
     containerCpuLimit: "3"
