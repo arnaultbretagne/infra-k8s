@@ -116,6 +116,23 @@ test('production runs the speech bricks in namespace speech only', () => {
   assert.deepEqual(services.map((o) => `${o.metadata.namespace}/${o.metadata.name}`).sort(), ['speech-playground/stt', 'speech-playground/tts', 'speech/stt', 'speech/tts'])
 })
 
+test('the preview runs the playground and the speech bricks side by side, with what a preview may hold', () => {
+  const preview = render(join(APP, 'preview'))
+  assert.ok(preview.every((o) => ['Deployment', 'Service', 'ConfigMap'].includes(o.kind) && !o.metadata.namespace))
+  assert.deepEqual(preview.filter((o) => o.kind === 'Deployment').map((o) => o.metadata.name).sort(), ['speech-playground', 'stt', 'tts'])
+  const services = Object.fromEntries(preview.filter((o) => o.kind === 'Service').map((o) => [o.metadata.name, o.spec.ports[0].port]))
+  assert.deepEqual(services, { 'speech-playground': 8080, stt: 80, tts: 80 })
+  const config = JSON.parse(preview.find((o) => o.metadata.name.startsWith('speech-playground-config')).data['services.json'])
+  assert.deepEqual(config.services.filter((s) => s.id.startsWith('cluster-')).map((s) => s.url), ['http://stt/v1', 'http://tts/v1'])
+  const mi = (q) => Number(q.replace(/Gi$/, '')) * (q.endsWith('Gi') ? 1024 : 1) || Number(q.replace(/Mi$/, ''))
+  for (const d of preview.filter((o) => o.kind === 'Deployment')) {
+    for (const c of [...(d.spec.template.spec.initContainers ?? []), ...d.spec.template.spec.containers]) {
+      const limit = mi(c.resources.limits.memory)
+      assert.ok(limit >= 64 && limit <= 7 * 1024, `${d.metadata.name}/${c.name}: memory limit ${c.resources.limits.memory}`)
+    }
+  }
+})
+
 test('the Xiaomi key: an optional Secret volume, read by the server alone, never in its environment', () => {
   const pod = find('Deployment', 'speech-playground').spec.template.spec
   const volume = pod.volumes.find((v) => v.secret)
