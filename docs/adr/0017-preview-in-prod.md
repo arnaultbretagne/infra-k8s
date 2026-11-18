@@ -554,9 +554,9 @@ its copy never reaches production.
 |---|---|
 | ResourceQuota, each `pv-<app>-pr<n>` | `requests.cpu: 500m`, `requests.memory: 2Gi`, `limits.memory: 3Gi`, `pods: "6"`, `persistentvolumeclaims: "0"`, `services.loadbalancers: "0"`, `services.nodeports: "0"` |
 | LimitRange, each `pv-<app>-pr<n>` | default request `25m` / `64Mi`, default limit `256Mi`, max limit `1Gi` |
-| ResourceQuota, `preview-system` | `requests.memory: 2Gi`, `limits.memory: 4Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "4"` |
+| ResourceQuota, `preview-system` | `requests.memory: 3Gi`, `limits.memory: 10Gi`, `requests.storage: 20Gi`, `persistentvolumeclaims: "10"` (2 Gi / 4 Gi / 4 PVCs until 2026-11-18) |
 | Per entry | `filter.limit: 2` |
-| Whole catalogue | The sum of all entries' `filter.limit` stays at 5 or below (4 until 2026-11-16, see the amendment of that date) |
+| Whole catalogue | The sum of all entries' `filter.limit` stays at 10 or below (4 until 2026-11-16, 5 until 2026-11-18, see the amendments of those dates) |
 | Priority | `bretagne-low` for workloads, gates and preview databases: they are evicted first |
 
 With Kata's overhead counted, a preview realistically runs two or three pods. The node was at 51 %
@@ -754,3 +754,29 @@ accepted by the cluster's schemas; the workload simulated with the template's pa
 first real run:** that the image starts under Kata on the database the template creates, that both
 gates reach it, and that removal leaves nothing behind.
 
+
+## Amendment 2026-11-18 — the catalogue's cap at 10
+
+The operator raised the cap of the whole catalogue from 5 to 10 (§10): a pull request should get its
+live proof from a preview, not from a throwaway cluster in CI, and five previews at once were already
+taken. The cap is on how many previews run at once, not on their size: each entry's `filter.limit`
+stays at 2 at most, and each `pv-<app>-pr<n>` keeps its quota and LimitRange.
+
+**`preview-system`'s ceiling** is now sized as ten previews each as heavy as the heaviest entry, rss
+(two gates, a restored database and its plugin sidecar: 256 Mi / 1 Gi, one PVC of 2 Gi), so that the
+cap, not this quota, is what stops an eleventh preview:
+
+| | Until 2026-11-18 | Now | Ten rss-sized previews |
+| --- | --- | --- | --- |
+| `requests.memory` | 2 Gi | 3 Gi | 2.5 Gi |
+| `limits.memory` | 4 Gi | 10 Gi | 10 Gi |
+| `persistentvolumeclaims` | 4 | 10 | 10 |
+| `requests.storage` | 20 Gi | 20 Gi | 20 Gi |
+
+**The node** (g4, 31 Gi allocatable), measured on 2026-11-18 with three previews running (two of
+Agora, one of ignis): 44 % of the memory used, 55 % requested, of which the previews requested 1.8 Gi
+(about 620 Mi each, their namespace and their share of `preview-system`). Ten such previews would
+request about 6 Gi, the node about 70 %. The ceilings allow more (2 Gi per namespace): past the node's
+allocatable memory the scheduler leaves the last previews' pods pending, and under memory pressure
+`bretagne-low` evicts the previews first. Memory limits, already overcommitted, grow by about 2 Gi per
+preview.

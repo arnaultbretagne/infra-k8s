@@ -1,6 +1,8 @@
 # preview-system's ceiling (ADR 0017 v4 §10): the gates and the preview databases of every preview
 # together. The storage line bounds what the databases declare; local-path does not enforce a PVC's
-# size, so the disk itself is watched node-wide.
+# size, so the disk itself is watched node-wide. Sized for the catalogue's cap of 10 previews, each as
+# heavy as the heaviest entry (rss: two gates, a restored database and its plugin sidecar, 256Mi / 1Gi,
+# one PVC of 2Gi), so that the cap, not this quota, is what stops an eleventh preview.
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -8,10 +10,10 @@ metadata:
   namespace: preview-system
 spec:
   hard:
-    requests.memory: 2Gi
-    limits.memory: 4Gi
+    requests.memory: 3Gi
+    limits.memory: 10Gi
     requests.storage: 20Gi
-    persistentvolumeclaims: "4"
+    persistentvolumeclaims: "10"
 ---
 apiVersion: v1
 kind: LimitRange
