@@ -1,0 +1,76 @@
+# Catalogue entry (ADR 0017 v4 §2): the speech playground (apps/speech-playground) with the speech bricks it
+# talks to (apps/speech, STT and TTS). Label an infra-k8s PR `preview/speech-playground` to get
+# https://pr-<n>-speech-playground.preview.bretagne.dev, e.g. to try a model or a change of the page on the real
+# bricks before merging it.
+#
+# What it runs: apps/speech-playground/preview of the PR's commit, i.e. the playground's workload and
+# apps/speech/workload, both in the preview's namespace. The playground names the bricks by their short Service
+# names (stt, tts), which are the bricks beside it here. No Secret of production enters it: Xiaomi MiMo, whose key
+# is one, shows as unavailable. Stateless (data: none).
+#
+# Size, a heavy entry (ADR 0017, amendment 2026-11-18 "an entry sets its preview's size"; hosting §14.2), Kata's
+# 100m / 256Mi per Pod counted. Estimates from #369 until measured on the preview:
+#   stt            requests 100m / 5Gi, limit 7Gi   + Kata 100m / 256Mi
+#   tts            requests  50m / 1Gi, limit 2Gi   + Kata 100m / 256Mi
+#   playground     requests  10m / 64Mi, limit 256Mi + Kata 100m / 256Mi
+#   total          requests 460m / 6.81Gi, limits 10Gi
+#   + one surge Pod of the playground (RollingUpdate; every push rolls it, its ConfigMaps' hash changes):
+#                  requests 110m / 320Mi, limits 512Mi; without it the quota refuses the new Pod and the
+#                  rollout never ends. stt and tts are Recreate: no surge.
+#   -> requestsCpu 600m, requestsMemory 7.5Gi, limitsMemory 10.5Gi
+#   containerMemoryMax 7Gi: the stt container (a 7Gi Kata VM boots, measured on g4 2026-11-18).
+#   containerCpuLimit "3": none of these containers sets a CPU limit, so each VM gets 4 vCPUs instead of 1;
+#   Whisper and Parakeet on one vCPU would run past the playground's timeouts. It is above the largest CPU
+#   request (100m).
+# The gate lives in preview-system (32Mi / 128Mi), no database. On the node (31Gi allocatable, 55 % requested on
+# 2026-11-18) this preview reserves about 7Gi for as long as it lives, at bretagne-low, evicted first: limit 1, and
+# remove the label once the test is done.
+# The STT brick downloads its models before it is Ready (5 to 10 minutes): the preview's Kustomization (timeout
+# 5m) may report a failure until one of its retries, every 2 minutes, finds it Ready.
+apiVersion: fluxcd.controlplane.io/v1
+kind: ResourceSetInputProvider
+metadata:
+  name: preview-speech-playground
+  namespace: flux-system
+  labels:
+    preview.bretagne.dev/catalogue: "true"
+  annotations:
+    fluxcd.controlplane.io/reconcileEvery: 2m
+spec:
+  type: GitHubPullRequest
+  url: https://github.com/arnaultbretagne/infra-k8s
+  secretRef:
+    name: preview-github
+  filter:
+    labels: ["preview/speech-playground"]
+    limit: 1 # the entries add up to 10 at most (§10)
+  defaultValues:
+    _comment: >-
+      internet: true because the speech bricks download their models from Hugging Face at start (about 4.3 GiB:
+      Parakeet, Whisper, Kokoro), and the preview's network policy allows that only with this setting. It opens
+      the whole Internet on ports 80 and 443 to every pod of the preview, not only Hugging Face: the template has no
+      per-host rule (production's apps/speech allows the Hugging Face hosts by name). Accepted: the preview holds
+      no data and no credential (data: none, no Secret), so the PR's code has nothing to send out.
+    app: speech-playground
+    repo: https://github.com/arnaultbretagne/infra-k8s
+    source: pr
+    path: apps/speech-playground/preview
+    image: ""
+    service: speech-playground
+    port: "8080"
+    urlDeployment: ""
+    urlContainer: ""
+    urlEnv: ""
+    internet: true
+    data: none
+    dbCluster: ""
+    dbName: ""
+    dbOwner: ""
+    backupPath: ""
+    dbSize: ""
+    dbImage: ""
+    requestsCpu: 600m
+    requestsMemory: 7.5Gi
+    limitsMemory: 10.5Gi
+    containerMemoryMax: 7Gi
+    containerCpuLimit: "3"
