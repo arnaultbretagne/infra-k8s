@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from 'yaml'
-import { REPO, APP, render } from './targets.mjs'
+import { REPO, APP, WORKLOAD, render } from './targets.mjs'
 
 const objects = render(APP)
 const find = (kind, name) => objects.find((o) => o.kind === kind && (name === undefined || o.metadata.name === name || o.metadata.name.startsWith(`${name}-`)))
@@ -28,7 +28,7 @@ test('public images only, pinned; the page and the server are ConfigMaps', () =>
   ])
   const app = find('ConfigMap', 'speech-playground-app')
   assert.deepEqual(Object.keys(app.data).sort(), ['app.js', 'index.html', 'server.mjs'])
-  assert.equal(app.data['server.mjs'], readFileSync(join(APP, 'server.mjs'), 'utf8'))
+  assert.equal(app.data['server.mjs'], readFileSync(join(WORKLOAD, 'server.mjs'), 'utf8'))
 })
 
 test('the route reaches nothing but the oauth2-proxy, on speech.bretagne.dev, with HSTS', () => {
@@ -83,19 +83,37 @@ test('the Gateway has the https-speech listener', () => {
 })
 
 test('services.json: the cluster STT and TTS, and Xiaomi mimo-v2.5-tts; mounted as the server config', () => {
-  const config = JSON.parse(readFileSync(join(APP, 'services.json'), 'utf8'))
+  const config = JSON.parse(readFileSync(join(WORKLOAD, 'services.json'), 'utf8'))
   const by = (id) => config.services.find((s) => s.id === id)
   assert.equal(by('cluster-stt').type, 'stt')
-  assert.equal(by('cluster-stt').url, 'http://stt.speech.svc.cluster.local/v1')
+  assert.equal(by('cluster-stt').url, 'http://stt/v1')
   assert.ok(by('cluster-stt').models.includes('parakeet-tdt-0.6b-v3'))
   assert.ok(by('cluster-stt').models.some((m) => /whisper/.test(m)))
-  assert.equal(by('cluster-tts').url, 'http://tts.speech.svc.cluster.local/v1')
+  assert.equal(by('cluster-tts').url, 'http://tts/v1')
   assert.ok(by('cluster-tts').voices.includes('ff_siwis'))
   assert.equal(by('xiaomi-mimo').api, 'mimo')
   assert.equal(by('xiaomi-mimo').url, 'https://api.xiaomimimo.com/v1')
   assert.deepEqual(by('xiaomi-mimo').models, ['mimo-v2.5-tts'])
   assert.equal(by('xiaomi-mimo').voices[0], 'mimo_default')
-  assert.equal(find('ConfigMap', 'speech-playground-config').data['services.json'], readFileSync(join(APP, 'services.json'), 'utf8'))
+  assert.equal(find('ConfigMap', 'speech-playground-config').data['services.json'], readFileSync(join(WORKLOAD, 'services.json'), 'utf8'))
+})
+
+test('no production host name in the workload: its stt and tts are the bricks beside it in a preview, namespace speech in production', () => {
+  const workload = render(WORKLOAD)
+  assert.ok(!/\.svc\.cluster\.local|bretagne\.dev/.test(JSON.stringify(workload)), 'a production host name in workload/')
+  assert.deepEqual(workload.map((o) => o.kind).sort(), ['ConfigMap', 'ConfigMap', 'Deployment', 'Service'])
+  for (const name of ['stt', 'tts']) {
+    const s = find('Service', name)
+    assert.deepEqual(s.spec, { type: 'ExternalName', externalName: `${name}.speech.svc.cluster.local` })
+  }
+})
+
+test('production runs the speech bricks in namespace speech only', () => {
+  const all = render(join(REPO, 'apps'))
+  const bricks = all.filter((o) => o.kind === 'Deployment' && ['stt', 'tts'].includes(o.metadata.name))
+  assert.deepEqual(bricks.map((o) => `${o.metadata.namespace}/${o.metadata.name}`).sort(), ['speech/stt', 'speech/tts'])
+  const services = all.filter((o) => o.kind === 'Service' && ['stt', 'tts'].includes(o.metadata.name))
+  assert.deepEqual(services.map((o) => `${o.metadata.namespace}/${o.metadata.name}`).sort(), ['speech-playground/stt', 'speech-playground/tts', 'speech/stt', 'speech/tts'])
 })
 
 test('the Xiaomi key: an optional Secret volume, read by the server alone, never in its environment', () => {
@@ -105,7 +123,7 @@ test('the Xiaomi key: an optional Secret volume, read by the server alone, never
   const [server] = pod.containers
   assert.ok(server.volumeMounts.some((m) => m.name === volume.name && m.mountPath === '/secrets/xiaomi-mimo'))
   assert.ok(!JSON.stringify(server.env ?? []).includes('xiaomi-mimo') && !server.envFrom)
-  const config = JSON.parse(readFileSync(join(APP, 'services.json'), 'utf8'))
+  const config = JSON.parse(readFileSync(join(WORKLOAD, 'services.json'), 'utf8'))
   assert.equal(config.services.find((s) => s.id === 'xiaomi-mimo').auth.keyFile, '/secrets/xiaomi-mimo/MIMO_API_KEY')
 })
 

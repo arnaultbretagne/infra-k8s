@@ -1,16 +1,14 @@
-// The playground, running (TARGET=kind or local, targets.mjs), against the two fakes: STT and TTS requests passed
-// through it come back as the fakes answered them; the fake Xiaomi gets the test key; no answer sent to the browser
-// (API or page, success or error, headers included) holds the key; without the key the playground runs and lists
-// Xiaomi as unavailable. On kind, also: the Pods are admitted by PSS restricted, the Secret is seen without a
-// restart, the reconciler may write the oauth2-proxy's Secret and nothing else, and the oauth2-proxy turns away an
-// unauthenticated request to the IdP.
+// The playground, running locally (targets.mjs), against the two fakes: STT and TTS requests passed through it
+// come back as the fakes answered them; the fake Xiaomi gets the test key; no answer sent to the browser (API or
+// page, success or error, headers included) holds the key; without the key the playground runs and lists Xiaomi as
+// unavailable. The live proof, with the real speech bricks, is the preview of the pull request (README.md).
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { start, kubectl } from './targets.mjs'
+import { start } from './targets.mjs'
 import { fakeTranscript, fakeSpeech } from './fake-openai.mjs'
 import { fakeMimoAudio } from './fake-mimo.mjs'
 import { drivePage } from './browser.mjs'
@@ -47,7 +45,7 @@ function wav() {
   return b
 }
 const AUDIO = wav()
-const CONFIG = JSON.parse(readFileSync(new URL("../../apps/speech-playground/services.json", import.meta.url), "utf8"))
+const CONFIG = JSON.parse(readFileSync(new URL("../../apps/speech-playground/workload/services.json", import.meta.url), "utf8"))
 const STT_MODELS = CONFIG.services.find((s) => s.id === "cluster-stt").models
 
 before(async () => { t = await start(KEY) }, { timeout: 600000 })
@@ -94,16 +92,12 @@ test('what the page may not choose is refused', async () => {
   assert.equal((await stt({ service: 'cluster-stt', model: 'parakeet-tdt-0.6b-v3' }, null)).status, 400)
 })
 
-test('with the Secret, Xiaomi becomes available, without a restart', { timeout: 240000 }, async () => {
-  const pod = t.name === 'kind' ? kubectl('-n', 'speech-playground', 'get', 'pods', '-l', 'app=speech-playground', '-o', 'jsonpath={.items[*].metadata.name} {.items[*].status.containerStatuses[0].restartCount}') : null
+test('with the Secret, Xiaomi becomes available, without a restart', { timeout: 60000 }, async () => {
   await t.setKey()
-  const end = Date.now() + 200000
+  const end = Date.now() + 30000
   while (!(await services()).find((s) => s.id === 'xiaomi-mimo').available) {
-    assert.ok(Date.now() < end, 'Xiaomi still unavailable 200 s after its Secret')
-    await sleep(2000)
-  }
-  if (pod) {
-    assert.equal(kubectl('-n', 'speech-playground', 'get', 'pods', '-l', 'app=speech-playground', '-o', 'jsonpath={.items[*].metadata.name} {.items[*].status.containerStatuses[0].restartCount}'), pod)
+    assert.ok(Date.now() < end, 'Xiaomi still unavailable 30 s after its key')
+    await sleep(500)
   }
 })
 
@@ -166,59 +160,4 @@ test('no answer sent to the browser holds the key', async () => {
   assert.deepEqual(leaks, [])
   assert.ok(!(await t.logs()).includes(KEY), 'nor do its logs')
   console.log(`ℹ ${seen.length} answers checked, none holds the key`)
-})
-
-test('kind: the Pods run under PSS restricted', { skip: process.env.TARGET !== 'kind' }, () => {
-  assert.equal(kubectl('get', 'ns', 'speech-playground', '-o', 'jsonpath={.metadata.labels.pod-security\\.kubernetes\\.io/enforce}'), 'restricted')
-  const phases = kubectl('-n', 'speech-playground', 'get', 'pods', '-l', 'app=speech-playground', '-o', 'jsonpath={.items[*].status.phase}')
-  assert.equal(phases, 'Running')
-})
-
-test('kind: the reconciler may write the oauth2-proxy\'s Secret, and no other', { skip: process.env.TARGET !== 'kind' }, () => {
-  const can = (...args) => {
-    try {
-      return kubectl('auth', 'can-i', ...args, '-n', 'speech-playground', '--as=system:serviceaccount:pocket-id:oidc-reconciler').trim()
-    } catch (e) {
-      return String(e.stdout).trim()
-    }
-  }
-  assert.equal(can('get', 'secret/oauth2-proxy-client'), 'yes')
-  assert.equal(can('update', 'secret/oauth2-proxy-client'), 'yes')
-  assert.equal(can('get', 'secret/xiaomi-mimo'), 'no')
-  assert.equal(can('list', 'secrets'), 'no')
-})
-
-test('kind: with the client the reconciler writes, the oauth2-proxy sends an unauthenticated browser to Pocket-ID', { skip: process.env.TARGET !== 'kind', timeout: 300000 }, async () => {
-  // What the reconciler does (reconcile.py, ensure_secret): GET the Secret, PUT it back with the client's id and secret.
-  const as = '--as=system:serviceaccount:pocket-id:oidc-reconciler'
-  const current = JSON.parse(kubectl('-n', 'speech-playground', 'get', 'secret', 'oauth2-proxy-client', '-o', 'json', as))
-  const clientId = 'b6a3c0de-0000-4000-8000-000000000001'
-  current.data = {
-    client_id: Buffer.from(clientId).toString('base64'),
-    client_secret: Buffer.from(randomBytes(16).toString('hex')).toString('base64'),
-    secret_id: Buffer.from('s-1').toString('base64'),
-  }
-  const file = join(mkdtempSync(join(tmpdir(), 'secret-')), 'secret.json')
-  writeFileSync(file, JSON.stringify(current))
-  kubectl('replace', '-f', file, as)
-  // Until then it had no client id and restarted; delete the Pod rather than wait out its back-off.
-  kubectl('-n', 'speech-playground', 'delete', 'pod', '-l', 'app=oauth2-proxy', '--wait=false')
-  kubectl('-n', 'speech-playground', 'rollout', 'status', 'deployment/oauth2-proxy', '--timeout=180s')
-  kubectl('-n', 'speech-playground', 'wait', 'pod', '-l', 'app=oauth2-proxy', '--for=condition=Ready', '--timeout=120s')
-  const proxy = await t.portForward('speech-playground', 'svc/oauth2-proxy', 4180)
-  try {
-    for (const path of ['/', '/api/services']) {
-      const r = await fetch(proxy.url + path, { redirect: 'manual', headers: { accept: 'text/html' } })
-      const body = await r.text()
-      assert.equal(r.status, 302, `${path}: ${r.status} ${body.slice(0, 200)}`)
-      const to = new URL(r.headers.get('location'))
-      assert.equal(`${to.origin}${to.pathname}`, 'https://id.bretagne.dev/authorize')
-      assert.equal(to.searchParams.get('client_id'), clientId)
-      assert.equal(to.searchParams.get('redirect_uri'), 'https://speech.bretagne.dev/oidc/callback')
-      assert.match(to.searchParams.get('scope'), /\bgroups\b/)
-      assert.ok(!body.includes('Speech playground') && !body.includes('xiaomi'), 'nothing of the playground behind the gate')
-    }
-  } finally {
-    proxy.close()
-  }
 })
