@@ -1,18 +1,18 @@
 {
-  "_comment": "The playground's model services: the ONE file to edit to add one. Each entry: id (unique), label, type (stt | tts), url (the base of an OpenAI-compatible API, up to /v1), models, and for tts voices. api is openai (the default: STT on POST {url}/audio/transcriptions, TTS on POST {url}/audio/speech) or mimo (Xiaomi MiMo: TTS on POST {url}/chat/completions, the text as an assistant message, audio {format, voice}). auth, for a service that needs a key: the header that carries it, an optional prefix (\"Bearer \"), and the file the key is read from on every request, a Secret mounted by deployment.yaml; the key never leaves the server. A service whose key file is missing or empty is listed as unavailable. A new in-cluster service in namespace speech needs only this file; an external one also needs its host in networkpolicy.yaml, and its key a Secret mounted in deployment.yaml.",
+  "_comment": "The playground's model services: the ONE file to edit to add one. Each entry: id (unique), label, type (stt | tts), url (the base of an OpenAI-compatible API, up to /v1), models, and for tts voices. api is openai (the default: STT on POST {url}/audio/transcriptions, TTS on POST {url}/audio/speech) or mimo (Xiaomi MiMo: TTS on POST {url}/chat/completions, the text as an assistant message, audio {format, voice}). auth, for a service that needs a key: the header that carries it, an optional prefix (\"Bearer \"), and the file the key is read from on every request, a Secret mounted by deployment.yaml; the key never leaves the server. A service whose key file is missing or empty is listed as unavailable. The cluster bricks are named by their short Service names (http://stt, http://tts): in production, Services of type ExternalName point them at namespace speech (speech-services.yaml); in a preview, they are the bricks running beside the playground. Adding another OpenAI-compatible service needs only this file, with its full url (e.g. http://<name>.speech.svc.cluster.local/v1) if it is in namespace speech; an external one also needs its host in networkpolicy.yaml, and its key a Secret mounted in deployment.yaml.",
   "services": [
     {
       "id": "cluster-stt",
       "label": "Cluster STT (stt.speech)",
       "type": "stt",
-      "url": "http://stt.speech.svc.cluster.local/v1",
+      "url": "http://stt/v1",
       "models": ["parakeet-tdt-0.6b-v3", "whisper-large-v3-turbo"]
     },
     {
       "id": "cluster-tts",
       "label": "Cluster TTS (Kokoro, tts.speech)",
       "type": "tts",
-      "url": "http://tts.speech.svc.cluster.local/v1",
+      "url": "http://tts/v1",
       "models": ["kokoro"],
       "voices": ["ff_siwis"],
       "format": "mp3"

@@ -9,6 +9,7 @@ resources:
   - namespace.yaml
   - limitrange.yaml
   - workload
+  - speech-services.yaml
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
