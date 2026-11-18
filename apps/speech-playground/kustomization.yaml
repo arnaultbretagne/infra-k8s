@@ -13,3 +13,4 @@ resources:
   - oauth2-proxy.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - xiaomi-mimo.secret.yaml
