@@ -125,13 +125,30 @@ test('the preview runs the playground and the speech bricks side by side, with w
   assert.deepEqual(services, { 'speech-playground': 8080, stt: 80, tts: 80 })
   const config = JSON.parse(preview.find((o) => o.metadata.name.startsWith('speech-playground-config')).data['services.json'])
   assert.deepEqual(config.services.filter((s) => s.id.startsWith('cluster-')).map((s) => s.url), ['http://stt/v1', 'http://tts/v1'])
-  const mi = (q) => Number(q.replace(/Gi$/, '')) * (q.endsWith('Gi') ? 1024 : 1) || Number(q.replace(/Mi$/, ''))
+  // Within the catalogue entry's size (ADR 0017 v4 §2), Kata's 100m / 256Mi per Pod and one surge Pod of each
+  // RollingUpdate Deployment counted: what the preview namespace's LimitRange and ResourceQuota will admit.
+  const entry = parse(readFileSync(join(REPO, 'infrastructure/configs/previews/catalogue/speech-playground.yaml'), 'utf8')).spec.defaultValues
+  assert.equal(entry.path, 'apps/speech-playground/preview')
+  assert.equal(entry.service, 'speech-playground')
+  assert.equal(entry.port, '8080')
+  const mi = (q) => (String(q).endsWith('Gi') ? parseFloat(q) * 1024 : parseFloat(q))
+  const milli = (q) => (String(q).endsWith('m') ? parseFloat(q) : parseFloat(q) * 1000)
+  const sum = { cpu: 0, memory: 0, limits: 0 }
   for (const d of preview.filter((o) => o.kind === 'Deployment')) {
+    const copies = d.spec.strategy?.type === 'Recreate' ? 1 : 2
     for (const c of [...(d.spec.template.spec.initContainers ?? []), ...d.spec.template.spec.containers]) {
       const limit = mi(c.resources.limits.memory)
-      assert.ok(limit >= 64 && limit <= 7 * 1024, `${d.metadata.name}/${c.name}: memory limit ${c.resources.limits.memory}`)
+      assert.ok(limit >= 64 && limit <= mi(entry.containerMemoryMax), `${d.metadata.name}/${c.name}: memory limit ${c.resources.limits.memory}, entry max ${entry.containerMemoryMax}`)
     }
+    const containers = d.spec.template.spec.containers
+    sum.cpu += copies * (100 + containers.reduce((s, c) => s + milli(c.resources.requests.cpu), 0))
+    sum.memory += copies * (256 + containers.reduce((s, c) => s + mi(c.resources.requests.memory), 0))
+    sum.limits += copies * (256 + containers.reduce((s, c) => s + mi(c.resources.limits.memory), 0))
   }
+  assert.ok(sum.cpu <= milli(entry.requestsCpu), `requests.cpu ${sum.cpu}m > ${entry.requestsCpu}`)
+  assert.ok(sum.memory <= mi(entry.requestsMemory), `requests.memory ${sum.memory}Mi > ${entry.requestsMemory}`)
+  assert.ok(sum.limits <= mi(entry.limitsMemory), `limits.memory ${sum.limits}Mi > ${entry.limitsMemory}`)
+  console.log(`ℹ preview: ${sum.cpu}m / ${sum.memory}Mi / ${sum.limits}Mi of ${entry.requestsCpu} / ${entry.requestsMemory} / ${entry.limitsMemory}`)
 })
 
 test('the Xiaomi key: an optional Secret volume, read by the server alone, never in its environment', () => {
