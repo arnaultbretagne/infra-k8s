@@ -9,7 +9,6 @@
 # here could have run one outside the sandbox. No CNPG cluster runs in these namespaces — preview
 # databases live in `preview-system` — so the exception protected nothing. A database for untrusted
 # compute goes in a trusted namespace next to it, never in it.
-# Proven on a real API server by tests/sandbox-admission-policies.
 #
 # `agent-runs` carried the label too until the channels-era system was decommissioned
 # (2026-08-07); `agora-runs` inherited both the label and this binding unchanged.

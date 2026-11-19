@@ -130,4 +130,3 @@ also had nothing left to serve: no CNPG `Cluster` lives in an untrusted-compute 
 amendment above). `untrusted-compute-requires-sandbox` now admits a Pod there only with
 `runtimeClassName` `sandboxed` or `kata`, whoever creates it. The CNPG row of §3 stands: a database
 serving untrusted compute runs unsandboxed in a trusted namespace beside it, never inside it.
-`tests/sandbox-admission-policies` runs both policies on a kind API server.
