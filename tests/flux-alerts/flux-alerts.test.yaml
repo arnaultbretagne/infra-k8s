@@ -88,6 +88,10 @@ tests:
         values: '1x60'
       - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="GitRepository", exported_namespace="flux-system", name="flux-system", ready="True", suspended="false", revision="main@sha1:1111", url="ssh://git@github.com/arnaultbretagne/infra-k8s.git"}'
         values: '1x60'
+      # An OCI HelmRepository is static: Flux never reconciles it, so it has no status and its
+      # series no `ready` label (live: flux-system/flux-operator, 2026-11-19).
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="flux-operator", url="oci://ghcr.io/controlplaneio-fluxcd/charts"}'
+        values: '1x60'
     alert_rule_test:
       - eval_time: 60m
         alertname: FluxResourceNotReady

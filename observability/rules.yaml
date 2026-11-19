@@ -233,7 +233,9 @@ spec:
           # before its first one: anything but "True" counts. The max by () drops `ready`, so
           # that a failing object flipping between False and Unknown on every retry stays one
           # series and does not restart the `for` (also `revision` and the KSM pod's labels).
-          # Suspended objects are left out: suspending is a choice, not a failure.
+          # Suspended objects are left out: suspending is a choice, not a failure. So are OCI
+          # HelmRepositories (`url` oci://): Flux never reconciles them, so they never have a
+          # Ready condition and would fire forever (live: flux-system/flux-operator).
           # 20m: Kustomizations retry every 1m (retryInterval in clusters/bretagne) and the
           # flux-system GitRepository polls every 1m, so 20m is twenty failed attempts, not a
           # blip; and it outlasts the longest timeout set here, the kube-prometheus-stack
@@ -243,6 +245,7 @@ spec:
           expr: |
             max by (customresource_kind, exported_namespace, name) (
               gotk_resource_info{job="kube-state-metrics", customresource_kind=~"Kustomization|HelmRelease|GitRepository|HelmRepository|OCIRepository|Bucket", ready!="True", suspended!="true"}
+              unless gotk_resource_info{customresource_kind="HelmRepository", url=~"oci://.*"}
             )
           for: 20m
           labels:
