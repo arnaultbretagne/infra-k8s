@@ -1,19 +1,35 @@
 # Ignis (github.com/Nystik-gh/ignis): the real Obsidian app served to a browser, its Electron and Node
 # APIs replaced by a shim that talks to this server over HTTP and a WebSocket. It has no
-# authentication: whatever reaches it reads and writes every vault. Here the preview's gate does.
+# authentication: whatever reaches it reads and writes the vault. In production its gate is
+# apps/obsidian/ignis-oauth2-proxy.yaml; in a preview, the preview's gate.
 #
 # The image's entrypoint runs as root (useradd, chown, then gosu), which PSS restricted refuses. So it
 # is not used, and its two steps are done here:
-#   - `obsidian`, an init container, downloads the Obsidian release the image is pinned to
-#     (IGNIS_OBSIDIAN_PIN, 1.14.4 for 0.9.0) from Obsidian's GitHub releases and unpacks it, as the
-#     entrypoint does. Obsidian is not in the image: its licence forbids redistribution.
+#   - `obsidian`, an init container, puts the Obsidian release the image is pinned to
+#     (IGNIS_OBSIDIAN_PIN, 1.14.4 for 0.9.0) in the cache, from Obsidian's GitHub releases, as the
+#     entrypoint does. Obsidian is not in the image: its licence forbids redistribution. The cache
+#     keeps it across restarts: it downloads only when the cache does not hold that version.
 #   - `ignis` starts the server directly.
-# What is left out is the entrypoint's `npm install -g obsidian-headless`: no headless sync here.
+# What is left out is the entrypoint's `npm install -g obsidian-headless`: the image does not hold
+# `ob`, nothing here installs it (the root filesystem is read-only), so Ignis's headless sync cannot
+# run. The vault must never have a second sync client.
 #
-# Everything it writes sits in emptyDirs: the vaults (/vaults, an empty "My Vault" created at start),
-# its settings (/data), Obsidian (/app/obsidian-app). A restart of the pod starts from scratch.
-# WS_ORIGINS is the preview's own origin, set by the catalogue entry (urlEnv); when it is unset the
-# server checks no Origin at all.
+# Everything lives on one volume, `data`, in three subPaths:
+#   - vault         the vault, at /vaults/Vault: the folder itself, no copy;
+#   - ignis-data    Ignis's settings (DATA_ROOT);
+#   - obsidian-app  the Obsidian cache (OBSIDIAN_ASSETS_PATH).
+# Here `data` is an emptyDir, which is what a preview gets: an empty vault, started from scratch on
+# every restart. Production (apps/obsidian/kustomization.yaml) puts the PVC obsidian-data in its place,
+# the one the MCP server and the clipper use.
+#
+# VAULT_ROOT is not /vaults but /vault-index: a folder holding nothing but a link, Vault ->
+# /vaults/Vault, written by the init container and mounted read-only in the server. Ignis's "remove
+# vault" (Obsidian's "Remove from list") deletes the vault's folder recursively, files included; on a
+# link it can only delete the link, and on a read-only folder not even that: create, rename and remove
+# all fail, so the vault stays the only one.
+#
+# WS_ORIGINS is the public origin; a preview replaces it with its own (catalogue entry, urlEnv), so
+# Ignis refuses a WebSocket opened by another site.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -46,13 +62,20 @@ spec:
             - -ceu
             - |
               v="$IGNIS_OBSIDIAN_PIN"
+              app=/app/obsidian-app
+              ln -sfn /vaults/Vault /vault-index/Vault
+              if [ -f "$app/index.html" ] && [ "$(cat "$app/.obsidian-version" 2>/dev/null)" = "$v" ]; then
+                echo "Obsidian $v already in the cache"
+                exit 0
+              fi
               echo "downloading Obsidian $v"
+              find "$app" -mindepth 1 -delete
               curl -fsSL "https://github.com/obsidianmd/obsidian-releases/releases/download/v$v/obsidian-$v.asar.gz" \
                 | gunzip > /tmp/obsidian.asar
-              npx --yes @electron/asar@4.3.2 extract /tmp/obsidian.asar /app/obsidian-app
+              npx --yes @electron/asar@4.3.2 extract /tmp/obsidian.asar "$app"
               rm -f /tmp/obsidian.asar
-              test -f /app/obsidian-app/index.html
-              echo "$v" > /app/obsidian-app/.obsidian-version
+              test -f "$app/index.html"
+              echo "$v" > "$app/.obsidian-version"
               echo "Obsidian $v ready"
           env:
             - name: HOME
@@ -60,10 +83,13 @@ spec:
             - name: npm_config_update_notifier
               value: "false"
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           resources:
             requests:
               cpu: 50m
@@ -71,8 +97,11 @@ spec:
             limits:
               memory: 512Mi
           volumeMounts:
-            - name: obsidian
+            - name: data
               mountPath: /app/obsidian-app
+              subPath: obsidian-app
+            - name: vault-index
+              mountPath: /vault-index
             - name: tmp
               mountPath: /tmp
       containers:
@@ -85,24 +114,27 @@ spec:
             - name: PORT
               value: "8080"
             - name: VAULT_ROOT
-              value: /vaults
+              value: /vault-index
             - name: DATA_ROOT
               value: /data
             - name: OBSIDIAN_ASSETS_PATH
               value: /app/obsidian-app
-            - name: AUTO_CREATE_DEFAULT
-              value: "true"
+            - name: WS_ORIGINS
+              value: https://obsidian.bretagne.dev
             - name: HOME
               value: /tmp
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 192Mi
             limits:
               memory: 768Mi
           startupProbe:
@@ -122,25 +154,28 @@ spec:
               port: 8080
             periodSeconds: 10
           volumeMounts:
-            - name: obsidian
-              mountPath: /app/obsidian-app
-              readOnly: true
-            - name: vaults
-              mountPath: /vaults
+            - name: data
+              mountPath: /vaults/Vault
+              subPath: vault
             - name: data
               mountPath: /data
+              subPath: ignis-data
+            - name: data
+              mountPath: /app/obsidian-app
+              subPath: obsidian-app
+              readOnly: true
+            - name: vault-index
+              mountPath: /vault-index
+              readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
-        - name: obsidian
-          emptyDir:
-            sizeLimit: 1Gi
-        - name: vaults
-          emptyDir:
-            sizeLimit: 1Gi
         - name: data
           emptyDir:
-            sizeLimit: 256Mi
+            sizeLimit: 2Gi
+        - name: vault-index
+          emptyDir:
+            sizeLimit: 1Mi
         - name: tmp
           emptyDir:
             sizeLimit: 1Gi
