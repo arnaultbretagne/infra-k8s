@@ -110,6 +110,18 @@ spec:
             # server alone writes there (networkpolicy.yaml), with the token of files.secrets.yaml.
             - { name: FILES_ENDPOINT, value: "https://938f9d4cdcf888eddea773d0f68615bc.r2.cloudflarestorage.com" }
             - { name: FILES_BUCKET, value: agora-files }
+            # Agora's docs/specs/log.md, "Identity": who calls port 8080 is what the request proves, never where
+            # it comes from. The browser's proof is the ID token Pocket-ID signed for the client `agora`, which
+            # oauth2-proxy passes (oauth2-proxy.yaml); the server checks it against Pocket-ID's published keys
+            # (discovered at IDENTITY_ISSUER, fetched over HTTPS: networkpolicy.yaml). The audience is that
+            # client's id: OAUTH2_PROXY_CLIENT_ID of oauth2-proxy.secrets.yaml, not a secret; a client recreated
+            # in Pocket-ID changes both. Without a valid proof, 401; X-Forwarded-Email grants nothing.
+            - { name: IDENTITY, value: oidc }
+            - { name: IDENTITY_ISSUER, value: "https://id.bretagne.dev" }
+            - { name: IDENTITY_AUDIENCE, value: 83e98a94-9882-4e10-a0eb-784fb6187d9e }
+            # A caller without a browser — a script, an operator tool on the node — presents a service token
+            # (service-tokens.secrets.yaml), read once at start: a changed token takes a restart.
+            - { name: IDENTITY_TOKENS_DIR, value: /etc/agora/service-tokens }
           # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL; FILES_ACCESS_KEY_ID, FILES_SECRET_ACCESS_KEY.
           envFrom:
             - secretRef:
@@ -144,6 +156,7 @@ spec:
             - { name: signing, mountPath: /etc/agora/signing, readOnly: true }
             - { name: grants, mountPath: /etc/agora/grants, readOnly: true }
             - { name: gateway-ca, mountPath: /etc/agora/gateway-ca, readOnly: true }
+            - { name: service-tokens, mountPath: /etc/agora/service-tokens, readOnly: true }
       volumes:
         - name: signing
           secret:
@@ -157,6 +170,11 @@ spec:
         - name: gateway-ca
           configMap:
             name: gateway-ca
+        # One file per caller, the identity its token stands for (service-tokens.secrets.yaml).
+        - name: service-tokens
+          secret:
+            secretName: service-tokens
+            defaultMode: 0440
 ---
 apiVersion: v1
 kind: Service

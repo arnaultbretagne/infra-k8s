@@ -1,7 +1,9 @@
 # OIDC gate (ADR 0021/0022) in front of the server: it creates sandboxes and reads their ACP traffic,
 # so ALLOWED_GROUPS=admin, on top of the Pocket-ID client's own group restriction. SSE (the threads)
-# passes through unchanged; the server reads the operator from X-Forwarded-Email, which oauth2-proxy
-# sets and drops from the client's request.
+# passes through unchanged. The server does not take the gate's word for who calls (Agora's
+# docs/specs/log.md, "Identity"; IDENTITY=oidc in server.yaml): the gate passes the ID token Pocket-ID
+# signed, `Authorization: Bearer`, in place of any the client sent, and the server checks its signature,
+# issuer, audience and expiry. X-Forwarded-Email is still set, and the server ignores it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,6 +53,15 @@ spec:
             - { name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON, value: "true" }
             # Pocket-ID does not emit email_verified (known upstream gap, ADR 0021)
             - { name: OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL, value: "true" }
+            # The session's ID token, to the server, as `Authorization: Bearer <id_token>`; the client's own
+            # Authorization is dropped first (skip-auth-strip-headers, true by default).
+            - { name: OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER, value: "true" }
+            # Pocket-ID 2.18.0's ID tokens live 1 hour (fosite's default; not set per client). A session older
+            # than 30 minutes is refreshed at its next request, before it is passed on: the token the server
+            # gets is at most 30 minutes old. Pocket-ID gives a refresh token at every code exchange, whatever
+            # the scope (RefreshTokenScopes empty), valid 30 days and rotated, with a 1-minute grace for
+            # parallel refreshes; its refresh answer carries a new ID token (openid granted).
+            - { name: OAUTH2_PROXY_COOKIE_REFRESH, value: 30m }
           envFrom:
             - secretRef:
                 name: oauth2-proxy
