@@ -1,0 +1,73 @@
+# Ignis in production (apps/obsidian) and in its preview (apps/ignis/workload), as kustomize renders them, and the
+# init container's script run under bash (tests/obsidian-ignis/README.md). The preview (label preview/ignis) runs
+# the workload itself; this checks what a preview cannot: the real volume, the gate, the route, the policies.
+name: obsidian ignis
+
+on:
+  pull_request:
+    paths:
+      - apps/obsidian/**
+      - apps/ignis/**
+      - apps/pocket-id/oidc-reconciler/spec.json
+      - infrastructure/gateway/gateway.yaml
+      - infrastructure/configs/previews/catalogue/ignis.yaml
+      - tests/obsidian-ignis/**
+      - .github/workflows/obsidian-ignis.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/obsidian/**
+      - apps/ignis/**
+      - apps/pocket-id/oidc-reconciler/spec.json
+      - infrastructure/gateway/gateway.yaml
+      - infrastructure/configs/previews/catalogue/ignis.yaml
+      - tests/obsidian-ignis/**
+      - .github/workflows/obsidian-ignis.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: obsidian-ignis-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECTL_URL: https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8
+
+jobs:
+  ignis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/obsidian-ignis/package-lock.json
+
+      - name: kubectl, checked against its sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Ignis, as rendered
+        working-directory: tests/obsidian-ignis
+        run: |
+          npm ci --no-audit --no-fund
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          {
+            echo '### Ignis in production and in its preview'
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
