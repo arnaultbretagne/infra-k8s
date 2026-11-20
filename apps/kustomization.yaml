@@ -11,7 +11,6 @@ resources:
   # retired 2026-10: `agora-system` now holds Agora's database, `agora-pg`, for the server's log.
   - agora-system
   - agora-onecli
-  - agora-runs
   # The UI showcase of the redesign (agora-test.bretagne.dev), public, static, no backend.
   - agora-test
   # The CV (arnault.bretagne.dev), public, static, no backend.

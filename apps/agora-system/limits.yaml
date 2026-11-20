@@ -17,7 +17,6 @@ spec:
     - type: Container
       defaultRequest: { cpu: 25m, memory: 64Mi }
       default: { cpu: 500m, memory: 512Mi }
-      # The Session Runtimes that legitimately need more live in `agora-runs`, under its own quota.
       max: { memory: 1Gi }
 ---
 apiVersion: v1
