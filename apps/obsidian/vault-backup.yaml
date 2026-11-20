@@ -1,0 +1,174 @@
+# The vault's backup (ADR 0005): every 15 min, `rclone sync` of obsidian-data/vault to an rclone
+# crypt remote on the dedicated R2 bucket `bretagne-obsidian-backup`, previous versions kept 7 days
+# under history/<timestamp>/; every week, `rclone cryptcheck` proves the stored copy still decrypts
+# to the vault. The script is backup/vault-backup.sh (ConfigMap obsidian-vault-backup-scripts,
+# kustomization.yaml); restoring is RESTORE.md, with backup/restore-job.yaml.
+#
+# Same image as ha-config-backup. Reads the PVC read-only; RWO is node-scoped, so these pods may
+# mount it beside the MCP server and the clipper on this single node. Credentials: the SOPS Secret
+# obsidian-vault-backup (vault-backup.secrets.yaml), its own R2 token, not cnpg-s3-creds. Egress: DNS
+# and R2's port 443 only (networkpolicy.yaml, obsidian-vault-backup).
+#
+# In the bucket, names and contents are encrypted, current/ and history/ included: without the two
+# crypt passwords the backup cannot be read by anyone, the operator included.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obsidian-vault-backup-env
+data:
+  VAULT_DIR: /vault
+  # No config file: the two remotes below, and the Secret's R2 endpoint and keys, are the whole
+  # configuration.
+  RCLONE_CONFIG: /dev/null
+  RCLONE_CONFIG_R2_TYPE: s3
+  RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+  # The token is scoped to the bucket (no ListBuckets): without this rclone tries CreateBucket and
+  # gets 403 (ha-config-backup, seen live 2026-09-05).
+  RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+  RCLONE_CONFIG_BACKUP_TYPE: crypt
+  RCLONE_CONFIG_BACKUP_REMOTE: r2:bretagne-obsidian-backup
+  # rclone's defaults, written down: a restore must use the same ones (RESTORE.md).
+  RCLONE_CONFIG_BACKUP_FILENAME_ENCRYPTION: standard
+  RCLONE_CONFIG_BACKUP_DIRECTORY_NAME_ENCRYPTION: "true"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: obsidian-vault-backup
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 840        # under the 15 min period
+      backoffLimit: 0                   # the next pass is the retry
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: obsidian-vault-backup   # networkpolicy.yaml
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000             # the vault's owner (mcp-server, clipper)
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: rclone/rclone:1.75.1
+              command: ["/bin/sh", "/scripts/vault-backup.sh", "backup"]
+              envFrom:
+                - configMapRef:
+                    name: obsidian-vault-backup-env
+                - secretRef:
+                    name: obsidian-vault-backup
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: vault
+                  mountPath: /vault
+                  subPath: vault
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: vault
+              persistentVolumeClaim:
+                claimName: obsidian-data
+                readOnly: true
+            - name: scripts
+              configMap:
+                name: obsidian-vault-backup-scripts
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+---
+# Weekly proof that the stored copy is the vault: cryptcheck encrypts each vault file with the nonce
+# of its stored object and compares the hashes, so a stored object that changed, a file missing on
+# either side or one the last pass did not upload yet all count as differences and fail the Job
+# (CronJobLastRunFailed, observability/rules.yaml). Sunday 04:05 UTC, 5 min after the 04:00 pass: a
+# note edited in between fails it too. A failed run is checked by running it again
+# (`kubectl -n obsidian create job --from=cronjob/obsidian-vault-verify verify-manual`).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: obsidian-vault-verify
+spec:
+  schedule: "5 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: obsidian-vault-backup   # networkpolicy.yaml
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: verify
+              image: rclone/rclone:1.75.1
+              command: ["/bin/sh", "/scripts/vault-backup.sh", "verify"]
+              envFrom:
+                - configMapRef:
+                    name: obsidian-vault-backup-env
+                - secretRef:
+                    name: obsidian-vault-backup
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: vault
+                  mountPath: /vault
+                  subPath: vault
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: vault
+              persistentVolumeClaim:
+                claimName: obsidian-data
+                readOnly: true
+            - name: scripts
+              configMap:
+                name: obsidian-vault-backup-scripts
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

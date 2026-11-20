@@ -118,3 +118,39 @@ spec:
             k8s:io.kubernetes.pod.namespace: traefik
       toPorts:
         - ports: [{ port: "8443", protocol: TCP }]
+---
+# The vault backup's Jobs (vault-backup.yaml, backup/restore-job.yaml): DNS, then R2's HTTPS and
+# nothing else; nothing connects to them. R2 by name: Cilium's DNS proxy learns the addresses the
+# pod resolves for *.r2.cloudflarestorage.com (the endpoint https://<account id>.r2.cloudflarestorage.com,
+# path-style) and opens 443 to those only. An EU-jurisdiction bucket (<account id>.eu.r2...) would
+# need its own pattern. Default deny both ways, explicitly: an empty ingress list alone would leave
+# ingress unenforced.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: obsidian-vault-backup
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: obsidian-vault-backup
+  enableDefaultDeny:
+    ingress: true
+    egress: true
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchPattern: "*.r2.cloudflarestorage.com"
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
