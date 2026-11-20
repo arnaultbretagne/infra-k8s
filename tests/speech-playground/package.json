@@ -2,9 +2,12 @@
   "name": "speech-playground-e2e",
   "private": true,
   "type": "module",
-  "description": "The speech playground in kind, against a fake OpenAI-compatible service and a fake Xiaomi MiMo (README.md).",
+  "description": "The speech playground, locally: its manifests, its API against a fake OpenAI-compatible service and a fake Xiaomi MiMo, its page in headless Chromium (README.md).",
   "scripts": {
-    "test": "node --test --test-concurrency=1 manifests.test.mjs playground.test.mjs"
+    "pretest": "node ensure-kubectl.mjs",
+    "test": "node --test --test-concurrency=1 manifests.test.mjs playground.test.mjs",
+    "test:mutations": "node mutations.mjs",
+    "test:page": "node --test page.test.mjs"
   },
   "engines": {
     "node": ">=24"
