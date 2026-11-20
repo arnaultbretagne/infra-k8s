@@ -1,0 +1,99 @@
+# TO MOVE: this is .github/workflows/obsidian-vault-backup.yml. The GitHub App that opened the pull request has no
+# `workflows` permission and cannot push it there; the operator moves it with
+#   git mv tests/obsidian-vault-backup/obsidian-vault-backup.workflow.yml .github/workflows/obsidian-vault-backup.yml
+# and deletes these four lines. Its paths below already name its final place.
+# The Obsidian vault backup (apps/obsidian/vault-backup.yaml), its own script run as deployed
+# (tests/obsidian-vault-backup/README.md): kustomize renders apps/obsidian, and the script of the rendered
+# ConfigMap runs with each rendered CronJob's command, environment and mounts, in the rclone/rclone image of
+# the manifests, against a crypt remote over a local directory. Then the same test once per part of the
+# script broken on purpose: each run must fail. No real secret: the R2 keys and crypt passwords are made up.
+name: obsidian vault backup
+
+on:
+  pull_request:
+    paths:
+      - apps/obsidian/**
+      - apps/home-assistant/config-backup.yaml
+      - tests/obsidian-vault-backup/**
+      - .github/workflows/obsidian-vault-backup.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/obsidian/**
+      - apps/home-assistant/config-backup.yaml
+      - tests/obsidian-vault-backup/**
+      - .github/workflows/obsidian-vault-backup.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: obsidian-vault-backup-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECTL_URL: https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/obsidian-vault-backup/package-lock.json
+
+      - name: kubectl, checked against its sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: apps/obsidian builds
+        run: |
+          kubectl kustomize apps/obsidian > "$RUNNER_TEMP/rendered.yaml"
+          line="\$ kubectl kustomize apps/obsidian  # exit $?, $(grep -c '^kind:' "$RUNNER_TEMP/rendered.yaml") objects, CronJobs: $(grep -A2 '^kind: CronJob' "$RUNNER_TEMP/rendered.yaml" | grep -o 'name: .*' | cut -d' ' -f2 | tr '\n' ' ')"
+          echo "$line"
+          { echo '### kubectl kustomize'; echo '```'; echo "$line"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The backup, verify and restore, in the manifests' rclone image
+        working-directory: tests/obsidian-vault-backup
+        run: |
+          npm ci --no-audit --no-fund
+          set -o pipefail
+          npm test 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          {
+            echo '### The vault backup script, run as deployed'
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ|# )' "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: The same test fails with each part of the script broken
+        working-directory: tests/obsidian-vault-backup
+        run: |
+          echo '### Broken on purpose: each run must fail' >> "$GITHUB_STEP_SUMMARY"
+          for mutate in exclude backup-dir cryptcheck retention; do
+            if MUTATE=$mutate npm test > "$RUNNER_TEMP/mutate-$mutate.txt" 2>&1; then
+              echo "::error::the test passed with MUTATE=$mutate"
+              cat "$RUNNER_TEMP/mutate-$mutate.txt"
+              exit 1
+            fi
+            echo "MUTATE=$mutate: failed, as it must:"; grep -E '^✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u
+            {
+              echo "- \`MUTATE=$mutate\`: failed, as it must:"
+              echo '```'
+              grep -E '^✖' "$RUNNER_TEMP/mutate-$mutate.txt" | sort -u
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
