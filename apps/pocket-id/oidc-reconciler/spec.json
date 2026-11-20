@@ -62,14 +62,7 @@
       "pkceEnabled": true
     },
     {
-      "_comment": "P11 (agora refactoring): OneCLI's own admin dashboard, gated via oauth2-proxy (same pattern as code-server) since OneCLI has no native OIDC. Client created directly against the API (POST /oidc/clients, then POST /oidc/clients/{id}/secret to reveal the secret) before this entry was added — the reconciler's own CREATE path only logs the id, never the secret, so a fresh client's secret must always be bootstrapped by hand regardless of which caller creates it (ADR 0022).",
-      "name": "onecli",
-      "callbackURLs": ["https://onecli.bretagne.dev/oidc/callback"],
-      "allowedGroups": ["admin"],
-      "pkceEnabled": false
-    },
-    {
-      "_comment": "Agent Vault's management UI (infrastructure/agent-vault) — the credential vault for agent runtimes, same posture as 'onecli'. Secret bootstrapped the same way.",
+      "_comment": "Agent Vault's management UI (infrastructure/agent-vault) — the credential vault for agent runtimes, gated by oauth2-proxy (admin group). Secret bootstrapped the same way.",
       "name": "agent-vault",
       "callbackURLs": ["https://agent-vault.bretagne.dev/oidc/callback"],
       "allowedGroups": ["admin"],

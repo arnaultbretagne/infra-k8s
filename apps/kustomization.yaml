@@ -10,7 +10,6 @@ resources:
   # itself was decommissioned 2026-09-08 — replaced by the rewritten engine in `agora-system`, itself
   # retired 2026-10: `agora-system` now holds Agora's database, `agora-pg`, for the server's log.
   - agora-system
-  - agora-onecli
   # The UI showcase of the redesign (agora-test.bretagne.dev), public, static, no backend.
   - agora-test
   # The CV (arnault.bretagne.dev), public, static, no backend.

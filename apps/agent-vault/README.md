@@ -91,5 +91,4 @@ Agent Vault itself runs non-root, with a read-only filesystem and no Kubernetes
 token. TODO: enforce restricted when the storage ownership workaround is removed.
 
 Initial provisioning is not acceptance: verify owner bootstrap, a scoped proxy
-request, CNPG archiving and the real S3 restore job on the cluster. Do not remove
-OneCLI until its consumers and required credentials have been migrated explicitly.
+request, CNPG archiving and the real S3 restore job on the cluster.
