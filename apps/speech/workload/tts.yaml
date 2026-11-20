@@ -55,6 +55,14 @@ spec:
               value: "1"
             - name: MPLCONFIGDIR
               value: /tmp
+            # Give freed memory back to the system once a model is unloaded. glibc's malloc moves its mmap threshold
+            # up as large blocks are freed (to 32 MiB), so the next model's tensors land in heap arenas it keeps:
+            # after an unload on the preview, 4.3 GiB of anonymous memory stayed in the process (0.8 GiB at rest).
+            # A fixed threshold stops that: every block above 128 KiB is its own mapping, unmapped when freed. One
+            # setting of the C library that speaches, onnxruntime and CTranslate2 all allocate through; no image or
+            # code change. The cost is an mmap/munmap per such block, which the engines' own buffers keep rare.
+            - name: GLIBC_TUNABLES
+              value: glibc.malloc.mmap_threshold=131072
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
