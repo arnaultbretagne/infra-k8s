@@ -1,0 +1,140 @@
+# The STT brick: speaches serving Parakeet TDT 0.6B v3 (ONNX, fp32) and Whisper large-v3-turbo (CTranslate2,
+# int8) behind POST /v1/audio/transcriptions. Both models are downloaded from Hugging Face at start
+# (PRELOAD_MODELS: to the disk only, before the server listens, so a request never waits on a download).
+# Memory on demand: a model is loaded into RAM by its first request and unloaded after STT_MODEL_TTL seconds
+# without one; nothing loads a model at start. At rest the pod holds the server alone.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stt
+  labels:
+    app: stt
+spec:
+  replicas: 1
+  # One pod at a time: a rolling update would hold two copies of the models, several GiB, on a node that
+  # has no such room. An update costs a few minutes of STT down (download + start).
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: stt
+  template:
+    metadata:
+      labels:
+        app: stt
+    spec:
+      priorityClassName: bretagne-low
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # the image's `ubuntu` user
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: speaches
+          image: ghcr.io/speaches-ai/speaches:0.9.0-rc.3-cpu@sha256:2163775b6df5e451a71200e8f675fed68dbd8ab184fc604453d549e486f22fd2
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: PRELOAD_MODELS
+              value: '["istupakov/parakeet-tdt-0.6b-v3-onnx","deepdml/faster-whisper-large-v3-turbo-ct2"]'
+            # Unload a model after 5 min without a request (speaches' own default; each model has its own clock).
+            # Long enough to cover a comparison session, where requests come minutes apart, without paying a
+            # reload each time (Parakeet takes ~34 s to load, Whisper ~10 s, Kokoro ~2 s, measured on the preview);
+            # short enough that the RAM comes back soon after a test, and that the unload can be measured.
+            - name: STT_MODEL_TTL
+              value: "300"
+            - name: WHISPER__INFERENCE_DEVICE
+              value: cpu
+            - name: WHISPER__COMPUTE_TYPE
+              value: int8
+            - name: ENABLE_UI
+              value: "false"
+            - name: LOG_LEVEL
+              value: info
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            - name: MPLCONFIGDIR
+              value: /tmp
+            # Give freed memory back to the system once a model is unloaded. glibc's malloc moves its mmap threshold
+            # up as large blocks are freed (to 32 MiB), so the next model's tensors land in heap arenas it keeps:
+            # after an unload on the preview, 4.3 GiB of anonymous memory stayed in the process (0.8 GiB at rest).
+            # A fixed threshold stops that: every block above 128 KiB is its own mapping, unmapped when freed. One
+            # setting of the C library that speaches, onnxruntime and CTranslate2 all allocate through; no image or
+            # code change. The cost is an mmap/munmap per such block, which the engines' own buffers keep rare.
+            - name: GLIBC_TUNABLES
+              value: glibc.malloc.mmap_threshold=131072
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          # Sized for loading on demand, measured on the preview of #371 (Kata, 2026-11-18, metrics.k8s.io):
+          # 796 Mi at rest (server alone), 6451 Mi with both models loaded. The request covers the rest, the limit covers
+          # every model loaded (6451 Mi × 1.5). Not hosting §4.3, which sizes the request on the loaded working
+          # set: that would reserve the models' RAM around the clock, which on demand they do not hold. Between a
+          # first request and the unload the pod is above its request, so first in line for eviction under memory
+          # pressure, as bretagne-low means anyway. CPU 50m: the floor for what a user waits on.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 1Gi
+            limits:
+              memory: 10Gi
+          # The downloads (~4 GiB) happen before the port opens: up to 30 minutes.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 180
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          volumeMounts:
+            - name: cache # Hugging Face hub cache: the models
+              mountPath: /home/ubuntu/.cache
+            - name: tmp
+              mountPath: /tmp
+            - name: stt-model-aliases
+              mountPath: /home/ubuntu/speaches/model_aliases.json
+              subPath: model_aliases.json
+              readOnly: true
+      volumes:
+        # On the node's disk, not in memory. Bounded: the kubelet evicts the pod rather than let a download
+        # fill the disk. Lost with the pod, so a new pod downloads again (see the PR's rollback notes).
+        - name: cache
+          emptyDir:
+            sizeLimit: 8Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: stt-model-aliases
+          configMap:
+            name: stt-model-aliases
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stt
+  labels:
+    app: stt
+spec:
+  selector:
+    app: stt
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

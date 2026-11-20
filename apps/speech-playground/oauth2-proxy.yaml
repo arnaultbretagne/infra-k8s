@@ -1,0 +1,150 @@
+# OIDC gate (ADR 0021/0022) in front of the playground: ALLOWED_GROUPS=admin, on top of the
+# Pocket-ID client's own group restriction (spec.json, client `speech-playground`).
+# The client's id and secret are the reconciler's (ADR 0022, amendment 2026-10-29): it writes them
+# to the Secret `oauth2-proxy-client` below, within 15 minutes of the client reaching spec.json;
+# until then oauth2-proxy has no client id and restarts. The cookie secret is drawn at random by the
+# init container on every start, so nobody ever holds it: a restart only signs the session out, and
+# Pocket-ID signs it back in.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      priorityClassName: bretagne-low
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 2000
+        runAsGroup: 2000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: cookie-secret
+          image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          command:
+            - node
+            - -e
+            - require('fs').writeFileSync('/cookie/secret', require('crypto').randomBytes(16).toString('hex'), { mode: 0o400 })
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: { cpu: 5m, memory: 32Mi }
+            limits: { memory: 64Mi }
+          volumeMounts:
+            - { name: cookie, mountPath: /cookie }
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
+          args:
+            - --http-address=0.0.0.0:4180
+            - --cookie-secret-file=/cookie/secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
+            - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: https://id.bretagne.dev }
+            - { name: OAUTH2_PROXY_REDIRECT_URL, value: https://speech.bretagne.dev/oidc/callback }
+            - { name: OAUTH2_PROXY_PROXY_PREFIX, value: /oidc }
+            - { name: OAUTH2_PROXY_UPSTREAMS, value: http://speech-playground.speech-playground.svc.cluster.local:8080 }
+            - { name: OAUTH2_PROXY_SCOPE, value: openid email profile groups }
+            - { name: OAUTH2_PROXY_OIDC_GROUPS_CLAIM, value: groups }
+            - { name: OAUTH2_PROXY_ALLOWED_GROUPS, value: admin }
+            - { name: OAUTH2_PROXY_EMAIL_DOMAINS, value: '*' }
+            - { name: OAUTH2_PROXY_COOKIE_SECURE, value: "true" }
+            - { name: OAUTH2_PROXY_COOKIE_DOMAINS, value: speech.bretagne.dev }
+            - { name: OAUTH2_PROXY_WHITELIST_DOMAINS, value: speech.bretagne.dev }
+            - { name: OAUTH2_PROXY_REVERSE_PROXY, value: "true" }
+            - { name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON, value: "true" }
+            # The playground answers an STT request once the transcription is done: wait as long as it waits
+            # for its service (UPSTREAM_TIMEOUT_MS, 120 s), not oauth2-proxy's default of 30 s.
+            - { name: OAUTH2_PROXY_UPSTREAM_TIMEOUT, value: 120s }
+            # Pocket-ID does not emit email_verified (known upstream gap, ADR 0021)
+            - { name: OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL, value: "true" }
+            # Written by the Pocket-ID reconciler; optional so the Pod is created before its first run.
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef: { name: oauth2-proxy-client, key: client_id, optional: true }
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: oauth2-proxy-client, key: client_secret, optional: true }
+          ports:
+            - containerPort: 4180
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          readinessProbe:
+            httpGet: { path: /ping, port: 4180 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ping, port: 4180 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: cookie, mountPath: /cookie, readOnly: true }
+      volumes:
+        - name: cookie
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+spec:
+  selector:
+    app: oauth2-proxy
+  ports:
+    - { port: 4180, targetPort: 4180 }
+---
+# The client's id and secret, handed to the Pocket-ID reconciler: created empty by Flux, then never
+# touched by it again (IfNotPresent). The reconciler writes client_id, client_secret and secret_id;
+# emptying it rotates the secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth2-proxy-client
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  client_secret: ""
+---
+# The reconciler may read and write that one Secret, nothing else in this namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: oidc-reconciler-oauth2-proxy-client
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [oauth2-proxy-client]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: oidc-reconciler-oauth2-proxy-client
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: oidc-reconciler-oauth2-proxy-client
+subjects:
+  - kind: ServiceAccount
+    name: oidc-reconciler
+    namespace: pocket-id
