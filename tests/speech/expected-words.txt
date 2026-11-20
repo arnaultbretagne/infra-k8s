@@ -1,0 +1,9 @@
+# Words every STT model must return for fixtures/fr-mls-1406_1028_000000.opus (case-insensitive, accents kept).
+siècle
+serment
+trésors
+terre
+liberté
+troisième
+monarque
+libérateur

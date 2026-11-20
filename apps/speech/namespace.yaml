@@ -1,0 +1,8 @@
+# private-app (ADR 0024): no public exposure, no arbitrary code, its only clients in-cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: speech
+  labels:
+    platform.bretagne.dev/profile: private-app
+    pod-security.kubernetes.io/enforce: restricted

@@ -1,0 +1,24 @@
+# The workload alone: Deployments, Services and ConfigMaps, nothing else (docs/hosting-an-app.md §14.2,
+# ADR 0017 v4 §13). Production lists it beside its own objects (../kustomization.yaml, which sets the
+# namespace and the network policy); a preview applies this folder as-is into its pv-* namespace.
+#
+# Two bricks that share nothing: each has its own Deployment, Service, ConfigMap and cache volume, and neither
+# names the other. Either can be scaled to zero, restarted or OOM-killed alone.
+#
+# Consumed by the speech playground (keep stable): Services `stt` and `tts` on port 80, and the model names
+# below (stt-model-aliases.json, tts-model-aliases.json).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - stt.yaml
+  - tts.yaml
+configMapGenerator:
+  # The model names clients send, mapped to the Hugging Face repositories speaches loads. Each mounted over
+  # its image's model_aliases.json (speaches reads it from its working directory). The hash suffix rolls the
+  # Deployment when its map changes.
+  - name: stt-model-aliases
+    files:
+      - model_aliases.json=stt-model-aliases.json
+  - name: tts-model-aliases
+    files:
+      - model_aliases.json=tts-model-aliases.json
