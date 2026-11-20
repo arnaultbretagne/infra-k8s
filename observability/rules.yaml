@@ -213,3 +213,76 @@ spec:
           annotations:
             summary: '{{ $labels.instance }} unreachable from synthetic probe'
             description: 'The full external chain (DNS/TLS/Traefik/app) fails as a client would see it.'
+---
+# Flux itself: nothing alerted when it stopped reconciling, so a SOPS decryption failure, a
+# bad kustomize render or a stuck HelmRelease stayed silent until workloads broke.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: bretagne-flux
+  namespace: observability
+spec:
+  groups:
+    - name: flux
+      rules:
+        - alert: FluxResourceNotReady
+          # gotk_resource_info is kube-state-metrics' custom resource state
+          # (kube-prometheus-stack.yaml): one series per object, its Ready condition's status
+          # in `ready`, its kind in customresource_kind. `ready` takes "False" on a failure,
+          # "Unknown" while a reconcile is in progress (each retry of a failing object), ""
+          # before its first one: anything but "True" counts. The max by () drops `ready`, so
+          # that a failing object flipping between False and Unknown on every retry stays one
+          # series and does not restart the `for` (also `revision` and the KSM pod's labels).
+          # Suspended objects are left out: suspending is a choice, not a failure. So are OCI
+          # HelmRepositories (`url` oci://): Flux never reconciles them, so they never have a
+          # Ready condition and would fire forever (live: flux-system/flux-operator).
+          # 20m: Kustomizations retry every 1m (retryInterval in clusters/bretagne) and the
+          # flux-system GitRepository polls every 1m, so 20m is twenty failed attempts, not a
+          # blip; and it outlasts the longest timeout set here, the kube-prometheus-stack
+          # HelmRelease's 15m (agent-sandbox, loki, alloy: 10m), during which Ready stays
+          # Unknown on a healthy upgrade. A Kustomization with wait and no timeout may wait
+          # up to its 1h interval, but only on something unhealthy: worth the alert.
+          expr: |
+            max by (customresource_kind, exported_namespace, name) (
+              gotk_resource_info{job="kube-state-metrics", customresource_kind=~"Kustomization|HelmRelease|GitRepository|HelmRepository|OCIRepository|Bucket", ready!="True", suspended!="true"}
+              unless gotk_resource_info{customresource_kind="HelmRepository", url=~"oci://.*"}
+            )
+          for: 20m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'Flux {{ $labels.customresource_kind }} {{ $labels.exported_namespace }}/{{ $labels.name }} not Ready for 20m'
+            description: 'Flux has not reconciled it for 20 minutes: what it carries is not applied. `flux get all -A --status-selector ready=false`, then `kubectl -n {{ $labels.exported_namespace }} describe {{ $labels.customresource_kind }} {{ $labels.name }}` for the reason (SOPS decryption, kustomize build, Helm install/upgrade, source fetch).'
+        - alert: FluxResourceMetricsAbsent
+          # FluxResourceNotReady's input gone: kube-state-metrics down, its custom resource
+          # state config broken, its RBAC on the Flux kinds lost, or a Flux CRD served under
+          # a new version the config does not list. FluxResourceNotReady would stay silent.
+          # One absent() per kind this cluster always has (clusters/bretagne,
+          # infrastructure/sources): the alert names the one missing. OCIRepository and
+          # Bucket are left out, none is always there.
+          expr: |
+            absent(gotk_resource_info{job="kube-state-metrics", customresource_kind="Kustomization"})
+              or absent(gotk_resource_info{job="kube-state-metrics", customresource_kind="HelmRelease"})
+              or absent(gotk_resource_info{job="kube-state-metrics", customresource_kind="GitRepository"})
+              or absent(gotk_resource_info{job="kube-state-metrics", customresource_kind="HelmRepository"})
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'No gotk_resource_info for Flux {{ $labels.customresource_kind }}: FluxResourceNotReady is blind'
+            description: 'kube-state-metrics no longer reports the state of Flux {{ $labels.customresource_kind }} objects. `kubectl -n observability logs deploy/kube-state-metrics`; check its customResourceState versions against `kubectl api-resources | grep toolkit.fluxcd.io`.'
+        - alert: FluxControllerMetricsAbsent
+          # A stopped Flux controller freezes the objects it owns at their last status, often
+          # Ready=True: FluxResourceNotReady cannot see it. The controllers' own metrics
+          # (PodMonitor observability/flux-system, monitors.yaml) disappear with them, so:
+          # one absent() per controller, through a kind only it reconciles.
+          expr: |
+            absent(gotk_reconcile_duration_seconds_count{kind="Kustomization"})
+              or absent(gotk_reconcile_duration_seconds_count{kind="HelmRelease"})
+              or absent(gotk_reconcile_duration_seconds_count{kind="GitRepository"})
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'No reconcile metrics for Flux {{ $labels.kind }}: its controller is down or unscraped'
+            description: 'The controller reconciling {{ $labels.kind }} objects (kustomize-, helm- or source-controller) exposes no gotk_reconcile_duration_seconds: it is not running, or Prometheus cannot scrape it. `kubectl -n flux-system get pods`, then the Prometheus target observability/flux-system.'

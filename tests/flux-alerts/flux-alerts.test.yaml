@@ -1,0 +1,211 @@
+# promtool unit tests of the bretagne-flux PrometheusRule (observability/rules.yaml).
+# rules.yaml is the rule's spec, cut out of `kubectl kustomize observability` by run.mjs:
+#   node tests/flux-alerts/run.mjs
+# Series carry the labels the cluster's scrapes give them: kube-state-metrics' custom resource
+# state (observability/kube-prometheus-stack.yaml) for gotk_resource_info, the Flux
+# controllers' PodMonitor (observability/monitors.yaml) for gotk_reconcile_duration_seconds.
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # FluxResourceNotReady
+  - interval: 1m
+    input_series:
+      # Healthy: Ready all along.
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="apps", ready="True", suspended="false", revision="main@sha1:1111", source_name="flux-system"}'
+        values: '1x30'
+      # Failing (e.g. SOPS decryption): False, and Unknown during each retry's reconcile. Each
+      # flip is a new series for kube-state-metrics: the old one goes stale.
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="observability", ready="False", suspended="false", revision="main@sha1:1111", source_name="flux-system"}'
+        values: '1 1 1 1 stale 1 1 1 1 stale 1 1 1 1 stale 1 1 1 1 stale 1 1 1 1 stale 1 1 1 1 stale 1'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="observability", ready="Unknown", suspended="false", revision="main@sha1:1111", source_name="flux-system"}'
+        values: '_ _ _ _ 1 stale _ _ _ 1 stale _ _ _ 1 stale _ _ _ 1 stale _ _ _ 1 stale _ _ _ 1 stale'
+      # Failing source: a HelmRepository that cannot be fetched.
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="grafana", ready="False", suspended="false", revision="sha256:2222", url="https://grafana.github.io/helm-charts"}'
+        values: '1x30'
+      # Blip: a HelmRelease upgrade in progress (Unknown) then failed (False) for 10m, then Ready.
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="Unknown", suspended="false", revision="6.0.0", chart_name="loki"}'
+        values: '1x4 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="False", suspended="false", revision="6.0.0", chart_name="loki"}'
+        values: '_ _ _ _ _ 1x4 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="True", suspended="false", revision="6.0.1", chart_name="loki"}'
+        values: '_ _ _ _ _ _ _ _ _ _ 1x20'
+      # Suspended on purpose: not Ready, but not alerted.
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="agent-sandbox", ready="False", suspended="true", revision="main@sha1:1111", source_name="flux-system"}'
+        values: '1x30'
+    alert_rule_test:
+      # Pending, not firing, before the 20m.
+      - eval_time: 19m
+        alertname: FluxResourceNotReady
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: FluxResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              customresource_kind: HelmRepository
+              exported_namespace: flux-system
+              name: grafana
+            exp_annotations:
+              summary: 'Flux HelmRepository flux-system/grafana not Ready for 20m'
+              description: 'Flux has not reconciled it for 20 minutes: what it carries is not applied. `flux get all -A --status-selector ready=false`, then `kubectl -n flux-system describe HelmRepository grafana` for the reason (SOPS decryption, kustomize build, Helm install/upgrade, source fetch).'
+          # Flipping False/Unknown every 5m did not restart the 20m.
+          - exp_labels:
+              severity: warning
+              customresource_kind: Kustomization
+              exported_namespace: flux-system
+              name: observability
+            exp_annotations:
+              summary: 'Flux Kustomization flux-system/observability not Ready for 20m'
+              description: 'Flux has not reconciled it for 20 minutes: what it carries is not applied. `flux get all -A --status-selector ready=false`, then `kubectl -n flux-system describe Kustomization observability` for the reason (SOPS decryption, kustomize build, Helm install/upgrade, source fetch).'
+      # The 10m HelmRelease blip never fired: same two alerts at 29m, no loki, apps, agent-sandbox.
+      - eval_time: 29m
+        alertname: FluxResourceNotReady
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              customresource_kind: HelmRepository
+              exported_namespace: flux-system
+              name: grafana
+            exp_annotations:
+              summary: 'Flux HelmRepository flux-system/grafana not Ready for 20m'
+              description: 'Flux has not reconciled it for 20 minutes: what it carries is not applied. `flux get all -A --status-selector ready=false`, then `kubectl -n flux-system describe HelmRepository grafana` for the reason (SOPS decryption, kustomize build, Helm install/upgrade, source fetch).'
+          - exp_labels:
+              severity: warning
+              customresource_kind: Kustomization
+              exported_namespace: flux-system
+              name: observability
+            exp_annotations:
+              summary: 'Flux Kustomization flux-system/observability not Ready for 20m'
+              description: 'Flux has not reconciled it for 20 minutes: what it carries is not applied. `flux get all -A --status-selector ready=false`, then `kubectl -n flux-system describe Kustomization observability` for the reason (SOPS decryption, kustomize build, Helm install/upgrade, source fetch).'
+
+  # FluxResourceNotReady: healthy alone, silent.
+  - interval: 1m
+    input_series:
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="apps", ready="True", suspended="false", revision="main@sha1:1111", source_name="flux-system"}'
+        values: '1x60'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="GitRepository", exported_namespace="flux-system", name="flux-system", ready="True", suspended="false", revision="main@sha1:1111", url="ssh://git@github.com/arnaultbretagne/infra-k8s.git"}'
+        values: '1x60'
+      # An OCI HelmRepository is static: Flux never reconciles it, so it has no status and its
+      # series no `ready` label (live: flux-system/flux-operator, 2026-11-19).
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="flux-operator", url="oci://ghcr.io/controlplaneio-fluxcd/charts"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: FluxResourceNotReady
+        exp_alerts: []
+
+  # FluxResourceMetricsAbsent: HelmRelease series gone from 5m on.
+  - interval: 1m
+    input_series:
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="apps", ready="True", suspended="false"}'
+        values: '1x30'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="True", suspended="false"}'
+        values: '1x4 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="GitRepository", exported_namespace="flux-system", name="flux-system", ready="True", suspended="false"}'
+        values: '1x30'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="grafana", ready="True", suspended="false"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: kube-state-metrics
+              customresource_kind: HelmRelease
+            exp_annotations:
+              summary: 'No gotk_resource_info for Flux HelmRelease: FluxResourceNotReady is blind'
+              description: 'kube-state-metrics no longer reports the state of Flux HelmRelease objects. `kubectl -n observability logs deploy/kube-state-metrics`; check its customResourceState versions against `kubectl api-resources | grep toolkit.fluxcd.io`.'
+
+  # FluxResourceMetricsAbsent: healthy, and a 5m kube-state-metrics restart (every series gone,
+  # back under a new pod) stays silent.
+  - interval: 1m
+    input_series:
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="apps", ready="True", suspended="false"}'
+        values: '1x9 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="True", suspended="false"}'
+        values: '1x9 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="GitRepository", exported_namespace="flux-system", name="flux-system", ready="True", suspended="false"}'
+        values: '1x9 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="grafana", ready="True", suspended="false"}'
+        values: '1x9 stale'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-1", customresource_group="kustomize.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="Kustomization", exported_namespace="flux-system", name="apps", ready="True", suspended="false"}'
+        values: '_x15 1x30'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-1", customresource_group="helm.toolkit.fluxcd.io", customresource_version="v2", customresource_kind="HelmRelease", exported_namespace="observability", name="loki", ready="True", suspended="false"}'
+        values: '_x15 1x30'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-1", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="GitRepository", exported_namespace="flux-system", name="flux-system", ready="True", suspended="false"}'
+        values: '_x15 1x30'
+      - series: 'gotk_resource_info{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-1", customresource_group="source.toolkit.fluxcd.io", customresource_version="v1", customresource_kind="HelmRepository", exported_namespace="flux-system", name="grafana", ready="True", suspended="false"}'
+        values: '_x15 1x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: FluxResourceMetricsAbsent
+        exp_alerts: []
+
+  # FluxControllerMetricsAbsent: kustomize-controller gone from 5m on; helm-controller restarts
+  # (3m without series, back under a new pod, its counter from 0); source-controller healthy.
+  - interval: 1m
+    input_series:
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="kustomize-controller-0", kind="Kustomization", exported_namespace="flux-system", name="apps"}'
+        values: '0+1x4 stale'
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="helm-controller-0", kind="HelmRelease", exported_namespace="observability", name="loki"}'
+        values: '0+1x9 stale'
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="helm-controller-1", kind="HelmRelease", exported_namespace="observability", name="loki"}'
+        values: '_x13 0+1x30'
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="source-controller-0", kind="GitRepository", exported_namespace="flux-system", name="flux-system"}'
+        values: '0+1x45'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: FluxControllerMetricsAbsent
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: FluxControllerMetricsAbsent
+        exp_alerts: []
+      # Only kustomize-controller: the helm-controller restart never reached the 10m.
+      - eval_time: 16m
+        alertname: FluxControllerMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kind: Kustomization
+            exp_annotations:
+              summary: 'No reconcile metrics for Flux Kustomization: its controller is down or unscraped'
+              description: 'The controller reconciling Kustomization objects (kustomize-, helm- or source-controller) exposes no gotk_reconcile_duration_seconds: it is not running, or Prometheus cannot scrape it. `kubectl -n flux-system get pods`, then the Prometheus target observability/flux-system.'
+      - eval_time: 40m
+        alertname: FluxControllerMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              kind: Kustomization
+            exp_annotations:
+              summary: 'No reconcile metrics for Flux Kustomization: its controller is down or unscraped'
+              description: 'The controller reconciling Kustomization objects (kustomize-, helm- or source-controller) exposes no gotk_reconcile_duration_seconds: it is not running, or Prometheus cannot scrape it. `kubectl -n flux-system get pods`, then the Prometheus target observability/flux-system.'
+
+  # FluxControllerMetricsAbsent: every controller healthy, silent.
+  - interval: 1m
+    input_series:
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="kustomize-controller-0", kind="Kustomization", exported_namespace="flux-system", name="apps"}'
+        values: '0+1x60'
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="helm-controller-0", kind="HelmRelease", exported_namespace="observability", name="loki"}'
+        values: '0+1x60'
+      - series: 'gotk_reconcile_duration_seconds_count{namespace="flux-system", pod="source-controller-0", kind="GitRepository", exported_namespace="flux-system", name="flux-system"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: FluxControllerMetricsAbsent
+        exp_alerts: []
