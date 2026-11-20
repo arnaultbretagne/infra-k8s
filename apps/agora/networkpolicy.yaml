@@ -34,7 +34,7 @@ spec:
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
     # The MCP server (Agora's docs/specs/mcp.md): the gateway alone, whose route `agora` has checked the
-    # token and names the caller in x-agora-execution — which the server trusts on this port only
+    # execution's JWT and forwards it, which the server checks again — reaching the port proves nothing
     # (apps/agora-gateway/networkpolicy.yaml, the other half). No other Pod, the sandboxes included; the node
     # reaches it anyway, as Cilium lets a node reach every port of its Pods (measured 2026-11-02: 401 from g4).
     - fromEndpoints:
