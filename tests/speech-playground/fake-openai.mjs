@@ -1,7 +1,8 @@
 // A stand-in for the cluster's model services (stt.speech, tts.speech): OpenAI's
 // POST /v1/audio/transcriptions and POST /v1/audio/speech, answering what fakeTranscript and fakeSpeech
 // make of the request, so the test knows exactly what the playground must relay. GET /_received lists
-// the requests it got. Serves when FAKE_SERVE=1; the test imports it for fakeTranscript and fakeSpeech.
+// the requests it got. A text containing CUT gets an answer that breaks off after 20 of the 10000 bytes it
+// announces. Serves when FAKE_SERVE=1; the test imports it for fakeTranscript and fakeSpeech.
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
@@ -29,6 +30,12 @@ if (process.env.FAKE_SERVE === "1") {
       for await (const c of req) chunks.push(c)
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
       received.push({ path: req.url, headers: req.headers, body })
+      if (body.input.includes('CUT')) {
+        // Announces 10000 bytes, sends 20, and hangs up: a service that breaks off mid-stream.
+        res.writeHead(200, { 'content-type': 'audio/mpeg', 'content-length': 10000 })
+        res.write(fakeSpeech(body).subarray(0, 20))
+        return setTimeout(() => req.socket.destroy(), 50)
+      }
       res.writeHead(200, { 'content-type': 'audio/mpeg' })
       return res.end(fakeSpeech(body))
     }

@@ -1,19 +1,19 @@
-// The playground, running locally (targets.mjs), against the two fakes: STT and TTS requests passed through it
-// come back as the fakes answered them; the fake Xiaomi gets the test key; no answer sent to the browser (API or
-// page, success or error, headers included) holds the key; without the key the playground runs and lists Xiaomi as
-// unavailable. The live proof, with the real speech bricks, is the preview of the pull request (README.md).
+// The playground's API, running locally (targets.mjs), against the two fakes: STT and TTS requests passed through it
+// come back as the fakes answered them; the fake Xiaomi gets the test key; no answer sent to the browser (success or
+// error, headers included) holds the key, not even the key a request read before it was rotated or removed; a stream
+// the service breaks off reaches the browser broken off; without the key the playground runs and lists Xiaomi as
+// unavailable. The page itself is page.test.mjs; the live proof, with the real speech bricks, is the preview of the
+// pull request (README.md).
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { writeFileSync, mkdtempSync, readFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { start } from './targets.mjs'
 import { fakeTranscript, fakeSpeech } from './fake-openai.mjs'
 import { fakeMimoAudio } from './fake-mimo.mjs'
-import { drivePage } from './browser.mjs'
 
 const KEY = `test-mimo-key-${randomBytes(12).toString('hex')}`
+const ROTATED = `test-mimo-key-rotated-${randomBytes(12).toString('hex')}`
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let t
 const seen = [] // every answer the playground gave: { what, status, headers, body }
@@ -123,41 +123,45 @@ test('an upstream error that echoes the key reaches the browser with the key scr
   assert.equal((await received(t.fakeMimo)).at(-1).headers['api-key'], KEY, 'the fake did get the key, and echoed it')
 })
 
-test('the page: STT from the microphone and from a file, TTS from both services, with their timings', { timeout: 180000 }, async () => {
-  const file = join(mkdtempSync(join(tmpdir(), 'speech-audio-')), 'tone.wav')
-  writeFileSync(file, AUDIO)
-  const asks = [
-    { service: 'cluster-tts', model: 'kokoro', voice: 'ff_siwis', input: 'Salut depuis la page' },
-    { service: 'xiaomi-mimo', model: 'mimo-v2.5-tts', voice: 'Milo', input: 'Hello from the page' },
-  ]
-  const { shown, answers } = await drivePage(t.base, { audioFile: file, tts: asks })
-  for (const a of answers) seen.push({ what: `page ${a.url}`, status: a.status, headers: a.headers, body: a.body })
-  assert.deepEqual(shown.errors, [])
-
-  assert.match(shown.micInput, /^micro\.wav/)
-  assert.match(shown.micText, new RegExp(`^fake transcript by ${STT_MODELS[0].replace(/\./g, '\\.')} of \\d+ bytes`))
-  assert.match(shown.micMetrics, /Durée de la requête : \d+ ms/)
-  assert.equal(shown.fileText, fakeTranscript(STT_MODELS[1], AUDIO))
-  assert.match(shown.fileMetrics, /Durée de la requête : \d+ ms/)
-
-  const ttsAnswers = answers.filter((a) => a.url.endsWith('/api/tts'))
-  assert.equal(ttsAnswers.length, 2)
-  assert.deepEqual(ttsAnswers[0].body, fakeSpeech({ ...asks[0], response_format: 'mp3' }))
-  assert.deepEqual(ttsAnswers[1].body, fakeMimoAudio({ model: asks[1].model, messages: [{ role: 'assistant', content: asks[1].input }], audio: { format: 'wav', voice: 'Milo' } }))
-  for (const s of shown.tts) {
-    assert.match(s.metrics, /^Premier octet : \d+ ms · Durée totale : \d+ ms$/)
-    assert.equal(s.error, '')
-    assert.match(s.audioSrc, /^blob:/)
+test('a key rotated or removed while a request is in flight is still scrubbed from its answer', { timeout: 30000 }, async () => {
+  for (const [what, change] of [['rotated', () => t.setKey(ROTATED)], ['removed', () => t.removeKey()]]) {
+    await t.setKey()
+    const before = (await received(t.fakeMimo)).length
+    // The fake holds its answer (SLOW) until released, then echoes the key it got (ECHO-KEY): the key the request
+    // read when it started, which the file no longer holds by then.
+    const pending = tts({ service: 'xiaomi-mimo', model: 'mimo-v2.5-tts', voice: 'Mia', input: 'ECHO-KEY SLOW please' })
+    while ((await received(t.fakeMimo)).length === before) await sleep(20)
+    await change()
+    await fetch(`${t.fakeMimo}/_release`, { method: 'POST' })
+    const r = await pending
+    assert.equal((await received(t.fakeMimo)).at(-1).headers['api-key'], KEY, `${what}: the request carried the key it read first`)
+    assert.equal(r.status, 502)
+    assert.ok(!r.body.includes(KEY), `${what}: the key of the request in the answer: ${r.body}`)
+    assert.match(r.json().upstream.body, /\[redacted\]/, what)
   }
-  assert.equal(shown.history.length, 4)
+  await t.setKey()
+})
+
+test('an audio stream the service breaks off reaches the browser broken off, not as a complete answer', async () => {
+  // fake-openai announces 10000 bytes, sends 20 and hangs up.
+  const r = await fetch(`${t.base}/api/tts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ service: 'cluster-tts', model: 'kokoro', voice: 'ff_siwis', input: 'CUT here' }),
+  })
+  assert.equal(r.status, 200, 'the headers were sent before the service broke off')
+  await assert.rejects(r.arrayBuffer(), TypeError, 'reading the answer must fail')
+  // The playground still serves the next request.
+  assert.equal((await tts({ service: 'cluster-tts', model: 'kokoro', voice: 'ff_siwis', input: 'after the cut' })).status, 200)
 })
 
 test('no answer sent to the browser holds the key', async () => {
   for (const path of ['/', '/app.js', '/api/services', '/healthz', '/nope']) await call(path)
-  const forms = [KEY, Buffer.from(KEY).toString('base64'), Buffer.from(KEY).toString('base64url'), Buffer.from(KEY).toString('hex')]
+  const forms = [KEY, ROTATED].flatMap((k) => [k, Buffer.from(k).toString('base64'), Buffer.from(k).toString('base64url'), Buffer.from(k).toString('hex')])
   assert.ok(seen.length >= 20, `${seen.length} answers checked`)
   const leaks = seen.filter((a) => forms.some((f) => a.body.includes(f) || JSON.stringify(a.headers).includes(f))).map((a) => `${a.what} (${a.status})`)
   assert.deepEqual(leaks, [])
-  assert.ok(!(await t.logs()).includes(KEY), 'nor do its logs')
+  const logs = await t.logs()
+  assert.ok(![KEY, ROTATED].some((k) => logs.includes(k)), 'nor do its logs')
   console.log(`ℹ ${seen.length} answers checked, none holds the key`)
 })

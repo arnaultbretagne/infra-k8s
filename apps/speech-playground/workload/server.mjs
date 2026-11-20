@@ -35,23 +35,28 @@ function loadServices(file) {
   return config.services
 }
 
+// Every key this process has read, the current ones and those rotated away or removed since: a request
+// keeps the key it read when it started, and what its service answers may echo that key back.
+const knownKeys = new Set()
+
 // The key of a service, read fresh: a Secret mounted later, or rotated, is seen without a restart.
 function keyOf(service) {
   if (!service.auth) return null
+  let key
   try {
-    return readFileSync(service.auth.keyFile, 'utf8').trim() || undefined
+    key = readFileSync(service.auth.keyFile, 'utf8').trim() || undefined
   } catch {
-    return undefined
+    key = undefined
   }
+  if (key) knownKeys.add(key)
+  return key
 }
 
-// Every key the server holds, to scrub from what goes back to the browser.
+// Every key the server has held, scrubbed from what goes back to the browser, the longest first so that
+// a key containing another is scrubbed whole.
 function scrub(text) {
   let out = String(text)
-  for (const s of services) {
-    const key = keyOf(s)
-    if (key) out = out.split(key).join('[redacted]')
-  }
+  for (const key of [...knownKeys].sort((a, b) => b.length - a.length)) out = out.split(key).join('[redacted]')
   return out
 }
 
@@ -138,7 +143,12 @@ async function stt(req, res) {
   } catch (e) {
     return fail(res, 502, `${service.id} did not answer: ${e.cause?.code ?? e.name}`)
   }
-  const body = await r.text()
+  let body
+  try {
+    body = await r.text()
+  } catch (e) {
+    return fail(res, 502, `${service.id} broke off its answer: ${e.cause?.code ?? e.message}`)
+  }
   const upstreamMs = Math.round(performance.now() - started)
   if (!r.ok) return fail(res, 502, `${service.id} answered ${r.status}`, { upstream: { status: r.status, ms: upstreamMs, body: scrub(body).slice(0, 2000) } })
   let text = body
@@ -238,8 +248,11 @@ async function tts(req, res) {
   })
   try {
     for await (const chunk of r.body) res.write(chunk)
-  } catch {
-    // The service broke off mid-stream: the browser sees a truncated body.
+  } catch (e) {
+    // The service broke off mid-stream. The status is already sent: the browser learns it from the
+    // response itself, cut without its last chunk, which makes its read fail instead of ending well.
+    console.error(`${service.id} broke off its audio: ${e.cause?.code ?? e.message}`)
+    return res.destroy()
   }
   res.end()
 }

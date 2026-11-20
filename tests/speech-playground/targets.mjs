@@ -1,8 +1,9 @@
 // Where the playground runs for the test (TARGET=local, the only one): the same server.mjs, page and
 // services.json as processes on this machine, beside the two fakes, every url rewritten to them; the key is the
-// file auth.keyFile names. MUTATE=no-scrub runs a server whose scrub() does nothing: the leak test must then fail.
+// file auth.keyFile names. MUTATE=<name> runs a server with one of MUTATIONS below: the tests that guard what
+// it breaks must then fail (mutations.mjs checks which).
 import { spawn, execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,9 +14,11 @@ export const REPO = join(HERE, '../..')
 export const APP = join(REPO, 'apps/speech-playground')
 export const WORKLOAD = join(APP, 'workload')
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// kubectl for kustomize: KUBECTL, else the one ensure-kubectl.mjs fetched into .bin/ (npm test's pretest), else PATH's.
+export const KUBECTL = process.env.KUBECTL ?? (existsSync(join(HERE, '.bin/kubectl')) ? join(HERE, '.bin/kubectl') : 'kubectl')
 
 export function render(dir) {
-  return parseAllDocuments(execFileSync('kubectl', ['kustomize', dir], { encoding: 'utf8', maxBuffer: 64 << 20 }))
+  return parseAllDocuments(execFileSync(KUBECTL, ['kustomize', dir], { encoding: 'utf8', maxBuffer: 64 << 20 }))
     .map((d) => d.toJS())
     .filter(Boolean)
 }
@@ -31,11 +34,23 @@ async function waitHttp(url, timeoutMs = 30000) {
   }
 }
 
+// Each one undoes a guarantee of server.mjs, by a replacement in its source.
+export const MUTATIONS = {
+  // No scrubbing at all.
+  'no-scrub': ['function scrub(text) {', 'function scrub(text) {\n  return String(text)'],
+  // Only the keys the files hold now: the key a request in flight read before a rotation is not scrubbed.
+  'scrub-current-only': ['for (const key of [...knownKeys]', 'for (const key of [...services.map((s) => keyOf(s)).filter(Boolean)]'],
+  // A stream the service breaks off is ended as if complete.
+  'stream-cut-swallowed': ['return res.destroy()', 'return res.end()'],
+}
+
 function mutate(serverSource) {
-  if (process.env.MUTATE !== 'no-scrub') return serverSource
-  const mutated = serverSource.replace('function scrub(text) {', 'function scrub(text) {\n  return String(text)')
-  if (mutated === serverSource) throw new Error('MUTATE=no-scrub: scrub() not found in server.mjs')
-  return mutated
+  const name = process.env.MUTATE
+  if (!name) return serverSource
+  if (!MUTATIONS[name]) throw new Error(`MUTATE=${name}: not one of ${Object.keys(MUTATIONS).join(', ')}`)
+  const [from, to] = MUTATIONS[name]
+  if (!serverSource.includes(from)) throw new Error(`MUTATE=${name}: ${JSON.stringify(from)} not found in server.mjs`)
+  return serverSource.replace(from, to)
 }
 
 // --- local --------------------------------------------------------------------------------------
@@ -75,7 +90,9 @@ async function local(key) {
     base,
     fakeOpenai: `http://127.0.0.1:${openai}`,
     fakeMimo: `http://127.0.0.1:${mimo}`,
-    setKey: async () => writeFileSync(mimoService.auth.keyFile, `${key}\n`),
+    keyFile: mimoService.auth.keyFile,
+    setKey: async (value = key) => writeFileSync(mimoService.auth.keyFile, `${value}\n`),
+    removeKey: async () => rmSync(mimoService.auth.keyFile, { force: true }),
     logs: async () => logs.join(''),
     close: async () => procs.forEach((p) => p.kill()),
   }

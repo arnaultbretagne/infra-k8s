@@ -49,14 +49,16 @@ export async function drivePage(base, { audioFile, tts }) {
       await page.selectOption('#tts-model', t.model)
       await page.selectOption('#tts-voice', t.voice)
       await page.fill('#tts-input', t.input)
-      await page.evaluate(() => { document.getElementById('tts-metrics').textContent = '' })
+      await page.evaluate(() => { document.getElementById('tts-metrics').textContent = ''; document.getElementById('tts-error').textContent = '' })
       await page.click('#tts-run')
-      await page.waitForFunction(() => /Durée totale : \d+ ms/.test(document.getElementById('tts-metrics').textContent))
+      // Done when the button is enabled again: timings shown, or an error.
+      await page.waitForFunction(() => !document.getElementById('tts-run').disabled && document.getElementById('tts-metrics').textContent !== '…')
       shown.tts.push({
         ...t,
         metrics: await page.textContent('#tts-metrics'),
         error: await page.textContent('#tts-error'),
-        audioSrc: await page.getAttribute('#tts-audio', 'src')
+        audioSrc: await page.getAttribute('#tts-audio', 'src'),
+        audioHidden: await page.$eval('#tts-audio', (a) => a.hidden)
       })
     }
     shown.serviceOptions = await page.$$eval('#tts-service option', (os) => os.map((o) => ({ value: o.value, text: o.textContent, disabled: o.disabled })))

@@ -48,7 +48,18 @@ function serverTiming(response) {
   return m ? Number(m[1]) : null
 }
 
-// Reads a response to the end, noting when its first byte came.
+// An error answer's message: the playground's JSON, or whatever else came (the gate's page, a proxy's text).
+function errorOf(response, chunks) {
+  const text = new TextDecoder().decode(new Uint8Array(chunks.flatMap((c) => [...c])))
+  try {
+    const body = JSON.parse(text)
+    return `${body.error}${body.upstream?.body ? `\n${body.upstream.body}` : ''}`
+  } catch {
+    return `HTTP ${response.status} ${text.slice(0, 300)}`
+  }
+}
+
+// Reads a response to the end, noting when its first byte came. A body cut short makes it throw.
 async function readTimed(response, started) {
   const reader = response.body.getReader()
   const chunks = []
@@ -150,18 +161,20 @@ $('stt-run').addEventListener('click', async () => {
   try {
     const response = await fetch('/api/stt', { method: 'POST', body: form })
     const { chunks, ttfb, total } = await readTimed(response, started)
-    const body = JSON.parse(new TextDecoder().decode(await new Blob(chunks).arrayBuffer()))
-    const upstream = body.upstream?.ms ?? null
-    $('stt-metrics').textContent = `Durée de la requête : ${ms(total)} (service seul : ${ms(upstream)})`
     if (!response.ok) {
-      $('stt-result').textContent = `${body.error}${body.upstream?.body ? `\n${body.upstream.body}` : ''}`
+      $('stt-metrics').textContent = `Échec après ${ms(total)}`
+      $('stt-result').textContent = errorOf(response, chunks)
       $('stt-result').classList.add('error')
     } else {
+      const body = JSON.parse(new TextDecoder().decode(await new Blob(chunks).arrayBuffer()))
+      const upstream = body.upstream?.ms ?? null
+      $('stt-metrics').textContent = `Durée de la requête : ${ms(total)} (service seul : ${ms(upstream)})`
       $('stt-result').textContent = body.text
+      remember({ kind: 'STT', service, model, ttfb, total, upstream })
     }
-    remember({ kind: 'STT', service, model, ttfb, total, upstream })
   } catch (e) {
-    $('stt-result').textContent = e.message
+    $('stt-metrics').textContent = ''
+    $('stt-result').textContent = `Réponse interrompue : ${e.message}`
     $('stt-result').classList.add('error')
   } finally {
     $('stt-run').disabled = false
@@ -180,6 +193,7 @@ $('tts-run').addEventListener('click', async () => {
   $('tts-run').disabled = true
   $('tts-error').textContent = ''
   $('tts-metrics').textContent = '…'
+  $('tts-audio').hidden = true
   const started = performance.now()
   try {
     const response = await fetch('/api/tts', {
@@ -188,20 +202,21 @@ $('tts-run').addEventListener('click', async () => {
       body: JSON.stringify(request),
     })
     const { chunks, ttfb, total } = await readTimed(response, started)
-    const upstream = serverTiming(response)
-    $('tts-metrics').textContent = `Premier octet : ${ms(ttfb)} · Durée totale : ${ms(total)}`
     if (!response.ok) {
-      const body = JSON.parse(new TextDecoder().decode(await new Blob(chunks).arrayBuffer()))
-      $('tts-error').textContent = `${body.error}${body.upstream?.body ? `\n${body.upstream.body}` : ''}`
+      $('tts-metrics').textContent = `Échec après ${ms(total)}`
+      $('tts-error').textContent = errorOf(response, chunks)
     } else {
+      $('tts-metrics').textContent = `Premier octet : ${ms(ttfb)} · Durée totale : ${ms(total)}`
       const audio = $('tts-audio')
       audio.src = URL.createObjectURL(new Blob(chunks, { type: response.headers.get('content-type') }))
       audio.hidden = false
       audio.play().catch(() => {})
+      remember({ kind: 'TTS', ...request, ttfb, total, upstream: serverTiming(response) })
     }
-    remember({ kind: 'TTS', ...request, ttfb, total, upstream })
   } catch (e) {
-    $('tts-error').textContent = e.message
+    // The request failed, or its answer was cut short: no audio, no timings, nothing in the history.
+    $('tts-metrics').textContent = ''
+    $('tts-error').textContent = `Réponse interrompue : ${e.message}`
   } finally {
     $('tts-run').disabled = false
   }
