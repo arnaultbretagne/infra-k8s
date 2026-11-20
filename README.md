@@ -20,7 +20,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 | Auth middleware | oauth2-proxy (ForwardAuth OIDC gate) | [0021](docs/adr/0021-oauth2-proxy-oidc-gate.md) ² |
 | Encryption at rest | EncryptionConfiguration (AES-CBC) | [0011](docs/adr/0011-encryption-at-rest.md) |
 | Database | CloudNativePG + Barman S3 backup | [0012](docs/adr/0012-cloudnativepg-database.md) |
-| Credential injection | OneCLI (MITM proxy) — *deferred* | [0013](docs/adr/0013-onecli-credential-gateway.md) |
+| Credential injection | agentgateway (`apps/agora-gateway`); OneCLI removed | [0013](docs/adr/0013-onecli-credential-gateway.md) |
 | Observability | Prometheus + Loki + Grafana + Alloy | [0014](docs/adr/0014-observability-stack.md) |
 | CI/CD | Flux Image Automation + Renovate | [0015](docs/adr/0015-ci-cd-image-updates.md) |
 | Access boundaries | Deploy key; AI agent excluded from infra-k8s | [0016](docs/adr/0016-access-boundaries.md) |
@@ -45,7 +45,7 @@ Decisions are documented as ADRs in [`docs/adr/`](docs/adr/). Key choices:
 > the agent platform / code-server / obsidian. *Guardrails (partial):* flux-system PSS `restricted` +
 > ingress NetworkPolicy, PriorityClasses, per-app LimitRanges + CiliumNetworkPolicies. *Still to do:*
 > ResourceQuotas + egress allow-lists (0020), CI/CD image automation + Renovate (0015), preview-in-prod
-> (0017), HTTP→HTTPS redirect. *Deferred:* OneCLI (0013). MetalLB removed (0007 superseded — the edge is
+> (0017), HTTP→HTTPS redirect. MetalLB removed (0007 superseded — the edge is
 > a Traefik Service with `externalIPs`, not MetalLB/hostPort).
 >
 > New here? Start with **[`docs/hosting-an-app.md`](docs/hosting-an-app.md)** — the one playbook for
