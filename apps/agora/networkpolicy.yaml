@@ -1,6 +1,7 @@
 # Default-deny plus the flows of the server: Traefik → oauth2-proxy → server; the server reaches the
 # Kubernetes API (claims), the sandboxes' bridge port, its database, the gateway (the accounts'
-# limits) and R2 (the files), nothing else. The other half of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml,
+# limits), R2 (the files) and id.bretagne.dev (Pocket-ID's keys, to check who calls), nothing else.
+# The other half of the bridge flow is apps/agora-sandboxes/networkpolicy.yaml,
 # of the gateway's apps/agora-gateway/networkpolicy.yaml.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -27,7 +28,9 @@ spec:
             app: oauth2-proxy
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    - fromEntities: [host] # kubelet probes, and the scripted cases run from the node
+    # kubelet probes (/healthz, open), and the scripted cases and operator tools run from the node, each
+    # with its service token: reaching the port proves nothing (server.yaml, IDENTITY).
+    - fromEntities: [host]
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }, { port: "8081", protocol: TCP }]
     # The MCP server (Agora's docs/specs/mcp.md): the gateway alone, whose route `agora` has checked the
@@ -78,9 +81,20 @@ spec:
         - ports: [{ port: "3000", protocol: TCP }]
     # R2, where Agora's files live (Agora's docs/specs/files.md): the bucket `agora-files` on
     # *.r2.cloudflarestorage.com. HTTPS to the world, as for the other apps until toFQDNs is adopted.
-    - toEntities: [world]
+    # Also id.bretagne.dev, Pocket-ID's discovery document and keys (server.yaml, IDENTITY_ISSUER): over
+    # HTTPS by its public name, the address its discovery document gives, so the keys are the ones its
+    # certificate vouches for — the in-cluster Service is plain HTTP on 1411. The name resolves to the
+    # line's public address (world), which the router sends back to the node; a node holding the
+    # address itself is `host`, and Cilium may translate it to the Traefik Pod: the three ways every
+    # gate's policy allows (oauth2-proxy below).
+    - toEntities: [world, host]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
