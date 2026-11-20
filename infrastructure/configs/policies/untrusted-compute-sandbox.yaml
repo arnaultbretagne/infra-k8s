@@ -1,9 +1,14 @@
-# ADR 0027 §4 — untrusted-compute pods must be sandboxed. CNPG-managed pods exempt
-# (trusted upstream software). The binding selects ONLY namespaces carrying the untrusted-compute
-# profile label: today that is `agora-runs`, `agora-sandboxes` (infra-k8s ADR 0028 — run namespaces
-# are labelled from birth, no "label later" debt) and every preview namespace `pv-<app>-pr<n>`,
-# which preview-requires-kata.yaml further narrows to Kata alone. Two runtimes qualify as a
-# sandbox: `sandboxed` (gVisor) and `kata` (one VM per Pod).
+# ADR 0027 §4 — untrusted-compute pods must be sandboxed. The binding selects ONLY namespaces
+# carrying the untrusted-compute profile label: today that is `agora-runs`, `agora-sandboxes`
+# (infra-k8s ADR 0028 — run namespaces are labelled from birth, no "label later" debt) and every
+# preview namespace `pv-<app>-pr<n>`, which preview-requires-kata.yaml further narrows to Kata alone.
+# Two runtimes qualify as a sandbox: `sandboxed` (gVisor) and `kata` (one VM per Pod).
+#
+# No exception, not even for CNPG (ADR 0027, amendment 2026-11-18). The policy used to admit any Pod
+# labelled `cnpg.io/cluster`, but whoever creates a Pod sets its labels: anyone allowed to create Pods
+# here could have run one outside the sandbox. No CNPG cluster runs in these namespaces — preview
+# databases live in `preview-system` — so the exception protected nothing. A database for untrusted
+# compute goes in a trusted namespace next to it, never in it.
 #
 # `agent-runs` carried the label too until the channels-era system was decommissioned
 # (2026-08-07); `agora-runs` inherited both the label and this binding unchanged.
@@ -21,8 +26,7 @@ spec:
         resources: ["pods"]
   validations:
     - expression: >-
-        (has(object.metadata.labels) && 'cnpg.io/cluster' in object.metadata.labels)
-        || (has(object.spec.runtimeClassName) && object.spec.runtimeClassName in ['sandboxed', 'kata'])
+        has(object.spec.runtimeClassName) && object.spec.runtimeClassName in ['sandboxed', 'kata']
       message: >-
         Pods in untrusted-compute namespaces must set runtimeClassName: sandboxed (gVisor) or kata
         (VM) (ADR 0027).
