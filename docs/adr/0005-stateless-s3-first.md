@@ -27,7 +27,7 @@ Some apps being migrated are genuinely stateful and not S3-native. Forcing them 
 | App | Why it is an exception | Persistence + backup |
 |---|---|---|
 | **code-server** | Persistent dev home, local repos, tooling cache, VS Code state — useful workspace state, not platform-canonical data | `local-path` PVC. No platform S3 backup by default: source code lives in Git, credentials are re-issuable, tooling is re-seeded by the entrypoint. Anything irreplaceable must be pushed/exported deliberately. |
-| **obsidian-sync mirror** | Local headless Obsidian mirror and sync session state | `local-path` PVC. No platform S3 backup: Obsidian Sync and enrolled devices are the source of truth; restore means re-enrolling the headless sync client and re-syncing the vault. |
+| **obsidian vault** | The Obsidian vault itself (`obsidian-data`, subPath `vault`), read and written by the MCP server and the web clipper | `local-path` PVC. This PVC is the vault's reference copy: no sync service mirrors it, so it cannot be re-synced from anywhere. |
 
 Anything not in this table is expected to be stateless or DB-backed (CloudNativePG, ADR 0012).
 
