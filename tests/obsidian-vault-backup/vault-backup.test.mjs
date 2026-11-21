@@ -632,6 +632,7 @@ for (const [what, full, error] of [
       assert.match(r.out, /ERROR : .*ListObjectsV2/, 'rclone says what failed');
       assert.match(r.out, error);
       assert.match(r.out, /R2 did not answer/);
+      assert.match(r.out, /WARNING: the R2 endpoint's host \(<id>\.0\.0\.1:\d+\) is not one label under r2\.cloudflarestorage\.com/);
       assert.doesNotMatch(r.out, /==> sync|backup DONE/);
       console.log(`# R2 that ${what}: the pass failed after ${seconds}s, with rclone's error (deadline: ${deadline}s)`);
     } finally {
@@ -639,6 +640,28 @@ for (const [what, full, error] of [
     }
   });
 }
+
+test('the R2 endpoint is checked against the network policy, the check without the account id', () => {
+  const env = { RCLONE_CONFIG_R2_TYPE: r2Type };
+  const runs = {
+    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com': true,
+    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.net': false,
+    'https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com': false,
+    'https://r2.cloudflarestorage.com': false,
+  };
+  for (const [endpoint, matches] of Object.entries(runs)) {
+    // No network: the check is printed, then R2 is unreachable at once.
+    const r = backup({ timeout: QUICK, env: { ...env, RCLONE_CONFIG_R2_ENDPOINT: endpoint } });
+    assert.ok(!r.timedOut, r.out);
+    const check = r.out.split('\n').filter((l) => /R2 endpoint/.test(l));
+    assert.equal(check.length, 1, r.out);
+    assert.doesNotMatch(check[0], /0123456789abcdef/, 'the check does not print the account id');
+    if (matches) assert.match(r.out, /==> R2 endpoint: <id>\.r2\.cloudflarestorage\.com, as the network policy allows/, endpoint);
+    else assert.match(r.out, /WARNING: the R2 endpoint's host .* is not one label under r2\.cloudflarestorage\.com/, endpoint);
+  }
+  // The pattern checked is the policy's.
+  assert.deepEqual(find('CiliumNetworkPolicy', 'obsidian-vault-backup').spec.egress[1].toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
+});
 
 // The two steps' budgets: no transfer started after them, none cut (soft), and a pass's worst case
 // inside the Job's deadline: SMALL_BUDGET + 2 x LARGE_BUDGET, plus what PR #397 accounts for.
