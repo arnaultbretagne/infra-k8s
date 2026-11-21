@@ -1,7 +1,9 @@
 # Stateful exception (ADR 0005): the Obsidian vault, under the vault/ subPath,
 # shared by the MCP server and the clipper — RWO is node-scoped, fine on
-# single-node. This PVC holds the vault itself, the reference copy: no other
-# client mirrors it, so it is not re-syncable from anywhere.
+# single-node; the backup Jobs mount vault/ read-only beside them. The vault is
+# backed up every 15 min, encrypted, to its own R2 bucket (vault-backup.yaml:
+# rclone sync to a crypt remote, replaced and deleted versions kept 7 days under
+# history/, weekly cryptcheck); restoring it is RESTORE.md.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

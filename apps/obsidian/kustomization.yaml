@@ -8,3 +8,13 @@ resources:
   - mcp-server.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - vault-backup.yaml
+  - vault-backup.secrets.yaml
+configMapGenerator:
+  # The backup's one script (vault-backup.yaml). No hash suffix: backup/restore-job.yaml, applied by
+  # hand outside this kustomization, mounts it by this name; a CronJob reads it at each run anyway.
+  - name: obsidian-vault-backup-scripts
+    files:
+      - backup/vault-backup.sh
+    options:
+      disableNameSuffixHash: true

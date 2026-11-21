@@ -5,8 +5,8 @@
 
 `run.mjs` renders `observability/` with `kubectl kustomize` (what the `observability` Flux
 Kustomization applies), cuts the rule's `spec` out of it into a plain rule file, then runs
-`promtool check rules` and `promtool test rules flux-alerts.test.yaml` on it. No workflow
-covers `observability/**`: run it by hand.
+`promtool check rules` and `promtool test rules flux-alerts.test.yaml` on it. The tests workflow runs it (`ci.sh`, which
+fetches promtool) when `observability/` changes; by hand:
 
 ```bash
 node tests/flux-alerts/run.mjs   # kubectl and promtool on PATH, or KUBECTL= / PROMTOOL=
