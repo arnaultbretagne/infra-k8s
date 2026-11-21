@@ -1,0 +1,2 @@
+# What run.mjs renders: the observability kustomization, as the `observability` Flux Kustomization applies it.
+observability/*
