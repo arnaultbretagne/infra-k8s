@@ -8,12 +8,13 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
   image, command, environment (`envFrom` resolved from the render) and mounts. `obsidian-data` is a
   directory with its `vault/` subPath, read-only where the manifest says so.
 - **Where:** `docker run` of the manifests' `rclone/rclone` image (the one `ha-config-backup` uses), its root
-  read-only, no capability, no privilege escalation, no network, as the caller's uid (the pod runs 1000; the
+  read-only, no capability, no privilege escalation, no network (the host's, for the two R2-out-of-reach cases
+  only: they reach a port of the test on 127.0.0.1), as the caller's uid (the pod runs 1000; the
   script does not depend on it). `RUNNER=local` instead runs `sh` and `rclone` from `PATH`, after checking
   that `rclone version` is the manifests' version.
 - **The one change:** the `r2` remote is rclone's `local` backend instead of `s3`
   (`RCLONE_CONFIG_R2_TYPE=local`), a directory standing for the bucket. The crypt remote `backup` over it
-  is the real one.
+  is the real one. The R2-out-of-reach cases keep the manifests' `s3`, their endpoint a port of the test.
 - **Secrets:** none real. The Secret's keys are the SOPS file's, with made-up values.
 
 | Case | Expected |
@@ -29,9 +30,13 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 | Retention | `history/` folders of passes older than 7 days purged, newer kept, others left alone; a month-old note replaced today stays (by pass time, not file age). |
 | An empty vault | Refused, nothing in the bucket touched. |
 | A crypt password still `REPLACE-ME` | Refused. |
+| R2 drops the connection (SYN unanswered, as a Cilium deny does), or accepts it and never answers | The manifests' own `r2` remote (s3), its endpoint a port of the test that never accepts (its queue full, for the drop): the pass fails within seconds (~20 s), before `==> sync`, with rclone's `ERROR` (`dial tcp …: i/o timeout`, `TLS handshake timeout`). Waited 90 s at most, far inside the Job's 840 s: the script as it hung on the cluster (`MUTATE=silent`) had still not written a line. |
+| A pass longer than its budget | `PASS_BUDGET` ≤ half the Job's deadline. The script, its budget made 15 s and its stats 5 s, R2 at 10 KiB/s: rclone's progress lines, then `max transfer duration reached`, exit 10, nothing half-stored; the next pass sends the rest and `verify` finds 0 differences. |
 
-`MUTATE=exclude|backup-dir|cryptcheck|retention` breaks that part of the rendered script; `ci.sh` runs
-each and requires the test to fail.
+`MUTATE=exclude|backup-dir|cryptcheck|retention|silent|budget` breaks that part of the rendered script
+(`silent`: rclone's default timeouts and retries, no check of R2 first; `budget`: no `--max-duration`);
+`ci.sh` runs each and requires the test to fail. The slow cases only run when unmutated or under their own
+mutation.
 
 ```bash
 cd tests/obsidian-vault-backup && npm ci
