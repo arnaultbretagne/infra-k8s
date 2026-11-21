@@ -1,8 +1,7 @@
 # obsidian-vault-backup: the vault backup's own script, run as deployed
 
-The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) does what it says, run by
-`.github/workflows/obsidian-vault-backup.yml` on every pull request touching `apps/obsidian` (until the
-operator moves it there, the file is `obsidian-vault-backup.workflow.yml` in this directory):
+The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) does what it says, run by the
+`tests` workflow (`ci.sh`, `ci.paths`; `tests/README.md`) on every pull request touching `apps/obsidian`:
 
 - **What runs:** `kubectl kustomize apps/obsidian`, as Flux applies it. The script is the rendered ConfigMap
   `obsidian-vault-backup-scripts`; each run takes a CronJob's (or `apps/obsidian/backup/restore-job.yaml`'s)
@@ -31,7 +30,7 @@ operator moves it there, the file is `obsidian-vault-backup.workflow.yml` in thi
 | An empty vault | Refused, nothing in the bucket touched. |
 | A crypt password still `REPLACE-ME` | Refused. |
 
-`MUTATE=exclude|backup-dir|cryptcheck|retention` breaks that part of the rendered script; the workflow runs
+`MUTATE=exclude|backup-dir|cryptcheck|retention` breaks that part of the rendered script; `ci.sh` runs
 each and requires the test to fail.
 
 ```bash

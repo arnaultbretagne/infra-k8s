@@ -1,0 +1,3 @@
+# The backup's manifests and script, and the ha-config-backup image it shares.
+apps/obsidian/*
+apps/home-assistant/config-backup.yaml
