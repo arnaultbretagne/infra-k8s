@@ -4,8 +4,8 @@
 // The real agentgateway release binary (its sha256 checked) runs the configuration this repository deploys, as
 // `kubectl kustomize apps/agora-gateway` renders it: only the files it reads, its ports and the server's address are
 // moved to local ones. Tokens are signed by Agora's own GrantSigner (packages/credentials at a pinned commit), with a
-// signing key made for the test. A stand-in for Agora's port 8082 records every message and the caller the gateway
-// named in it. No real secret is used.
+// signing key made for the test. A stand-in for Agora's port 8082 records every message, the JWT the gateway forwarded
+// and the caller it named. No real secret is used.
 //
 // Inputs (environment): AGORA_GRANTS, the path of Agora's packages/credentials/src/grants.ts; AGENTGATEWAY, the
 // binary; KUBECTL, kubectl (default `kubectl`).
@@ -161,7 +161,7 @@ async function send(profiles, { address = '127.0.0.1', path = '/mcp', method = '
       body: method === 'POST' ? JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) : undefined,
     })
     await response.body.text()
-    return { label, status: response.statusCode }
+    return { label, token, status: response.statusCode }
   } finally {
     await dispatcher.close()
   }
@@ -179,6 +179,22 @@ describe('the agora route on agentgateway 1.6.0', () => {
         ['POST', '/mcp', plain.label],
         ['POST', '/mcp', forged.label],
       ],
+    )
+  })
+
+  it('agora:read reaches Agora with the JWT its CONNECT carried as Authorization: Bearer, never an Authorization of the sandbox’s own (M15)', async () => {
+    const count = ctx.agora.seen.length
+    // Another execution's JWT, as an agent that read one would send it; a Basic of its own and a forged x-agora-execution.
+    const { token: other } = await ctx.signer.mint({ label: `agora ${randomUUID()}`, ttlSeconds: 600, profiles: ['agora:read'], address: '127.0.0.1' })
+    const sent = [
+      await send(['agora:read']),
+      await send(['agora:read'], { headers: { authorization: `Bearer ${other}` } }),
+      await send(['agora:read'], { headers: { authorization: 'Basic eDp5', 'x-agora-execution': `agora ${randomUUID()}` } }),
+    ]
+    assert.deepEqual(sent.map((s) => s.status), [200, 200, 200], ctx.log.join(''))
+    assert.deepEqual(
+      ctx.agora.seen.slice(count).map((s) => [s.method, s.path, s.authorization, s.execution]),
+      sent.map((s) => ['POST', '/mcp', `Bearer ${s.token}`, s.label]),
     )
   })
 

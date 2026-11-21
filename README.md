@@ -63,6 +63,7 @@ infrastructure/
   configs/          local-path-provisioner (+ legacy MetalLB pool, pending removal)
   gateway/          Traefik HelmRelease, Gateway resource, middlewares
 apps/               Application manifests (Pocket-ID, ...)
+tests/              Tests of what is deployed, run by CI (tests/README.md)
 docs/adr/           Architecture Decision Records
 ```
 
