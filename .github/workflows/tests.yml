@@ -1,0 +1,146 @@
+# Every test that is a folder tests/<name>/ holding a ci.paths file (tests/README.md). On a pull request or a
+# push to main, the tests whose paths changed; by hand, or when this file changes, all of them.
+# A test is added as a folder, never as a workflow: the GitHub App agents push with has no `workflows`
+# permission, and this run holds no secret and a read-only token, whatever the branch's tests do.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KUBECTL_URL: https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
+  KUBECTL_SHA256: 65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8
+
+jobs:
+  pick:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tests: ${{ steps.pick.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history: a pull request's changes are its head against its merge base.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A pull request is checked out as its merge commit: parent 1 is the base, parent 2 the head, and
+      # base...head is what the pull request changes (as `paths:` filters see it). A pattern matches as a
+      # bash pattern, `*` crossing `/`; a test's own folder always counts.
+      - name: The tests whose paths changed
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          all=false
+          changed=
+          case "$EVENT" in
+            pull_request) changed=$(git diff --name-only HEAD^1...HEAD^2) ;;
+            push)
+              if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+              else
+                all=true
+              fi ;;
+            *) all=true ;;
+          esac
+          if grep -qx '.github/workflows/tests.yml' <<<"$changed"; then all=true; fi
+
+          picked=()
+          {
+            echo '### Tests'
+            for list in tests/*/ci.paths; do
+              [ -e "$list" ] || continue
+              name=${list#tests/}; name=${name%/ci.paths}
+              why=
+              if $all; then
+                why='all tests run'
+              else
+                patterns=("tests/$name/*")
+                while read -r pattern _ || [ -n "$pattern" ]; do
+                  if [ -n "$pattern" ] && [ "${pattern:0:1}" != '#' ]; then patterns+=("$pattern"); fi
+                done < "$list"
+                while IFS= read -r file; do
+                  if [ -z "$file" ]; then continue; fi
+                  for pattern in "${patterns[@]}"; do
+                    # shellcheck disable=SC2053 # the pattern is matched as a pattern
+                    if [[ $file == $pattern ]]; then why="$file"; break 2; fi
+                  done
+                done <<<"$changed"
+              fi
+              if [ -n "$why" ]; then
+                picked+=("$name")
+                echo "- \`$name\`: $why"
+              else
+                echo "- \`$name\`: not run, none of its paths changed"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ${#picked[@]} -eq 0 ]; then
+            echo 'tests=[]' >> "$GITHUB_OUTPUT"
+          else
+            echo "tests=$(printf '%s\n' "${picked[@]}" | jq -Rsc 'split("\n") | map(select(. != ""))')" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_STEP_SUMMARY"
+
+  test:
+    needs: pick
+    if: needs.pick.outputs.tests != '[]'
+    name: ${{ matrix.test }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ${{ fromJSON(needs.pick.outputs.tests) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: kubectl, checked against its sha256
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL --retry 5 -o "$RUNNER_TEMP/bin/kubectl" "$KUBECTL_URL"
+          echo "$KUBECTL_SHA256  $RUNNER_TEMP/bin/kubectl" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/bin/kubectl"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # ci.sh when the test has one, else `npm ci` and `npm test`; run from the test's folder.
+      - name: tests/${{ matrix.test }}
+        working-directory: tests/${{ matrix.test }}
+        run: |
+          set -o pipefail
+          if [ -f ci.sh ]; then
+            bash ci.sh 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          else
+            { npm ci --no-audit --no-fund && npm test; } 2>&1 | tee "$RUNNER_TEMP/test.txt"
+          fi
+
+      - name: Summary
+        if: always()
+        env:
+          TEST: ${{ matrix.test }}
+        run: |
+          [ -f "$RUNNER_TEMP/test.txt" ] || exit 0
+          {
+            echo "### tests/$TEST"
+            echo '```'
+            grep -E '^ *(✔|✖|ℹ)' "$RUNNER_TEMP/test.txt" || tail -n 30 "$RUNNER_TEMP/test.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
