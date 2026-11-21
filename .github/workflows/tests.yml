@@ -28,7 +28,7 @@ jobs:
     outputs:
       tests: ${{ steps.pick.outputs.tests }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The whole history: a pull request's changes are its head against its merge base.
           fetch-depth: 0
@@ -105,7 +105,7 @@ jobs:
       matrix:
         test: ${{ fromJSON(needs.pick.outputs.tests) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
