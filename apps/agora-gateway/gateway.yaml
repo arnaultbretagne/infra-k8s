@@ -31,6 +31,39 @@ spec:
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
+      # agentgateway 1.6.0 does not start when a file a backendAuth reads is missing (tests/agora-gateway-antigravity):
+      # an optional Secret that is absent would take every route down at the next restart. So agy's routes read
+      # antigravity/login/access_token, where `login` is a link to the Secret's directory when it is mounted — the
+      # gateway then watches the kubelet's updates there as for every other credential (a link to the file itself
+      # is not followed on an update: tests/agora-gateway-antigravity) —, else a directory holding an empty file, so
+      # the gateway starts, every other route answers, and agy's answer 401 until a restart with the Secret back.
+      initContainers:
+        - name: antigravity-login
+          image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              if [ -e /etc/agentgateway/antigravity-secret/access_token ]; then
+                ln -sfn /etc/agentgateway/antigravity-secret /etc/agentgateway/antigravity/login
+                echo "antigravity-token mounted: agy's routes read it, watched"
+              else
+                mkdir -p /etc/agentgateway/antigravity/login
+                : > /etc/agentgateway/antigravity/login/access_token
+                echo "antigravity-token absent: an empty token in its place; agy's routes answer 401 until the gateway restarts with it"
+              fi
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - { name: antigravity, mountPath: /etc/agentgateway/antigravity }
+            - { name: antigravity-secret, mountPath: /etc/agentgateway/antigravity-secret, readOnly: true }
       containers:
         - name: gateway
           image: ghcr.io/agentgateway/agentgateway:v1.6.0@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
@@ -73,6 +106,11 @@ spec:
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
+            # The Google login's access token, for agy, rewritten by antigravity-refresher every 15 minutes: watched the
+            # same way. The routes read antigravity/login/access_token: antigravity-login (above) makes `login` a link to
+            # the Secret's directory, or a directory with an empty file when the Secret is absent.
+            - { name: antigravity, mountPath: /etc/agentgateway/antigravity, readOnly: true }
+            - { name: antigravity-secret, mountPath: /etc/agentgateway/antigravity-secret, readOnly: true }
             # The vault's bearer, rewritten by vault-refresher every 5 minutes: watched the same way.
             - { name: vault, mountPath: /etc/agentgateway/vault, readOnly: true }
       volumes:
@@ -132,6 +170,19 @@ spec:
         - name: claude
           secret:
             secretName: claude-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
+        # What agy's routes read: written by antigravity-login at start, a link or an empty file.
+        - name: antigravity
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        # Created empty by Flux, filled by antigravity-refresher (antigravity-refresher.yaml). Optional, and never read
+        # directly by the routes: absent, the gateway still starts (antigravity-login above); until the refresher's
+        # first run, Google answers 401 on agy's routes alone.
+        - name: antigravity-secret
+          secret:
+            secretName: antigravity-token
             optional: true
             defaultMode: 0440
             items:

@@ -174,3 +174,6 @@ a controller with CRDs, so it sits in `infrastructure/` with its own Flux instal
 [Agent Vault](apps/agent-vault/README.md) owns credentials and the proxy; it is a
 config-only app and reconciles with the `apps` layer. Its runbook covers owner
 bootstrap, the SSO-gated UI and backups before connecting consumers.
+
+The cluster's own Google login, for Agora's `antigravity` harness (agy): the login, where its
+refresh token goes, rotation and revocation — [`docs/antigravity-login.md`](docs/antigravity-login.md).

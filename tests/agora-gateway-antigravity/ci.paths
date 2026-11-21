@@ -1,0 +1,5 @@
+# The gateway's configuration and Deployment, the refresher and its network policy, as `kubectl kustomize
+# apps/agora-gateway` renders them; the pool that uses the routes; the offer.
+apps/agora-gateway/*
+apps/agora-sandboxes/catalogue/antigravity/*
+apps/agora/server.yaml

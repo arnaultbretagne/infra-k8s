@@ -15,6 +15,7 @@ resources:
   - previews-refresher.yaml
   - chatgpt-refresher.yaml
   - claude-refresher.yaml
+  - antigravity-refresher.yaml
   - vault-refresher.yaml
   - gateway.yaml
   - networkpolicy.yaml
