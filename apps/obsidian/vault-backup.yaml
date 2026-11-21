@@ -43,7 +43,7 @@ spec:
   jobTemplate:
     spec:
       # Under the 15 min period. The script ends a pass first, by rclone's own limits: R2 unreachable,
-      # rclone's error within seconds; its sync stopped by rclone at PASS_BUDGET (7 min).
+      # rclone's error within seconds; no transfer started after its budgets (2 + 4 min), none cut.
       activeDeadlineSeconds: 840
       backoffLimit: 0                   # the next pass is the retry
       template:

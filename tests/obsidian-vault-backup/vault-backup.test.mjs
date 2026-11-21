@@ -67,14 +67,19 @@ mkdirSync(r2);
 // Running a pod template's container.
 
 // MUTATE=<name> breaks the script on purpose: the run must then fail (the workflow checks it does).
+const SYNC_EXCLUDE = '      --exclude "$EXCLUDE" \\\n';
+const SYNC_BACKUP_DIR = '      --backup-dir "backup:history/$ts" \\\n';
 const MUTATIONS = {
-  exclude: [['      --exclude "$EXCLUDE" \\\n      --max-duration', '      --max-duration']],
-  'backup-dir': [['      --backup-dir "backup:history/$ts" \\\n', '']],
+  exclude: [[SYNC_EXCLUDE, ''], [SYNC_EXCLUDE, '']],
+  'backup-dir': [[SYNC_BACKUP_DIR, ''], [SYNC_BACKUP_DIR, '']],
   cryptcheck: [['--exclude "$EXCLUDE" -v\n    echo "==> verify DONE', '--exclude "$EXCLUDE" -v || true\n    echo "==> verify DONE']],
   retention: [['RETENTION_DAYS=7\n', 'RETENTION_DAYS=5\n']],
   // rclone's defaults and no check of R2 first: the script as it hung on the cluster.
   silent: [['export RCLONE_CONTIMEOUT=', 'true RCLONE_CONTIMEOUT='], ['reach_r2() {\n', 'reach_r2() {\n  return 0\n']],
-  budget: [['      --max-duration "$PASS_BUDGET" --cutoff-mode hard \\\n', '']],
+  // Step 2 without its budget; with a hard one, which cuts the transfer running; without step 1.
+  budget: [['      --max-duration "$LARGE_BUDGET" --cutoff-mode soft \\\n', '']],
+  hard: [['--max-duration "$LARGE_BUDGET" --cutoff-mode soft', '--max-duration "$LARGE_BUDGET" --cutoff-mode hard']],
+  'one-step': [['budget $SMALL_BUDGET"\n    rclone sync', 'budget $SMALL_BUDGET"\n    true rclone sync']],
 };
 const replaceAll = (content, pairs, what) => pairs.reduce((c, [from, to]) => {
   assert.ok(c.includes(from), `${what}: the script no longer has ${JSON.stringify(from)}`);
@@ -635,35 +640,70 @@ for (const [what, full, error] of [
   });
 }
 
-test('the sync\'s budget leaves half the Job\'s deadline to the rest of the pass', () => {
-  const script = find('ConfigMap', 'obsidian-vault-backup-scripts').data['vault-backup.sh'];
-  const budget = Number(script.match(/^PASS_BUDGET=(\d+)m$/m)[1]) * 60;
-  assert.match(script, /--max-duration "\$PASS_BUDGET" --cutoff-mode hard/);
-  assert.match(script, /--stats 1m/);
-  assert.ok(budget <= deadline / 2, `PASS_BUDGET ${budget}s, activeDeadlineSeconds ${deadline}s`);
+// The two steps' budgets: no transfer started after them, none cut (soft), and a pass's worst case
+// inside the Job's deadline: SMALL_BUDGET + 2 x LARGE_BUDGET, plus what PR #397 accounts for.
+const script = find('ConfigMap', 'obsidian-vault-backup-scripts').data['vault-backup.sh'];
+const minutes = (name) => Number(script.match(new RegExp(`^${name}=(\\d+)m$`, 'm'))[1]) * 60;
+test('the sync\'s budgets: soft, the larger files alone and largest first, inside the deadline', () => {
+  assert.match(script, /^SMALL=4M$/m);
+  assert.match(script, /--max-size "\$SMALL" \\\n\s+--max-duration "\$SMALL_BUDGET" --cutoff-mode soft/);
+  assert.match(script, /--check-first --order-by size,descending --transfers 1 \\\n\s+--max-duration "\$LARGE_BUDGET" --cutoff-mode soft/);
+  assert.doesNotMatch(script, /cutoff-mode hard/);
+  assert.ok(minutes('SMALL_BUDGET') + 2 * minutes('LARGE_BUDGET') <= deadline - 120,
+    `SMALL_BUDGET + 2 x LARGE_BUDGET leaves 2 min of the ${deadline}s deadline`);
 });
 
-test('a pass longer than its budget prints its progress, stops itself, and the next pass sends the rest', unless('budget'), async () => {
-  const BIG = 'attachments/recording.m4a';
-  write(BIG, randomBytes(400 * 1024), Date.now() / 1000);
-  // The same script, its 7 min budget 15 s and its stats every 5 s; R2 at 10 KiB/s: 40 s to send.
-  const r = backup({
-    rewrite: [['PASS_BUDGET=7m\n', 'PASS_BUDGET=15s\n'], ['--stats 1m', '--stats 5s']],
-    env: { RCLONE_BWLIMIT: '10K' }, timeout: 60,
-  });
-  assert.ok(!r.timedOut, r.out);
-  assert.equal(r.code, 10, r.out);
-  assert.ok((r.out.match(/Elapsed time:/g) ?? []).length >= 3, `rclone's progress, every 5 s:\n${r.out}`);
-  assert.match(r.out, /max transfer duration reached as set by --max-duration/);
-  assert.match(r.out, /==> sync stopped at its 15s budget: the next pass sends the rest/);
-  assert.doesNotMatch(r.out, /backup DONE/);
-  assert.doesNotMatch(rcloneOk(['lsf', '-R', 'backup:current']), /recording/, 'nothing half-stored');
+// The same script at 1/30 of its durations: budgets 4 s and 8 s, the Job's deadline 28 s; R2 at a
+// constant 32 KiB/s for every pass, the vault's sizes at that scale (SMALL 64 KiB).
+const SCALE = 30;
+const scaled = {
+  rewrite: [['SMALL=4M\n', 'SMALL=64k\n'], ['SMALL_BUDGET=2m\n', 'SMALL_BUDGET=4s\n'], ['LARGE_BUDGET=4m\n', 'LARGE_BUDGET=8s\n'],
+    ['--stats 1m', '--stats 2s'], ['--stats 1m', '--stats 2s']],
+  env: { RCLONE_BWLIMIT: '32K' },
+  timeout: deadline / SCALE,
+};
+const KiB = 1024;
+const RATE = 32 * KiB;
+const stored = () => rcloneOk(['lsf', '-R', '--files-only', 'backup:current']).trim().split('\n');
 
-  await pass();
-  assert.match(rcloneOk(['lsf', '-R', 'backup:current']), /^attachments\/recording\.m4a$/m);
+test('under constant conditions, a file longer than the budget is sent whole, and the passes converge', unless('budget', 'hard'), async () => {
+  // 16 s alone: twice the budget, inside the deadline (the review's 100 MiB at 200 KiB/s, 512 s of 840).
+  const BIG = ['attachments/lecture.mp4', 512 * KiB];
+  const MEDIUM = [1, 2, 3].map((i) => [`attachments/scan-${i}.pdf`, 128 * KiB]); // 4 s each
+  for (const [path, size] of [BIG, ...MEDIUM]) write(path, randomBytes(size), Date.now() / 1000);
+  const wanted = [BIG, ...MEDIUM].map(([p]) => p);
+  let done = false;
+  for (let i = 1; i <= 5 && !done; i++) {
+    const before = stored();
+    await sleep(1100);
+    const r = backup(scaled);
+    assert.ok(!r.timedOut, `pass ${i} reached the Job's deadline (${scaled.timeout}s at this scale):\n${r.out}`);
+    assert.ok([0, 10].includes(r.code), `pass ${i}:\n${r.out}`);
+    assert.match(r.out, /Elapsed time:/, 'rclone\'s progress');
+    const added = stored().filter((p) => !before.includes(p));
+    assert.ok(added.length > 0 || r.code === 0, `pass ${i} stored nothing:\n${r.out}`);
+    if (i === 1) assert.deepEqual(added.filter((p) => wanted.includes(p)), [BIG[0]], 'the largest first, longer than its budget, not cut');
+    console.log(`# pass ${i}: exit ${r.code}, stored ${added.join(', ') || 'nothing new'}`);
+    done = r.code === 0;
+  }
+  assert.ok(done, 'the passes converged to a complete pass');
+  for (const p of wanted) assert.ok(stored().includes(p), p);
   const v = verify();
   assert.equal(v.code, 0, v.out);
   assert.match(v.out, /0 differences found/);
+});
+
+test('a file too large for any pass does not hold back the notes', unless('one-step'), async () => {
+  // 32 s at 32 KiB/s, beyond the 28 s deadline: no pass can send it, and each is killed there.
+  const HUGE = 'attachments/raw-footage.mov';
+  write(HUGE, randomBytes(32 * RATE), Date.now() / 1000);
+  write('Inbox.md', 'marker-inbox: written during the huge upload.\n', Date.now() / 1000);
+  await sleep(1100);
+  const r = backup(scaled);
+  assert.ok(r.timedOut, `the pass was expected to reach the deadline:\n${r.out}`);
+  assert.match(r.out, /raw-footage\.mov/, 'rclone\'s progress names the file it is sending');
+  assert.equal(rcloneOk(['cat', 'backup:current/Inbox.md']), 'marker-inbox: written during the huge upload.\n');
+  rmSync(join(vault, HUGE));
 });
 
 test.after(() => rmSync(work, { recursive: true, force: true }));

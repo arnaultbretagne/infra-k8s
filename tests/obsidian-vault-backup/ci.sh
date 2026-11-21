@@ -6,7 +6,7 @@ npm test
 
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 echo '### Broken on purpose: each run must fail' >> "$summary"
-for mutate in exclude backup-dir cryptcheck retention silent budget; do
+for mutate in exclude backup-dir cryptcheck retention silent budget hard one-step; do
   out=$(mktemp)
   if MUTATE=$mutate npm test > "$out" 2>&1; then
     echo "::error::the test passed with MUTATE=$mutate"

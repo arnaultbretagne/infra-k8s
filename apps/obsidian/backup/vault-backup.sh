@@ -25,10 +25,19 @@ VAULT="${VAULT_DIR:?VAULT_DIR is the vault mount}"
 RETENTION_DAYS=7
 # Obsidian's window layout: rewritten on every click, worthless to restore.
 EXCLUDE='/.obsidian/workspace*.json'
-# How long one pass may sync. rclone stops it itself (hard cutoff: listing, checks and transfers),
-# with its own error, inside the Job's activeDeadlineSeconds (840 s, vault-backup.yaml) and after
-# printing its progress every minute; what a pass did not send, the next one sends.
-PASS_BUDGET=7m
+# A pass syncs in two steps, each with a budget after which rclone starts no new transfer: one
+# running is never cut, it finishes. What a pass did not start, the next one sends.
+#   1. Every file up to SMALL (the notes, most attachments), 4 at a time, within SMALL_BUDGET: these
+#      are sent at every pass, whatever a large file does in step 2.
+#   2. Everything else, one file at a time, the largest first, within LARGE_BUDGET; then deletions.
+# Largest first and alone, a file starts as soon as it is the largest left and has the bandwidth to
+# itself: if it can be sent within the Job's deadline at all, it is sent by that pass. A later file
+# is no larger than one already sent, so it ends by twice the budget at the latest. Hence a pass ends
+# by about SMALL_BUDGET + 2 x LARGE_BUDGET = 10 min, inside activeDeadlineSeconds (840 s,
+# vault-backup.yaml): the PR that set these (#397) has the arithmetic.
+SMALL=4M
+SMALL_BUDGET=2m
+LARGE_BUDGET=4m
 
 # rclone gives up on R2 within seconds, and says so. With its defaults, one request R2 never answers
 # is retried for over an hour without a line at -v: 1 min to connect, 10 low-level retries, each of
@@ -81,19 +90,31 @@ case "${1:-}" in
     reach_r2
     ts="$(date -u +%Y%m%dT%H%M%SZ)"
     echo "==> sync $VAULT -> backup:current (replaced and deleted files -> backup:history/$ts)"
-    rc=0
+    # Exit 10: --max-duration, the budget reached. sync deletes nothing after an error.
+    small=0
+    echo "==> 1/2: files up to $SMALL, budget $SMALL_BUDGET"
     rclone sync "$VAULT" backup:current \
       --backup-dir "backup:history/$ts" \
       --exclude "$EXCLUDE" \
-      --max-duration "$PASS_BUDGET" --cutoff-mode hard \
+      --max-size "$SMALL" \
+      --max-duration "$SMALL_BUDGET" --cutoff-mode soft \
       --stats 1m \
-      --fast-list -v || rc=$?
-    if [ "$rc" -eq 10 ]; then
-      # Exit 10, --max-duration. An object is stored whole or not at all, and sync deletes nothing
-      # after an error: the next pass resumes from what this one stored.
-      echo "==> sync stopped at its $PASS_BUDGET budget: the next pass sends the rest" >&2
+      --fast-list -v || small=$?
+    [ "$small" -eq 0 ] || [ "$small" -eq 10 ] || exit "$small"
+    large=0
+    echo "==> 2/2: every file, one at a time, the largest first, budget $LARGE_BUDGET"
+    rclone sync "$VAULT" backup:current \
+      --backup-dir "backup:history/$ts" \
+      --exclude "$EXCLUDE" \
+      --check-first --order-by size,descending --transfers 1 \
+      --max-duration "$LARGE_BUDGET" --cutoff-mode soft \
+      --stats 1m \
+      --fast-list -v || large=$?
+    if [ "$small" -eq 10 ] || [ "$large" -eq 10 ]; then
+      echo "==> sync stopped at its budget, every transfer started finished: the next pass sends the rest" >&2
+      exit 10
     fi
-    [ "$rc" -eq 0 ] || exit "$rc"
+    [ "$large" -eq 0 ] || exit "$large"
     cutoff="$(date -u -d "@$(($(date +%s) - RETENTION_DAYS * 86400))" +%Y%m%dT%H%M%SZ)"
     echo "==> purge history older than $cutoff"
     # Exit 3: no history yet.
