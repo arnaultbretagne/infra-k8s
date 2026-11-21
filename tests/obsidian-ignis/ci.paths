@@ -1,0 +1,6 @@
+# Ignis in production and in its preview, and what they plug into: the gateway, Pocket-ID's clients, the catalogue.
+apps/obsidian/*
+apps/ignis/*
+apps/pocket-id/oidc-reconciler/spec.json
+infrastructure/gateway/gateway.yaml
+infrastructure/configs/previews/catalogue/ignis.yaml

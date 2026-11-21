@@ -1,0 +1,8 @@
+# The workload alone (ADR 0017 v4 §13): Deployment and Service, nothing else. Production lists it in
+# apps/obsidian/kustomization.yaml, which sets the namespace and puts the PVC obsidian-data in place of
+# the `data` emptyDir; a preview applies this folder as-is, from the PR's commit, into pv-ignis-pr<n>
+# (catalogue entry ignis). It stays at this path, the one the catalogue entry names.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ignis.yaml

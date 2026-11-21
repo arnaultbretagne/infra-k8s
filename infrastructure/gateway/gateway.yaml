@@ -120,6 +120,24 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Ignis (apps/obsidian): the Obsidian vault in a browser, behind its OIDC gate (oauth2-proxy,
+    # ALLOWED_GROUPS=admin). Routes from the obsidian namespace only: the vault is readable and
+    # writable through this host, so no other namespace may claim it.
+    - name: https-obsidian
+      port: 8443
+      protocol: HTTPS
+      hostname: obsidian.bretagne.dev
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: bretagne-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: obsidian
     # The redesign's UI showcase: a static page with an in-browser fake server, no data behind it.
     # Public on purpose (a design review surface), unlike https-agora.
     - name: https-agora-test
