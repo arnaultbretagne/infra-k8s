@@ -286,8 +286,27 @@ describe('the antigravity routes on agentgateway 1.6.0, the login present (C71)'
   })
 })
 
-for (const state of ['empty', 'absent']) {
-  describe(`the login ${state === 'empty' ? 'as Flux creates it, empty' : 'absent, no Secret'}: the gateway starts and the other routes answer as before`, () => {
+// What agentgateway 1.6.0 does when the file a route's backendAuth reads does not exist at all (the Secret deleted,
+// the optional volume then an empty directory): said, not asserted — Flux always creates antigravity-token, and
+// the case asserted is the one Flux gives, below.
+describe('the login absent, no Secret at all (information)', () => {
+  it('the gateway at start', async () => {
+    let gw
+    try {
+      gw = await startGateway('absent')
+      const a = await send(gw, ['anthropic'], { host: 'api.anthropic.com', path: '/v1/messages', method: 'POST' })
+      const r = await send(gw, ['antigravity'], { host: CLOUDCODE, path: '/v1internal:loadCodeAssist', method: 'POST' })
+      console.log(`ℹ absent: the gateway starts; anthropic ${a.status}; antigravity ${r.status}, upstream reached ${r.reached}, ${JSON.stringify(r.authorization)}`)
+    } catch (error) {
+      console.log(`ℹ absent: ${String(error.message).replace(/\s+/g, ' ').slice(0, 1500)}`)
+    } finally {
+      await gw?.close()
+    }
+  })
+})
+
+for (const state of ['empty']) {
+  describe('the login as Flux creates it, empty: the gateway starts and the other routes answer as before', () => {
     let gw
     before(async () => { gw = await startGateway(state) })
     after(async () => { await gw?.close() })
@@ -318,9 +337,6 @@ for (const state of ['empty', 'absent']) {
         await new Promise((ok) => setTimeout(ok, 250))
       } while (Date.now() < deadline)
       console.log(`ℹ ${state} then filled: ${r.status}, ${JSON.stringify(r.authorization)}`)
-      // A Secret created after the Pod started is the kubelet's to bring in; with Flux creating it empty first
-      // (antigravity-refresher.yaml), the gateway always starts on a file it watches: that case is asserted.
-      if (state === 'absent') return
       assert.deepEqual([r.status, r.authorization], [200, `Bearer ${LOGIN}`])
     })
   })

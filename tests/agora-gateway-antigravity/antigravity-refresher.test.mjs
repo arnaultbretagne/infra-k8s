@@ -17,10 +17,11 @@ import { parseAllDocuments } from 'yaml'
 const ROOT = new URL('../../', import.meta.url).pathname
 const own = parseAllDocuments(readFileSync(join(ROOT, 'apps/agora-gateway/antigravity-refresher.yaml'), 'utf8')).map((d) => d.toJS())
 const script = own.find((m) => m.kind === 'ConfigMap' && m.metadata.name === 'antigravity-refresher').data['refresh.mjs']
-const cronJob = own.find((m) => m.kind === 'CronJob')
+// The manifests as Flux applies them (kustomize reads 0440 as the octal mode, as Kubernetes does).
+const rendered = parseAllDocuments(execFileSync(process.env.KUBECTL ?? 'kubectl', ['kustomize', join(ROOT, 'apps/agora-gateway')], { encoding: 'utf8' })).map((d) => d.toJS())
+const cronJob = rendered.find((m) => m.kind === 'CronJob' && m.metadata.name === 'antigravity-refresher')
 const pod = cronJob.spec.jobTemplate.spec.template.spec
 const env = Object.fromEntries(pod.containers[0].env.map((e) => [e.name, e.value]))
-const rendered = parseAllDocuments(execFileSync(process.env.KUBECTL ?? 'kubectl', ['kustomize', join(ROOT, 'apps/agora-gateway')], { encoding: 'utf8' })).map((d) => d.toJS())
 
 const REFRESH = '1//the-refresh-token'
 const NEXT = '1//the-next-refresh-token'
