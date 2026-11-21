@@ -8,7 +8,7 @@ login, where its refresh token goes, how to tell it works, how to rotate or revo
 | --- | --- |
 | The pool | `apps/agora-sandboxes/catalogue/antigravity/`: image `agora-harness-antigravity`, base profile `antigravity`, a placeholder token file, no credential. |
 | The routes | `apps/agora-gateway/config/config.yaml`, `antigravity` (`daily-cloudcode-pa.googleapis.com`, `/v1internal:<method>`) and `antigravity-userinfo` (`GET www.googleapis.com/oauth2/v2/userinfo` exactly): `Authorization: Bearer` + `/etc/agentgateway/antigravity/access_token`. No route for `oauth2.googleapis.com` nor `play.googleapis.com`. |
-| The access token | The Secret `antigravity-token`, key `access_token`. Flux creates it empty; `antigravity-refresher` fills it every 15 minutes; the gateway mounts it (optional) and watches it. |
+| The access token | The Secret `antigravity-token`, key `access_token`. Flux creates it empty; `antigravity-refresher` fills it every 15 minutes; the gateway mounts it (optional) and watches it. **Never delete it**: agentgateway 1.6.0 will not start when a credential file is missing, which takes down every route (tests/agora-gateway-antigravity). To cut the token, empty it. |
 | The refresh token | `antigravity-session` (out of git) **or** `upstream-credentials`, key `antigravity-refresh-token` (SOPS): below. Read by `antigravity-refresher` only. |
 | The OAuth client | agy's own, public, in `apps/agora-gateway/antigravity-refresher.yaml` (`CLIENT_ID`, `CLIENT_SECRET`). |
 

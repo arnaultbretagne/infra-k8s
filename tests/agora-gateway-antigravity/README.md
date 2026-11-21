@@ -21,7 +21,8 @@ antigravity pool or the offer changes.
 | `antigravity` + `internet` | Google's other hosts and paths leave as the sandbox sent them, never with the login; agy's routes' uncovered paths still 403 (C72). |
 | No profile, `anthropic`, `chatgpt`, `internet` alone; a token used from another address | 403 on both routes. |
 | The access token swapped as the kubelet swaps `..data` | The next request carries the new one, no restart (C73). |
-| The login's volume empty (the Secret as Flux creates it), or absent (no Secret) | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; the placeholder never sent on. Empty, then filled: used with no restart. |
+| The login's volume empty (the Secret as Flux creates it) | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; agy's routes send an empty Bearer, never the placeholder. Then filled: used with no restart. |
+| The login's file absent (no Secret at all) | Said, not asserted (ℹ). agentgateway 1.6.0 **does not start** when a `backendAuth` file is missing (`read resource file …: No such file or directory`, seen in this test's first run): that is why Flux creates `antigravity-token` empty (`IfNotPresent`), which the refresher's test asserts. |
 | The access log | Route `antigravity` / `antigravity-userinfo`, the execution. |
 
 `antigravity-refresher.test.mjs` runs the refresher's script as `apps/agora-gateway/antigravity-refresher.yaml`
