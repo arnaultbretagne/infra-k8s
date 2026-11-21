@@ -11,12 +11,13 @@
 //   RUNNER=docker (default): docker run <the manifests' rclone image>, read-only root, the caller's
 //     uid (the pod runs 1000; the script does not depend on it), no capabilities.
 //   RUNNER=local: `sh` and `rclone` from PATH, whose version must be the manifests' one.
-import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import test from 'node:test';
@@ -66,29 +67,42 @@ mkdirSync(r2);
 // Running a pod template's container.
 
 // MUTATE=<name> breaks the script on purpose: the run must then fail (the workflow checks it does).
+const SYNC_EXCLUDE = '      --exclude "$EXCLUDE" \\\n';
+const SYNC_BACKUP_DIR = '      --backup-dir "backup:history/$ts" \\\n';
 const MUTATIONS = {
-  exclude: ['      --exclude "$EXCLUDE" \\\n      --fast-list -v', '      --fast-list -v'],
-  'backup-dir': ['      --backup-dir "backup:history/$ts" \\\n', ''],
-  cryptcheck: ['--exclude "$EXCLUDE" -v\n    echo "==> verify DONE', '--exclude "$EXCLUDE" -v || true\n    echo "==> verify DONE'],
-  retention: ['RETENTION_DAYS=7\n', 'RETENTION_DAYS=5\n'],
+  exclude: [[SYNC_EXCLUDE, '']],
+  'backup-dir': [[SYNC_BACKUP_DIR, '']],
+  cryptcheck: [['--exclude "$EXCLUDE" -v\n    echo "==> verify DONE', '--exclude "$EXCLUDE" -v || true\n    echo "==> verify DONE']],
+  retention: [['RETENTION_DAYS=7\n', 'RETENTION_DAYS=5\n']],
+  // rclone's defaults and no check of R2 first: the script as it hung on the cluster.
+  silent: [['export RCLONE_CONTIMEOUT=', 'true RCLONE_CONTIMEOUT='], ['reach_r2() {\n', 'reach_r2() {\n  return 0\n']],
+  // The sync without its budget; with a hard one, which cuts the transfer running.
+  budget: [['      --max-duration "$PASS_BUDGET" --cutoff-mode soft \\\n', '']],
+  hard: [['--max-duration "$PASS_BUDGET" --cutoff-mode soft', '--max-duration "$PASS_BUDGET" --cutoff-mode hard']],
 };
+const replaceAll = (content, pairs, what) => pairs.reduce((c, [from, to]) => {
+  assert.ok(c.includes(from), `${what}: the script no longer has ${JSON.stringify(from)}`);
+  return c.replace(from, to);
+}, content);
 function mutate(file, content) {
   const name = process.env.MUTATE;
   if (!name || file !== 'vault-backup.sh') return content;
-  const [from, to] = MUTATIONS[name] ?? assert.fail(`unknown MUTATE=${name}`);
-  assert.ok(content.includes(from), `MUTATE=${name}: the script no longer has what it breaks`);
-  return content.replace(from, to);
+  return replaceAll(content, MUTATIONS[name] ?? assert.fail(`unknown MUTATE=${name}`), `MUTATE=${name}`);
 }
 
-const configMapFiles = new Map(); // ConfigMap name -> host directory with its data
-function configMapDir(name) {
-  if (!configMapFiles.has(name)) {
-    const dir = join(work, `configmap-${name}`);
+const configMapFiles = new Map(); // ConfigMap name (and rewrite) -> host directory with its data
+function configMapDir(name, rewrite = []) {
+  const key = JSON.stringify([name, rewrite]);
+  if (!configMapFiles.has(key)) {
+    const dir = join(work, `configmap-${name}-${configMapFiles.size}`);
     mkdirSync(dir);
-    for (const [file, content] of Object.entries(find('ConfigMap', name).data)) writeFileSync(join(dir, file), mutate(file, content));
-    configMapFiles.set(name, dir);
+    for (const [file, content] of Object.entries(find('ConfigMap', name).data)) {
+      const mutated = mutate(file, content);
+      writeFileSync(join(dir, file), file === 'vault-backup.sh' ? replaceAll(mutated, rewrite, 'rewrite') : mutated);
+    }
+    configMapFiles.set(key, dir);
   }
-  return configMapFiles.get(name);
+  return configMapFiles.get(key);
 }
 
 // The container's environment, as the kubelet builds it: envFrom first, then env.
@@ -108,8 +122,11 @@ function environment(container) {
   return env;
 }
 
-// Runs `args` (the container's command by default) in the container of a pod template.
-function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}) {
+// Runs `args` (the container's command by default) in the container of a pod template. `timeout` (s):
+// killed then, as the Job's deadline would; `network: 'host'`: the host's network, to reach a port
+// of the test (127.0.0.1) instead of none; `rewrite`: [from, to] replaced in the script.
+let runs = 0;
+function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [], timeout, network = 'none', rewrite } = {}) {
   const pod = template.spec;
   const container = pod.containers[0];
   const command = args ?? container.command;
@@ -122,7 +139,7 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}
     if (v.persistentVolumeClaim) {
       assert.equal(v.persistentVolumeClaim.claimName, 'obsidian-data');
       binds.push([join(pvcDir, m.subPath ?? ''), m.mountPath, Boolean(m.readOnly || v.persistentVolumeClaim.readOnly)]);
-    } else if (v.configMap) binds.push([configMapDir(v.configMap.name), m.mountPath, true]);
+    } else if (v.configMap) binds.push([configMapDir(v.configMap.name, rewrite), m.mountPath, true]);
     else if (v.emptyDir) tmpfs.push(m.mountPath);
     else throw new Error(`unexpected volume ${m.name}`);
   }
@@ -130,7 +147,8 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}
   let result;
   if (runner === 'docker') {
     const sc = container.securityContext ?? {};
-    const argv = ['run', '--rm', '--network', 'none', '--user', `${process.getuid()}:${process.getgid()}`, '-w', '/r2',
+    const name = `vault-backup-test-${process.pid}-${runs++}`;
+    const argv = ['run', '--rm', '--name', name, '--network', network, '--user', `${process.getuid()}:${process.getgid()}`, '-w', '/r2',
       '-v', `${r2}:/r2`];
     if (sc.readOnlyRootFilesystem) argv.push('--read-only');
     if (sc.allowPrivilegeEscalation === false) argv.push('--security-opt', 'no-new-privileges');
@@ -139,7 +157,9 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}
     for (const [host, path, ro] of binds) argv.push('-v', `${host}:${path}${ro ? ':ro' : ''}`);
     for (const [k, v] of Object.entries(env)) argv.push('-e', `${k}=${v}`);
     argv.push('--entrypoint', command[0], container.image, ...command.slice(1));
-    result = spawnSync('docker', argv, { encoding: 'utf8' });
+    // SIGKILL: the docker CLI only forwards a SIGTERM to the container, whose sh ignores it as PID 1.
+    result = spawnSync('docker', argv, { encoding: 'utf8', timeout: timeout && timeout * 1000, killSignal: 'SIGKILL' });
+    if (result.error?.code === 'ETIMEDOUT') spawnSync('docker', ['rm', '-f', name]);
   } else {
     // The container's paths, moved to their host directories.
     const host = (s) => {
@@ -148,12 +168,15 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}
     };
     const [bin, ...rest] = command.map(host);
     const localEnv = Object.fromEntries(Object.entries(env).map(([k, v]) => [k, host(v)]));
-    result = spawnSync(bin === '/bin/sh' ? (process.env.SH ?? 'sh') : bin, rest, {
-      cwd: r2, encoding: 'utf8', env: { PATH: process.env.PATH, ...localEnv },
-    });
+    const argv = [bin === '/bin/sh' ? (process.env.SH ?? 'sh') : bin, ...rest];
+    // coreutils timeout signals the whole process group: the script and its rclone.
+    if (timeout) argv.unshift('timeout', '-k', '5', String(timeout));
+    result = spawnSync(argv[0], argv.slice(1), { cwd: r2, encoding: 'utf8', env: { PATH: process.env.PATH, ...localEnv } });
+    if (timeout && result.status === 124) result.error = Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' });
   }
-  if (result.error) throw result.error;
-  return { code: result.status, out: `${result.stdout}${result.stderr}` };
+  const timedOut = result.error?.code === 'ETIMEDOUT';
+  if (result.error && !timedOut) throw result.error;
+  return { code: result.status, out: `${result.stdout}${result.stderr}`, timedOut };
 }
 
 const backup = (opts) => run(podOf(backupJob), opts);
@@ -344,6 +367,13 @@ test('the manifests: what is tested is what is deployed', () => {
   assert.deepEqual(Object.keys(out).sort(), ['toFQDNs', 'toPorts']);
   assert.deepEqual(out.toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
   assert.deepEqual(out.toPorts, [{ ports: [{ port: '443', protocol: 'TCP' }] }]);
+  // That DNS rule sends the pod's queries through Cilium's DNS proxy, in the host's network: the host
+  // firewall (bootstrap.sh, input policy drop) must accept what Cilium marks for its proxies
+  // (MagicMarkIsToProxy, 0x200/0xf00), or every query is dropped unanswered (seen live 2026-11-21).
+  assert.deepEqual(dns.toPorts[0].rules, { dns: [{ matchPattern: '*' }] });
+  const nftables = readFileSync(join(repo, 'bootstrap/bootstrap.sh'), 'utf8').match(/cat > \/etc\/nftables\.conf <<'NFTEOF'\n([\s\S]*?)\nNFTEOF/)[1];
+  assert.match(nftables, /chain input \{\n\s*type filter hook input priority 0; policy drop;/);
+  assert.match(nftables, /^\s*ip saddr 10\.244\.0\.0\/16 meta mark & 0x00000f00 == 0x00000200 accept$/m);
 
   // The bucket is dedicated: not cnpg-s3-creds's.
   const env = find('ConfigMap', 'obsidian-vault-backup-env').data;
@@ -540,6 +570,171 @@ test('a crypt password still the placeholder is refused', () => {
   const r = backup({ env: { CRYPT_PASSWORD: 'REPLACE-ME' } });
   assert.notEqual(r.code, 0, r.out);
   assert.match(r.out, /CRYPT_PASSWORD is not set/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// R2 out of reach, or a pass that does not finish: rclone's error or progress in the log, before the
+// Job's deadline. These runs use the manifests' own `r2` remote (s3, Cloudflare), its endpoint a port
+// of the test's.
+
+const deadline = backupJob.spec.jobTemplate.spec.activeDeadlineSeconds;
+const r2Type = find('ConfigMap', 'obsidian-vault-backup-env').data.RCLONE_CONFIG_R2_TYPE;
+// How long the test waits, at most: far inside the deadline, and the script as it was on the cluster
+// (MUTATE=silent) still had not written a line there.
+const QUICK = 90;
+// The slow runs below, skipped in a MUTATE run that breaks something else (ci.sh runs one per part).
+const unless = (...mutations) => ({ skip: Boolean(process.env.MUTATE) && !mutations.includes(process.env.MUTATE) });
+
+// A port that never answers: a process of its own listens and never accepts, so a connection waits
+// in the kernel's queue and its TLS never starts. With `full`, that queue is filled first: a new
+// connection's SYN is then dropped, as Cilium drops a packet its policy denies.
+async function deafPort({ full }) {
+  const child = spawn(process.execPath, ['-e', `const s = require('net').createServer();
+    s.listen({ port: 0, host: '127.0.0.1', backlog: 1 }, () => {
+      console.log(s.address().port);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+    });`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const port = await new Promise((ok, ko) => {
+    child.stdout.once('data', (d) => ok(Number(String(d).trim())));
+    child.once('exit', (code) => ko(new Error(`the deaf listener exited (${code})`)));
+  });
+  const held = [];
+  const close = () => { for (const s of held) s.destroy(); child.kill('SIGKILL'); };
+  const attempt = () => new Promise((ok) => {
+    const s = connect(port, '127.0.0.1');
+    held.push(s);
+    s.once('connect', () => ok(true));
+    s.once('error', () => ok(false));
+    s.setTimeout(2000, () => ok(false));
+  });
+  if (full) {
+    while (await attempt()); // backlog 1: two connections fill the queue, the third is dropped
+  }
+  return { port, close };
+}
+
+for (const [what, full, error] of [
+  ['drops the connection, as the network policy does', true, /dial tcp 127\.0\.0\.1:\d+: i\/o timeout/],
+  ['accepts it and never answers', false, /TLS handshake timeout/],
+]) {
+  test(`an R2 that ${what}: rclone's error is in the log within seconds, nothing synced`, unless('silent'), async () => {
+    const listener = await deafPort({ full });
+    try {
+      const started = Date.now();
+      const r = backup({
+        network: 'host', timeout: QUICK,
+        env: { RCLONE_CONFIG_R2_TYPE: r2Type, RCLONE_CONFIG_R2_ENDPOINT: `https://127.0.0.1:${listener.port}` },
+      });
+      const seconds = Math.round((Date.now() - started) / 1000);
+      assert.ok(!r.timedOut, `still running after ${QUICK}s (the Job's deadline: ${deadline}s), its whole log:\n${r.out}`);
+      assert.notEqual(r.code, 0, r.out);
+      assert.match(r.out, /ERROR : .*ListObjectsV2/, 'rclone says what failed');
+      assert.match(r.out, error);
+      assert.match(r.out, /R2 did not answer/);
+      assert.match(r.out, /WARNING: the R2 endpoint's host \(<id>\.0\.0\.1:\d+\) is not one label under r2\.cloudflarestorage\.com/);
+      assert.doesNotMatch(r.out, /==> sync|backup DONE/);
+      console.log(`# R2 that ${what}: the pass failed after ${seconds}s, with rclone's error (deadline: ${deadline}s)`);
+    } finally {
+      listener.close();
+    }
+  });
+}
+
+test('the R2 endpoint is checked against the network policy, the check without the account id', () => {
+  const env = { RCLONE_CONFIG_R2_TYPE: r2Type };
+  const runs = {
+    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com': true,
+    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.net': false,
+    'https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com': false,
+    'https://r2.cloudflarestorage.com': false,
+  };
+  for (const [endpoint, matches] of Object.entries(runs)) {
+    // No network: the check is printed, then R2 is unreachable at once.
+    const r = backup({ timeout: QUICK, env: { ...env, RCLONE_CONFIG_R2_ENDPOINT: endpoint } });
+    assert.ok(!r.timedOut, r.out);
+    const check = r.out.split('\n').filter((l) => /R2 endpoint/.test(l));
+    assert.equal(check.length, 1, r.out);
+    assert.doesNotMatch(check[0], /0123456789abcdef/, 'the check does not print the account id');
+    if (matches) assert.match(r.out, /==> R2 endpoint: <id>\.r2\.cloudflarestorage\.com, as the network policy allows/, endpoint);
+    else assert.match(r.out, /WARNING: the R2 endpoint's host .* is not one label under r2\.cloudflarestorage\.com/, endpoint);
+  }
+  // The pattern checked is the policy's.
+  assert.deepEqual(find('CiliumNetworkPolicy', 'obsidian-vault-backup').spec.egress[1].toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
+});
+
+// The budget: no transfer started after it, none cut (soft), and a pass's worst case inside the
+// Job's deadline: 2 x PASS_BUDGET, plus what PR #397 accounts for.
+const script = find('ConfigMap', 'obsidian-vault-backup-scripts').data['vault-backup.sh'];
+const minutes = (name) => Number(script.match(new RegExp(`^${name}=(\\d+)m$`, 'm'))[1]) * 60;
+test('the sync\'s budget: soft, one file at a time, the largest first, inside the deadline', () => {
+  assert.match(script, /--check-first --order-by size,descending --transfers 1 \\\n\s+--max-duration "\$PASS_BUDGET" --cutoff-mode soft/);
+  assert.doesNotMatch(script, /cutoff-mode hard/);
+  assert.ok(2 * minutes('PASS_BUDGET') <= deadline - 120, `2 x PASS_BUDGET leaves 2 min of the ${deadline}s deadline`);
+});
+
+test('the history: one sync per pass, so one read of the vault per history/<ts>, and no size filter', () => {
+  const pass = script.slice(script.indexOf('  backup)\n'), script.indexOf('\n  verify)\n'));
+  assert.equal(pass.match(/rclone sync /g).length, 1, 'one sync writes backup:current and history/<ts>');
+  assert.equal(pass.match(/--backup-dir /g).length, 1);
+  // A size filter applies to the stored side too: a stored version outside it is overwritten unseen.
+  assert.doesNotMatch(script, /--(max|min)-size|--max-age|--min-age/);
+});
+
+// The same script at 1/30 of its durations: its budget 12 s, the Job's deadline 28 s; R2 at a constant
+// 32 KiB/s for every pass.
+const SCALE = 30;
+const scaled = {
+  rewrite: [['PASS_BUDGET=6m\n', 'PASS_BUDGET=12s\n'], ['--stats 1m', '--stats 2s']],
+  env: { RCLONE_BWLIMIT: '32K' },
+  timeout: deadline / SCALE,
+};
+const KiB = 1024;
+const stored = () => rcloneOk(['lsf', '-R', '--files-only', 'backup:current']).trim().split('\n');
+
+test('under constant conditions, a file longer than the budget is sent whole, and the passes converge', unless('budget', 'hard'), async () => {
+  // 16 s alone: longer than the budget, inside the deadline (the review's 100 MiB at 200 KiB/s, 512 s of 840).
+  const BIG = ['attachments/lecture.mp4', 512 * KiB];
+  const MEDIUM = [1, 2, 3].map((i) => [`attachments/scan-${i}.pdf`, 128 * KiB]); // 4 s each
+  for (const [path, size] of [BIG, ...MEDIUM]) write(path, randomBytes(size), Date.now() / 1000);
+  const wanted = [BIG, ...MEDIUM].map(([p]) => p);
+  let done = false;
+  for (let i = 1; i <= 5 && !done; i++) {
+    const before = stored();
+    await sleep(1100);
+    const r = backup(scaled);
+    assert.ok(!r.timedOut, `pass ${i} reached the Job's deadline (${scaled.timeout}s at this scale):\n${r.out}`);
+    assert.ok([0, 10].includes(r.code), `pass ${i}:\n${r.out}`);
+    assert.match(r.out, /Elapsed time:/, 'rclone\'s progress');
+    const added = stored().filter((p) => !before.includes(p));
+    assert.ok(added.length > 0 || r.code === 0, `pass ${i} stored nothing:\n${r.out}`);
+    if (i === 1) assert.deepEqual(added.filter((p) => wanted.includes(p)), [BIG[0]], 'the largest first, longer than its budget, not cut');
+    console.log(`# pass ${i}: exit ${r.code}, stored ${added.join(', ') || 'nothing new'}`);
+    done = r.code === 0;
+  }
+  assert.ok(done, 'the passes converged to a complete pass');
+  for (const p of wanted) assert.ok(stored().includes(p), p);
+  const v = verify();
+  assert.equal(v.code, 0, v.out);
+  assert.match(v.out, /0 differences found/);
+});
+
+test('a file replaced by a smaller version, a large one by a small one: the old one in history/<ts>', async () => {
+  // The review's case: a 5 MiB version stored, a 1 MiB one in the vault now.
+  const DOC = 'attachments/document.pdf';
+  const A = randomBytes(5 * 1024 * KiB);
+  const B = randomBytes(1024 * KiB);
+  write(DOC, A, Date.now() / 1000 - 60);
+  await pass();
+  write(DOC, B, Date.now() / 1000);
+  const { ts } = await pass();
+  const restored = join(work, 'restored-doc');
+  mkdirSync(restored);
+  rcloneOk(['copyto', `backup:history/${ts}/${DOC}`, '/out/document.pdf'], { mounts: [[restored, '/out', false]] });
+  assert.ok(readFileSync(join(restored, 'document.pdf')).equals(A), 'history/<ts> holds version A, byte for byte');
+  rcloneOk(['copyto', `backup:current/${DOC}`, '/out/current.pdf'], { mounts: [[restored, '/out', false]] });
+  assert.ok(readFileSync(join(restored, 'current.pdf')).equals(B), 'current holds version B');
+  const v = verify();
+  assert.equal(v.code, 0, v.out);
 });
 
 test.after(() => rmSync(work, { recursive: true, force: true }));
