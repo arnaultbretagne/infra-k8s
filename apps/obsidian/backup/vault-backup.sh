@@ -1,0 +1,116 @@
+#!/bin/sh
+# The Obsidian vault's backup, encrypted by rclone crypt on the dedicated R2 bucket (vault-backup.yaml).
+# One script, three modes, run by busybox sh in the rclone/rclone image:
+#
+#   backup   every 15 min: `rclone sync` of the vault to backup:current. A file this pass replaces or
+#            deletes is moved, not lost, to backup:history/<UTC timestamp of the pass>/; history
+#            folders older than RETENTION_DAYS are purged.
+#   verify   weekly: `rclone cryptcheck` of the vault against backup:current. Any difference (a file
+#            changed, missing on either side, or a stored object that no longer decrypts to the
+#            vault's bytes) exits non-zero, so the Job fails and CronJobLastRunFailed fires.
+#   restore  by hand (restore-job.yaml, apps/obsidian/RESTORE.md): RESTORE_PATH from RESTORE_FROM
+#            (`current` or `history/<ts>`) into the vault; the whole of RESTORE_FROM when
+#            RESTORE_PATH is empty.
+#   versions by hand, the same Job: lists the stored versions of RESTORE_PATH.
+#
+# The remotes come from the environment the manifests set: `r2` (s3, Cloudflare) and `backup`
+# (crypt over r2:<bucket>). Only the crypt passwords are handled here: the Secret holds them in
+# clear, as they must be kept to restore anything, and rclone wants them obscured.
+#
+# tests/obsidian-vault-backup runs this file, as rendered by kustomize, in the image of the
+# manifests.
+set -eu
+
+VAULT="${VAULT_DIR:?VAULT_DIR is the vault mount}"
+RETENTION_DAYS=7
+# Obsidian's window layout: rewritten on every click, worthless to restore.
+EXCLUDE='/.obsidian/workspace*.json'
+
+for name in CRYPT_PASSWORD CRYPT_PASSWORD2; do
+  eval "value=\${$name:-}"
+  case "$value" in
+    '' | REPLACE-ME*)
+      echo "$name is not set: fill it in apps/obsidian/vault-backup.secrets.yaml (sops)" >&2
+      exit 1
+      ;;
+  esac
+done
+RCLONE_CONFIG_BACKUP_PASSWORD="$(printf '%s' "$CRYPT_PASSWORD" | rclone obscure -)"
+RCLONE_CONFIG_BACKUP_PASSWORD2="$(printf '%s' "$CRYPT_PASSWORD2" | rclone obscure -)"
+export RCLONE_CONFIG_BACKUP_PASSWORD RCLONE_CONFIG_BACKUP_PASSWORD2
+
+# 20261120T101500Z -> 20261120101500, comparable as a number.
+ts_number() {
+  t="${1%Z}"
+  echo "${t%T*}${t#*T}"
+}
+
+case "${1:-}" in
+  backup)
+    # An empty vault is a lost or unmounted volume, never a vault to mirror: syncing it would move
+    # every note to history/, and the retention would delete them 7 days later.
+    if [ -z "$(ls -A "$VAULT")" ]; then
+      echo "refusing to back up: $VAULT is empty" >&2
+      exit 1
+    fi
+    ts="$(date -u +%Y%m%dT%H%M%SZ)"
+    echo "==> sync $VAULT -> backup:current (replaced and deleted files -> backup:history/$ts)"
+    rclone sync "$VAULT" backup:current \
+      --backup-dir "backup:history/$ts" \
+      --exclude "$EXCLUDE" \
+      --fast-list -v
+    cutoff="$(date -u -d "@$(($(date +%s) - RETENTION_DAYS * 86400))" +%Y%m%dT%H%M%SZ)"
+    echo "==> purge history older than $cutoff"
+    # Exit 3: no history yet.
+    dirs="$(rclone lsf --dirs-only backup:history)" || [ $? -eq 3 ]
+    for dir in $dirs; do
+      dir="${dir%/}"
+      case "$dir" in
+        [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;;
+        *) continue ;;
+      esac
+      # By the pass's timestamp, not by the files' modification times: a note untouched for a
+      # month and replaced today is a version from today.
+      if [ "$(ts_number "$dir")" -lt "$(ts_number "$cutoff")" ]; then
+        echo "purge backup:history/$dir"
+        rclone purge "backup:history/$dir"
+      fi
+    done
+    echo "==> backup DONE ($ts)"
+    ;;
+  verify)
+    echo "==> cryptcheck $VAULT against backup:current"
+    rclone cryptcheck "$VAULT" backup:current --exclude "$EXCLUDE" -v
+    echo "==> verify DONE: the stored copy matches the vault"
+    ;;
+  restore)
+    from="${RESTORE_FROM:-current}"
+    path="${RESTORE_PATH:-}"
+    case "$from" in
+      current | history/[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;;
+      *)
+        echo "RESTORE_FROM must be current or history/<YYYYMMDDTHHMMSSZ>, not '$from'" >&2
+        exit 1
+        ;;
+    esac
+    if [ -n "$path" ]; then
+      echo "==> restore backup:$from/$path -> $VAULT/$path"
+      rclone copyto "backup:$from/$path" "$VAULT/$path" -v
+    else
+      echo "==> restore backup:$from -> $VAULT (whole tree)"
+      rclone copy "backup:$from" "$VAULT" --exclude "$EXCLUDE" -v
+    fi
+    echo "==> restore DONE"
+    ;;
+  versions)
+    path="${RESTORE_PATH:?RESTORE_PATH is the note to look for}"
+    echo "==> stored versions of $path (location;size;modification time)"
+    # current/<path> is the latest; history/<ts>/<path> the version that pass <ts> replaced.
+    rclone lsf -R --files-only --format pst backup: | grep -F -- "/$path;" ||
+      echo "no stored version of $path"
+    ;;
+  *)
+    echo "usage: $0 backup|verify|restore|versions" >&2
+    exit 2
+    ;;
+esac
