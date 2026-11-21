@@ -21,7 +21,7 @@ antigravity pool or the offer changes.
 | `antigravity` + `internet` | Google's other hosts and paths leave as the sandbox sent them, never with the login; agy's routes' uncovered paths still 403 (C72). |
 | No profile, `anthropic`, `chatgpt`, `internet` alone; a token used from another address | 403 on both routes. |
 | The access token swapped as the kubelet swaps `..data` | The next request carries the new one, no restart (C73). |
-| Every case | The gateway's files as the Deployment gives them: the Secret mounted as the kubelet mounts it, then the Deployment's own init container `antigravity-login` run as deployed, which links the routes' file to the Secret's, or writes an empty one. |
+| Every case | The gateway's files as the Deployment gives them: the Secret mounted as the kubelet mounts it, then the Deployment's own init container `antigravity-login` run as deployed, which makes `antigravity/login` a link to the Secret's directory, or a directory with an empty file. A link to the file itself was tried first: the kubelet's update was not seen through it. |
 | The login's Secret empty (as Flux creates it), or absent | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; agy's routes send an empty Bearer, never the placeholder. Empty, then filled: used with no restart. Absent, then back: used after a restart. Without the init container, agentgateway 1.6.0 does not start on a missing file (`read resource file …: No such file or directory`, seen on this test's first run). |
 | The access log | Route `antigravity` / `antigravity-userinfo`, the execution. |
 

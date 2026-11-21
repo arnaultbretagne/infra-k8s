@@ -197,7 +197,7 @@ describe('the antigravity routes on agentgateway 1.6.0, the login present (C71)'
 
   it('the deployment mounts the login optional, at the path both routes read', () => {
     const routes = parse(deployed).binds.find((b) => b.port === 443).listeners[0].routes
-    const reading = routes.filter((r) => r.policies?.backendAuth?.key?.value?.file === '/etc/agentgateway/antigravity/access_token').map((r) => [r.name, r.hostnames])
+    const reading = routes.filter((r) => r.policies?.backendAuth?.key?.value?.file === '/etc/agentgateway/antigravity/login/access_token').map((r) => [r.name, r.hostnames])
     assert.deepEqual(reading, [['antigravity', [CLOUDCODE]], ['antigravity-userinfo', [WWW]]])
     const spec = deployment.spec.template.spec
     const mounts = Object.fromEntries(spec.containers[0].volumeMounts.map((m) => [m.name, m]))

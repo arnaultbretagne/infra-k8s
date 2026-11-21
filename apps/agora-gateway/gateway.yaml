@@ -32,10 +32,11 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       # agentgateway 1.6.0 does not start when a file a backendAuth reads is missing (tests/agora-gateway-antigravity):
-      # an optional Secret that is absent would take every route down at the next restart. So the file agy's routes
-      # read is never the Secret's own: it is a link to it when the Secret is mounted, through which the gateway
-      # watches the kubelet's updates as for every other credential; else an empty file, so the gateway starts,
-      # every other route answers, and agy's answer 401 until a restart after the Secret is back.
+      # an optional Secret that is absent would take every route down at the next restart. So agy's routes read
+      # antigravity/login/access_token, where `login` is a link to the Secret's directory when it is mounted — the
+      # gateway then watches the kubelet's updates there as for every other credential (a link to the file itself
+      # is not followed on an update: tests/agora-gateway-antigravity) —, else a directory holding an empty file, so
+      # the gateway starts, every other route answers, and agy's answer 401 until a restart with the Secret back.
       initContainers:
         - name: antigravity-login
           image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
@@ -45,10 +46,11 @@ spec:
             - |
               set -eu
               if [ -e /etc/agentgateway/antigravity-secret/access_token ]; then
-                ln -sfn /etc/agentgateway/antigravity-secret/access_token /etc/agentgateway/antigravity/access_token
+                ln -sfn /etc/agentgateway/antigravity-secret /etc/agentgateway/antigravity/login
                 echo "antigravity-token mounted: agy's routes read it, watched"
               else
-                : > /etc/agentgateway/antigravity/access_token
+                mkdir -p /etc/agentgateway/antigravity/login
+                : > /etc/agentgateway/antigravity/login/access_token
                 echo "antigravity-token absent: an empty token in its place; agy's routes answer 401 until the gateway restarts with it"
               fi
           resources:
@@ -105,8 +107,8 @@ spec:
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
             # The Google login's access token, for agy, rewritten by antigravity-refresher every 15 minutes: watched the
-            # same way. The routes read antigravity/access_token, which antigravity-login (below) makes a link to the
-            # Secret's file, or an empty file when the Secret is absent.
+            # same way. The routes read antigravity/login/access_token: antigravity-login (above) makes `login` a link to
+            # the Secret's directory, or a directory with an empty file when the Secret is absent.
             - { name: antigravity, mountPath: /etc/agentgateway/antigravity, readOnly: true }
             - { name: antigravity-secret, mountPath: /etc/agentgateway/antigravity-secret, readOnly: true }
             # The vault's bearer, rewritten by vault-refresher every 5 minutes: watched the same way.
