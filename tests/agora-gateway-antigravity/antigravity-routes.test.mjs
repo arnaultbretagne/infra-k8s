@@ -92,6 +92,7 @@ const configMap = (name) => objects.find((o) => o.kind === 'ConfigMap' && new Re
 const deployed = configMap('gateway-config').data['config.yaml']
 const kid = JSON.parse(configMap('grants-jwks').data['jwks.json']).keys[0].kid
 const deployment = objects.find((o) => o.kind === 'Deployment' && o.metadata.name === 'gateway')
+const { GrantSigner } = await import(process.env.AGORA_GRANTS ?? assert.fail("AGORA_GRANTS: Agora's packages/credentials/src/grants.ts"))
 
 /**
  * The deployed configuration on the binary, its credential files written; `antigravity` the login's volume:
@@ -143,14 +144,18 @@ async function startGateway(antigravity) {
     try {
       if ((await fetch(`http://127.0.0.1:${readyPort}/healthz/ready`)).ok) break
     } catch {}
-    if (Date.now() > deadline || gateway.exitCode !== null) assert.fail(`the gateway is not ready:\n${log.join('')}`)
+    if (Date.now() > deadline || gateway.exitCode !== null) {
+      // Never left running: a live child would hold the test run open.
+      gateway.kill('SIGKILL')
+      await upstream.close()
+      assert.fail(`the gateway (login ${antigravity}) is not ready:\n${log.join('').slice(-4000)}`)
+    }
     await new Promise((ok) => setTimeout(ok, 200))
   }
-  const { GrantSigner } = await import(process.env.AGORA_GRANTS ?? assert.fail("AGORA_GRANTS: Agora's packages/credentials/src/grants.ts"))
   const signer = new GrantSigner({ proxy: `127.0.0.1:${connectPort}`, keyFile, keyId: kid, issuer: listener.policies.jwtAuth.issuer, audience: listener.policies.jwtAuth.audiences[0] })
   return {
     upstream, gateway, log, signer, ca, connectPort, volume,
-    close: async () => { gateway.kill(); await upstream.close(); rmSync(work, { recursive: true, force: true }) },
+    close: async () => { gateway.kill('SIGKILL'); await upstream.close(); rmSync(work, { recursive: true, force: true }) },
   }
 }
 
@@ -160,13 +165,19 @@ async function send(gw, profiles, { host, path, method = 'GET', address = '127.0
   const dispatcher = new ProxyAgent({ uri: `http://127.0.0.1:${gw.connectPort}`, token: `Bearer ${token}`, requestTls: { ca: gw.ca } })
   const count = gw.upstream.seen.length
   try {
-    const response = await dispatcher.request({ origin: `https://${host}`, path, method, headers: { authorization: SANDBOX }, body: method === 'GET' || method === 'HEAD' ? undefined : '{}' })
-    await response.body.text()
+    let response
+    try {
+      response = await dispatcher.request({ origin: `https://${host}`, path, method, headers: { authorization: SANDBOX }, body: method === 'GET' || method === 'HEAD' ? undefined : '{}', signal: AbortSignal.timeout(10_000) })
+      await response.body.text()
+    } catch (error) {
+      // A request the gateway never answers is a finding, not a hung run: said with what reached the stand-in.
+      return { status: `no answer: ${error.code ?? error.name}`, authorization: gw.upstream.seen[count]?.authorization ?? null, reached: gw.upstream.seen.length > count }
+    }
     const reached = gw.upstream.seen.slice(count)
     assert.ok(reached.length <= 1)
     return { status: response.statusCode, authorization: reached[0]?.authorization ?? null, reached: reached.length === 1 }
   } finally {
-    await dispatcher.close()
+    await dispatcher.destroy()
   }
 }
 

@@ -13,4 +13,15 @@ git init -q "$dir/agora"
 git -C "$dir/agora" fetch -q --depth 1 https://github.com/arnaultbretagne/agora.git "$agora_ref"
 git -C "$dir/agora" checkout -q FETCH_HEAD -- packages/credentials/src
 npm ci --no-audit --no-fund
-AGENTGATEWAY="$dir/agentgateway" AGORA_GRANTS="$dir/agora/packages/credentials/src/grants.ts" npm test
+# The run's ✔/✖/ℹ lines go to the summary; the failures, and the ℹ lines the tests print, are also annotations,
+# which GitHub's API reads back without the logs.
+status=0
+AGENTGATEWAY="$dir/agentgateway" AGORA_GRANTS="$dir/agora/packages/credentials/src/grants.ts" npm test 2>&1 | tee "$dir/out.txt" || status=$?
+node -e '
+const lines = require("fs").readFileSync(process.argv[1], "utf8").split("\n")
+const esc = (s) => s.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")
+const info = lines.filter((l) => /^\s*ℹ (?!tests|suites|pass|fail|cancelled|skipped|todo|duration)/.test(l))
+if (info.length) console.log("::notice title=antigravity::" + esc(info.join("\n")))
+if (process.argv[2] !== "0") console.log("::error title=antigravity tests::" + esc(lines.filter((l) => l.trim()).slice(-80).join("\n")))
+' "$dir/out.txt" "$status"
+exit "$status"
