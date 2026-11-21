@@ -153,7 +153,8 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [], timeo
     for (const [host, path, ro] of binds) argv.push('-v', `${host}:${path}${ro ? ':ro' : ''}`);
     for (const [k, v] of Object.entries(env)) argv.push('-e', `${k}=${v}`);
     argv.push('--entrypoint', command[0], container.image, ...command.slice(1));
-    result = spawnSync('docker', argv, { encoding: 'utf8', timeout: timeout && timeout * 1000 });
+    // SIGKILL: the docker CLI only forwards a SIGTERM to the container, whose sh ignores it as PID 1.
+    result = spawnSync('docker', argv, { encoding: 'utf8', timeout: timeout && timeout * 1000, killSignal: 'SIGKILL' });
     if (result.error?.code === 'ETIMEDOUT') spawnSync('docker', ['rm', '-f', name]);
   } else {
     // The container's paths, moved to their host directories.
