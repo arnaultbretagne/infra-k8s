@@ -159,15 +159,18 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [] } = {}
 const backup = (opts) => run(podOf(backupJob), opts);
 const verify = (opts) => run(podOf(verifyJob), opts);
 
-// RESTORE.md's own commands: each `job=$(sed ... restore-job.yaml | kubectl ... create -f -)` is run up to
-// the pipe, with its variables, and the Job it prints is the one run.
+// RESTORE.md's own commands: each `job=$(... restore-job.yaml ... | kubectl -n obsidian create -f - -o name)` is
+// run up to that last pipe (`kubectl set env --local` needs no cluster), with its variables, and the Job it
+// prints is the one run.
 const procedure = [...readFileSync(join(repo, 'apps/obsidian/RESTORE.md'), 'utf8')
-  .matchAll(/job=\$\((sed [\s\S]*?apps\/obsidian\/backup\/restore-job\.yaml) \| kubectl -n obsidian create -f - -o name\)/g)]
+  .matchAll(/job=\$\(([^()]*?apps\/obsidian\/backup\/restore-job\.yaml[^()]*?) *\| *\n? *kubectl -n obsidian create -f - -o name\)/g)]
   .map((m) => m[1]);
+const kubectlDir = process.env.KUBECTL ? dirname(resolve(process.env.KUBECTL)) : null;
 function documentedJob(which, vars) {
   const commands = procedure.filter((c) => (which === 'versions') === c.includes('"versions"'));
   assert.equal(commands.length, 1, `one ${which} command in RESTORE.md`);
-  const job = parse(execFileSync('sh', ['-c', commands[0]], { cwd: repo, encoding: 'utf8', env: { ...process.env, ...vars } }));
+  const PATH = kubectlDir ? `${kubectlDir}:${process.env.PATH}` : process.env.PATH;
+  const job = parse(execFileSync('sh', ['-c', commands[0]], { cwd: repo, encoding: 'utf8', env: { ...process.env, PATH, ...vars } }));
   assert.equal(job.kind, 'Job');
   return job.spec.template;
 }
@@ -254,11 +257,15 @@ const NOTES = {
   'Projects/Idée été.md': '# Summer idea\n\nmarker-idea-v1: a garden.\n',
   'Inbox.md': 'marker-inbox: nothing yet.\n',
   '.obsidian/app.json': '{"marker-app-json": true}\n',
+  // A name with every character a shell or YAML could take for its own.
+  [`Projects/R&D $HOME 'q' "d" | a\\b: c #h & z.md`]: 'marker-odd-name: R&D notes.\n',
 };
 const WORKSPACE = ['.obsidian/workspace.json', '.obsidian/workspace-mobile.json'];
 const ATTACHMENT = 'attachments/photo.png';
 const attachment = Buffer.from(Array.from({ length: 4096 }, (_, i) => (i * 7919) % 256));
 const IDEA = 'Projects/Idée été.md';
+const ODD = Object.keys(NOTES).find((p) => p.includes('R&D'));
+const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const IDEA_V2 = '# Summer idea\n\nmarker-idea-v2: a garden, and a pond. Rewritten.\n';
 const DELETED = 'Daily/2026-11-19.md';
 const passes = {};
@@ -455,6 +462,7 @@ test('(g) a note restored as RESTORE.md says is identical to the original', () =
   const lost = join(work, 'lost');
   cpSync(pvc, lost, { recursive: true });
   rmSync(join(lost, 'vault', IDEA));
+  rmSync(join(lost, 'vault', ODD));
   writeFileSync(join(lost, 'vault', 'Inbox.md'), 'edited since\n');
   let r = run(documentedJob('versions', { NOTE: IDEA }), { pvcDir: lost });
   assert.equal(r.code, 0, r.out);
@@ -466,6 +474,14 @@ test('(g) a note restored as RESTORE.md says is identical to the original', () =
   assert.ok(readFileSync(join(lost, 'vault', IDEA)).equals(readFileSync(join(vault, IDEA))), 'byte for byte');
   assert.equal(statSync(join(lost, 'vault', IDEA)).mtimeMs, statSync(join(vault, IDEA)).mtimeMs);
   assert.equal(readFileSync(join(lost, 'vault', 'Inbox.md'), 'utf8'), 'edited since\n');
+
+  // A path holding & | " ' \\ $ : #, through the same two commands: listed, then restored byte for byte.
+  r = run(documentedJob('versions', { NOTE: ODD }), { pvcDir: lost });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, new RegExp(`^current/${escape(ODD)};${Buffer.byteLength(NOTES[ODD])};`, 'm'));
+  r = run(documentedJob('restore', { NOTE: ODD, FROM: 'current' }), { pvcDir: lost });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(readFileSync(join(lost, 'vault', ODD)).equals(readFileSync(join(vault, ODD))), 'byte for byte');
 
   // Its previous version, from history/<ts>: identical to the note as it was.
   r = run(documentedJob('restore', { NOTE: IDEA, FROM: `history/${passes.modified.ts}` }), { pvcDir: lost });

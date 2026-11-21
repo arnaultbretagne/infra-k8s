@@ -26,13 +26,16 @@ the restored notes byte for byte.
 ## One note
 
 Choose the version. `NOTE` is the path inside the vault; the Job, with `versions` instead of `restore`,
-lists what is stored for it:
+lists what is stored for it. `kubectl set env --local` writes the values into the Job (offline, quoted by
+kubectl), so a path may hold any character: `&`, `|`, `"`, `'`, `\`, `$`, `:`, `#`.
 
 ```sh
 NOTE='Projects/Idea.md'
-job=$(sed -e "s|value: \"\"|value: \"$NOTE\"|" -e 's|"restore"\]|"versions"]|' \
-  apps/obsidian/backup/restore-job.yaml | kubectl -n obsidian create -f - -o name)
-kubectl -n obsidian wait --for=condition=complete "$job" --timeout=5m && kubectl -n obsidian logs "$job"
+job=$(sed -e 's|"restore"\]|"versions"]|' apps/obsidian/backup/restore-job.yaml |
+  kubectl set env --local -f - RESTORE_PATH="$NOTE" -o yaml | kubectl -n obsidian create -f - -o name) && {
+  kubectl -n obsidian wait --for=condition=complete "$job" --timeout=5m
+  kubectl -n obsidian logs "$job"
+}
 ```
 
 Each line is `location;size;modification time`: `current/<NOTE>` is the last pass's copy,
@@ -41,55 +44,85 @@ or `history/<ts>`:
 
 ```sh
 FROM='history/20261120T101500Z'
-job=$(sed -e "s|value: current|value: \"$FROM\"|" -e "s|value: \"\"|value: \"$NOTE\"|" \
-  apps/obsidian/backup/restore-job.yaml | kubectl -n obsidian create -f - -o name)
-kubectl -n obsidian wait --for=condition=complete "$job" --timeout=5m && kubectl -n obsidian logs "$job"
+job=$(kubectl set env --local -f apps/obsidian/backup/restore-job.yaml RESTORE_FROM="$FROM" RESTORE_PATH="$NOTE" -o yaml |
+  kubectl -n obsidian create -f - -o name) && {
+  kubectl -n obsidian wait --for=condition=complete "$job" --timeout=5m
+  kubectl -n obsidian logs "$job"
+}
 ```
 
-The note is written back at its place in the vault, with its stored modification time; the other notes are
-not touched. The writers may keep running. The vault's version it replaces is not lost if a pass already
-stored it: the next pass moves it into `history/`. (A path holding `|` or `"` needs the two values edited
-in a copy of the file instead of `sed`.)
+The wait and the logs run only once the Job is created, and they are about that Job: its name is generated
+(`generateName`), never an earlier one. The note is written back at its place in the vault, with its
+stored modification time; the other notes are not touched. The writers may keep running. The vault's
+version it replaces is not lost if a pass already stored it: the next pass moves it into `history/`.
 
 ## The whole vault
 
 On a lost or emptied volume. The backup refuses to run on an empty vault, but a half-restored one would be
-mirrored as it is, so it is stopped first, with everything that writes the vault.
+mirrored as it is: a pass running during the restore would move out of `current/`, into `history/`,
+every file not restored yet. So everything that writes the vault or reads it for the backup is stopped
+first, and the restore waits until it has actually stopped.
 
-1. Stop Flux from undoing the next steps, then the writers and the backup:
+1. Stop Flux from undoing the next steps, then the backup's schedules and the writers:
 
    ```sh
    flux suspend kustomization apps
+   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify -p '{"spec":{"suspend":true}}'
    kubectl -n obsidian scale deployment obsidian-mcp web-clipper obsidian-sync --replicas=0
-   kubectl -n obsidian patch cronjob obsidian-vault-backup -p '{"spec":{"suspend":true}}'
    ```
 
-   (Deployments that do not exist any more, such as `obsidian-sync` once retired, are just left out; a new
-   writer of the vault is added.)
+   (Deployments that do not exist any more, such as `obsidian-sync` once retired, are left out of the
+   `scale` and of the selector below; a new writer of the vault, such as Ignis, is added to both.)
 
-2. Restore `current/` into the vault (the template as it is: `RESTORE_FROM=current`, `RESTORE_PATH` empty):
+2. Wait until it has stopped. Suspending a CronJob does not stop a Job it has already started, and a pod
+   scaled away may still be terminating: this loop ends only when neither CronJob has an active Job and no
+   pod of a writer or of the backup's Jobs is left, terminating ones included. A failed `kubectl` call
+   counts as not stopped.
 
    ```sh
-   job=$(kubectl -n obsidian create -f apps/obsidian/backup/restore-job.yaml -o name)
-   kubectl -n obsidian wait --for=condition=complete "$job" --timeout=30m && kubectl -n obsidian logs "$job"
+   until active=$(kubectl -n obsidian get cronjob obsidian-vault-backup obsidian-vault-verify \
+           -o jsonpath='{.items[*].status.active[*].name}') &&
+         writers=$(kubectl -n obsidian get pods -l 'app in (obsidian-mcp,web-clipper,obsidian-sync)' -o name) &&
+         jobs=$(kubectl -n obsidian get pods -l app.kubernetes.io/part-of=obsidian-vault-backup \
+           --field-selector=status.phase!=Succeeded,status.phase!=Failed -o name) &&
+         [ -z "$active$writers$jobs" ]; do
+     echo "still running: $active $writers $jobs"
+     sleep 5
+   done
+   echo "stopped: the restore may start"
+   ```
+
+   A backup pass ends within 14 minutes (`activeDeadlineSeconds: 840`).
+
+3. Restore `current/` into the vault (the template as it is: `RESTORE_FROM=current`, `RESTORE_PATH` empty):
+
+   ```sh
+   job=$(kubectl -n obsidian create -f apps/obsidian/backup/restore-job.yaml -o name) && {
+     kubectl -n obsidian wait --for=condition=complete "$job" --timeout=30m
+     kubectl -n obsidian logs "$job"
+   }
    ```
 
    Files are copied, nothing in the vault is deleted: on a volume that was not empty, files the backup does
    not have stay.
 
-3. Prove the vault is the backup: cryptcheck must find `0 differences`.
+4. Prove the vault is the backup: cryptcheck must end with `0 differences found` and `verify DONE`. The
+   Job's name is new at each run, and the wait and the logs only follow its own creation, so an earlier
+   verification is never the one read.
 
    ```sh
-   kubectl -n obsidian create job --from=cronjob/obsidian-vault-verify verify-after-restore
-   kubectl -n obsidian wait --for=condition=complete job/verify-after-restore --timeout=30m
-   kubectl -n obsidian logs job/verify-after-restore
+   vjob=$(kubectl -n obsidian create job --from=cronjob/obsidian-vault-verify \
+     "verify-after-restore-$(date -u +%Y%m%d%H%M%S)" -o name) && {
+     kubectl -n obsidian wait --for=condition=complete "$vjob" --timeout=30m
+     kubectl -n obsidian logs "$vjob"
+   }
    ```
 
-4. Start everything again. The CronJob's `suspend` is set by hand, not by the manifest, so Flux leaves it:
+5. Start everything again. The CronJobs' `suspend` is set by hand, not by the manifest, so Flux leaves it:
    unset it yourself.
 
    ```sh
-   kubectl -n obsidian patch cronjob obsidian-vault-backup -p '{"spec":{"suspend":false}}'
+   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify -p '{"spec":{"suspend":false}}'
    flux resume kustomization apps
    ```
 

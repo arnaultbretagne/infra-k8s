@@ -25,7 +25,7 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 | (d) `.obsidian/workspace*.json` | Never stored, never logged; the rest of `.obsidian/` is stored. |
 | (e) The bucket | No plain name (`current`, `history`, folders, notes, timestamps) in any path; every object starts with rclone crypt's magic and holds no note text. |
 | (f) `verify` | `0 differences found`, exit 0; one stored byte flipped (same size and time): exit 1, `1 differences found`; back to 0 once restored; a note not stored yet: exit 1. |
-| (g) Restore | `RESTORE.md`'s own `sed … restore-job.yaml` commands, run as written: the versions of a note listed; the note restored identical byte for byte (and modification time), the other notes untouched; its previous version from `history/<ts>/`. The whole vault, `restore-job.yaml` as it is, onto an empty volume: the same tree, bytes and times, then `verify` finds 0 differences. |
+| (g) Restore | `RESTORE.md`'s own `… restore-job.yaml … kubectl set env --local …` commands, run as written up to `kubectl create`: the versions of a note listed; the note restored identical byte for byte (and modification time), the other notes untouched; the same for a path holding `&`, `|`, `"`, `'`, `\`, `$`, `:` and `#`; its previous version from `history/<ts>/`. The whole vault, `restore-job.yaml` as it is, onto an empty volume: the same tree, bytes and times, then `verify` finds 0 differences. |
 | Retention | `history/` folders of passes older than 7 days purged, newer kept, others left alone; a month-old note replaced today stays (by pass time, not file age). |
 | An empty vault | Refused, nothing in the bucket touched. |
 | A crypt password still `REPLACE-ME` | Refused. |
