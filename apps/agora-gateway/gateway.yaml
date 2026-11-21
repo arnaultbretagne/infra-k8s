@@ -73,6 +73,8 @@ spec:
             - { name: chatgpt, mountPath: /etc/agentgateway/chatgpt, readOnly: true }
             # The Claude login's access token, rewritten by claude-refresher: watched the same way.
             - { name: claude, mountPath: /etc/agentgateway/claude, readOnly: true }
+            # The Google login's access token, for agy, rewritten by antigravity-refresher every 15 minutes: watched the same way.
+            - { name: antigravity, mountPath: /etc/agentgateway/antigravity, readOnly: true }
             # The vault's bearer, rewritten by vault-refresher every 5 minutes: watched the same way.
             - { name: vault, mountPath: /etc/agentgateway/vault, readOnly: true }
       volumes:
@@ -132,6 +134,15 @@ spec:
         - name: claude
           secret:
             secretName: claude-session
+            optional: true
+            defaultMode: 0440
+            items:
+              - { key: access_token, path: access_token }
+        # Created empty by Flux, filled by antigravity-refresher (antigravity-refresher.yaml). Optional: the gateway
+        # starts without it; until the refresher's first run, Google answers 401 on agy's routes alone.
+        - name: antigravity
+          secret:
+            secretName: antigravity-token
             optional: true
             defaultMode: 0440
             items:

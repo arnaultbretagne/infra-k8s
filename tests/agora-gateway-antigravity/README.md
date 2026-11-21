@@ -1,0 +1,41 @@
+# agora-gateway-antigravity: agy's routes and the Google login's refresher
+
+The proof of the `antigravity` profile on the cluster's side (docs/specs/credentials.md on arnaultbretagne/agora,
+"Antigravity"; `docs/antigravity-login.md`). Run by the `tests` workflow (`ci.sh`) when the gateway, the
+antigravity pool or the offer changes.
+
+- **The configuration deployed:** `kubectl kustomize apps/agora-gateway`, its `gateway-config` and the Deployment.
+  Only the files it reads, its ports, and the backends of the routes under test (`antigravity`,
+  `antigravity-userinfo`, `anthropic`, `chatgpt`, `internet`) are moved to local ones: a stand-in for Google
+  that records the `Authorization` each request arrives with.
+- **The gateway:** the agentgateway 1.6.0 release binary, its sha256 checked.
+- **The tokens:** signed by Agora's own `GrantSigner` at afdf6f6 (`packages/credentials/src/grants.ts`, the commit
+  that brought `antigravity`), with a key made for the run. No real secret.
+
+`antigravity-routes.test.mjs`:
+
+| Case | Expected |
+| --- | --- |
+| `antigravity`: `POST daily-cloudcode-pa…/v1internal:loadCodeAssist`, `:streamGenerateContent?alt=sse`, `:fetchAvailableModels`; `GET www.googleapis.com/oauth2/v2/userinfo` | 200, with `Bearer` + the mounted access token, never the sandbox's placeholder. |
+| `antigravity`: `/v1internal`, `/v1internal:x/y`, `/v1/projects`, `%2f`, `..`; a `POST` or a query on the user info, `/oauth2/v3/tokeninfo`, `/drive/v3/files`; `oauth2.googleapis.com/token`, `play.googleapis.com/log`, `cloudcode-pa`, `generativelanguage` | 403, nothing sent on (C71). |
+| `antigravity` + `internet` | Google's other hosts and paths leave as the sandbox sent them, never with the login; agy's routes' uncovered paths still 403 (C72). |
+| No profile, `anthropic`, `chatgpt`, `internet` alone; a token used from another address | 403 on both routes. |
+| The access token swapped as the kubelet swaps `..data` | The next request carries the new one, no restart (C73). |
+| The login's volume empty (the Secret as Flux creates it), or absent (no Secret) | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; the placeholder never sent on. Empty, then filled: used with no restart. |
+| The access log | Route `antigravity` / `antigravity-userinfo`, the execution. |
+
+`antigravity-refresher.test.mjs` runs the refresher's script as `apps/agora-gateway/antigravity-refresher.yaml`
+ships it, against a stand-in token endpoint and API server, in both places the refresh token may live: the SOPS
+key (refreshed, written with its expiry, the Secret's other keys kept; a rotation all the same: written, exit 3)
+and `antigravity-session` (preferred; a new refresh token written there first, then the access token; unable to:
+exit 2, nothing half-done). Refused: exit 1, `refresh refused … invalid_grant`. No login: exit 4, Google never
+asked. No token, nor agy's client secret, ever logged. And its manifests: RBAC on `antigravity-token` and
+`antigravity-session` alone, get and update; the one key of `upstream-credentials`, optional; egress to
+`oauth2.googleapis.com` alone.
+
+Locally (linux-amd64, Node 24, kubectl): `bash ci.sh`, or with your own binary and checkout:
+
+```sh
+npm ci
+AGENTGATEWAY=/path/to/agentgateway-1.6.0 AGORA_GRANTS=/path/to/agora/packages/credentials/src/grants.ts npm test
+```

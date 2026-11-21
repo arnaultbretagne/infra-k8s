@@ -196,3 +196,30 @@ spec:
             app: pocket-id
       toPorts:
         - ports: [{ port: "1411", protocol: TCP }]
+---
+# The Google login's refresher (antigravity-refresher.yaml): the API server for its Secrets, Google's token
+# endpoint on 443 and no other host (by name, through Cilium's DNS proxy, as apps/obsidian's backup).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: antigravity-refresher
+spec:
+  endpointSelector:
+    matchLabels:
+      app: antigravity-refresher
+  ingress: []
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+          rules:
+            dns:
+              - matchName: oauth2.googleapis.com
+    - toEntities: [kube-apiserver]
+    - toFQDNs:
+        - matchName: oauth2.googleapis.com
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

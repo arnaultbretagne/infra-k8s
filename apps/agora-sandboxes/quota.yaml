@@ -1,7 +1,7 @@
 # A pool is not a concurrency limit (claims come on top of the warm stock), so the namespace is
 # bounded here; the back-end also caps its active sandboxes (MAX_ACTIVE, apps/agora/server.yaml).
-# Kata's RuntimeClass overhead (100m / 256Mi per Pod) counts against these requests. Sized for 24
-# Pods: MAX_ACTIVE (16) claims, the warm Pods of every pool (mock 2, claude-code, opencode, codex),
+# Kata's RuntimeClass overhead (100m / 256Mi per Pod) counts against these requests. Sized for 25
+# Pods: MAX_ACTIVE (16) claims, the warm Pods of every pool (mock 2, claude-code, opencode, codex, antigravity),
 # and 3 for a pool being replaced when its image changes. Per Pod: 150m / 768Mi requested,
 # 1.1 CPU / 4.25Gi in limits.
 #
@@ -14,8 +14,8 @@ metadata:
   name: sandbox-bounds
 spec:
   hard:
-    pods: "24"
-    requests.cpu: "4"        # 24 × 150m = 3.6
-    requests.memory: 18Gi    # 24 × 768Mi
-    limits.cpu: "27"         # 24 × 1.1 = 26.4
-    limits.memory: 102Gi     # 24 × 4.25Gi
+    pods: "25"
+    requests.cpu: "4"        # 25 × 150m = 3.75
+    requests.memory: 19Gi    # 25 × 768Mi = 18.75Gi
+    limits.cpu: "28"         # 25 × 1.1 = 27.5
+    limits.memory: 107Gi     # 25 × 4.25Gi = 106.25Gi

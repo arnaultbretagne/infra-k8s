@@ -168,6 +168,51 @@ binds:
                   key:
                     value: { file: /etc/agentgateway/chatgpt/access_token }
                     location: { header: { name: authorization, prefix: "Bearer " } }
+            # Google's Cloud Code, for agy (docs/specs/credentials.md on arnaultbretagne/agora, "Antigravity"):
+            # the access token of the cluster's own Google login, kept fresh by antigravity-refresher.yaml. The
+            # sandbox's token file is a placeholder; whatever Authorization agy sends is replaced. The route takes
+            # the whole host, its rule only what a grant covers: `antigravity`'s is `/v1internal:<method>`, any
+            # query; every other path of the host is refused here (403), never sent on with the login. No route
+            # for oauth2.googleapis.com nor play.googleapis.com: nothing in the sandbox can refresh the login.
+            - name: antigravity
+              hostnames: [daily-cloudcode-pa.googleapis.com]
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                    # and some grant of the JWT covers this host, path and query, and method.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/antigravity/access_token }
+                    location: { header: { name: authorization, prefix: "Bearer " } }
+            # The account's user info, which agy reads beside Cloud Code: `GET /oauth2/v2/userinfo` alone carries
+            # the login. Every other path or method of www.googleapis.com is not this route's: it falls to
+            # `internet`, which sets no credential (403 without `internet`). A query on this path is this route's,
+            # and its grant (`^/oauth2/v2/userinfo$`) refuses it.
+            - name: antigravity-userinfo
+              hostnames: [www.googleapis.com]
+              matches:
+                - path: { exact: /oauth2/v2/userinfo }
+                  method: GET
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                    # and some grant of the JWT covers this host, path and query, and method.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/antigravity/access_token }
+                    location: { header: { name: authorization, prefix: "Bearer " } }
             # The previews (infra-k8s ADR 0017 v4 §7; docs/specs/credentials.md on arnaultbretagne/agora,
             # "Previews"): pr-<n>-<app>.preview.bretagne.dev, reached by its public name as a browser reaches
             # it, through Traefik and the wildcard certificate. Its rule reads the grant's `hostPattern`: a

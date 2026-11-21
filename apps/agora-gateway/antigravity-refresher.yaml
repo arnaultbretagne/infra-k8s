@@ -1,0 +1,271 @@
+# Keeps the cluster's Google login fresh, for agy through the gateway (routes `antigravity` and
+# `antigravity-userinfo`; docs/specs/credentials.md on arnaultbretagne/agora, "Antigravity"). The login is
+# the cluster's own, a Google account dedicated to it, never the operator's (docs/antigravity-login.md). Every
+# 15 minutes the job trades the refresh token at oauth2.googleapis.com for an access token (1 hour, per Google's
+# documentation) and writes it to `antigravity-token`, which only the gateway mounts and watches. Nothing in a
+# sandbox can refresh: oauth2.googleapis.com has no route.
+#
+# Where the refresh token lives follows from whether Google rotates it, which the operator measures after
+# the login. Both places are read, with no change here:
+# - it does not rotate: the SOPS Secret `upstream-credentials`, key `antigravity-refresh-token`, mounted
+#   below (that key alone); a rotation is a commit.
+# - it rotates: the Secret `antigravity-session`, key `refresh_token`, created by hand and kept out of git;
+#   this job rewrites it with each new refresh token, as chatgpt-session.
+# `antigravity-session`, when it exists, wins. With neither, the job exits 4 and the gateway keeps answering
+# every other route as before. Logs dates, modes and error codes, never a token.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: antigravity-refresher
+---
+# Its two Secrets and nothing else. `antigravity-session` may not exist: reading it then answers 404.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: antigravity-refresher
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [antigravity-token, antigravity-session]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: antigravity-refresher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: antigravity-refresher
+subjects:
+  - kind: ServiceAccount
+    name: antigravity-refresher
+---
+# Where the access token lands. Created empty by Flux, then never touched by it again (IfNotPresent): the
+# refresher owns its content. Until its first good run, the gateway sends an empty Bearer on agy's routes and
+# Google answers 401. Deleting this file from git prunes the Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: antigravity-token
+  annotations:
+    kustomize.toolkit.fluxcd.io/ssa: IfNotPresent
+type: Opaque
+data:
+  access_token: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: antigravity-refresher
+data:
+  refresh.mjs: |
+    import { readFileSync } from 'node:fs'
+
+    // The Secrets it reads and writes, the file the SOPS key is mounted as, Google's token endpoint; the API
+    // server and the ServiceAccount's files as a Pod has them (each overridable for tests/agora-gateway-antigravity).
+    const TOKEN = process.env.TOKEN_SECRET ?? 'antigravity-token'
+    const SESSION = process.env.SESSION_SECRET ?? 'antigravity-session'
+    const SA = process.env.SA_DIR ?? '/var/run/secrets/kubernetes.io/serviceaccount'
+    const api = process.env.KUBE_API ?? `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}`
+    const namespace = readFileSync(`${SA}/namespace`, 'utf8').trim()
+    const secretUrl = (name) => `${api}/api/v1/namespaces/${namespace}/secrets/${name}`
+    const tokenUrl = process.env.TOKEN_URL ?? 'https://oauth2.googleapis.com/token'
+    const minLife = Number(process.env.MIN_LIFE_MINUTES ?? 40) * 60_000
+    const retryMs = Number(process.env.RETRY_MS ?? 2000)
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+    const b64 = (text) => Buffer.from(text).toString('base64')
+    const unb64 = (text) => Buffer.from(text ?? '', 'base64').toString('utf8').trim()
+    const read = (path) => {
+      try {
+        return readFileSync(path, 'utf8').trim()
+      } catch {
+        return ''
+      }
+    }
+    const kube = (method, name, body) =>
+      fetch(secretUrl(name), {
+        method,
+        headers: { authorization: `Bearer ${readFileSync(`${SA}/token`, 'utf8').trim()}`, accept: 'application/json', 'content-type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(15_000),
+      })
+    /** Merges `data` into a Secret, retrying on a conflict or a failure; false once it gave up. */
+    async function write(name, data, attempts) {
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const got = await kube('GET', name)
+          if (got.ok) {
+            const current = await got.json()
+            const put = await kube('PUT', name, { ...current, data: { ...current.data, ...data } })
+            if (put.ok) return true
+            console.error(`writing ${name}: ${put.status}`)
+          } else {
+            console.error(`reading ${name}: ${got.status}`)
+          }
+        } catch (error) {
+          console.error(`writing ${name}: ${error.message}`)
+        }
+        if (attempt === attempts) return false
+        await sleep(retryMs * attempt)
+      }
+    }
+
+    const clientId = process.env.CLIENT_ID ?? ''
+    const clientSecret = process.env.CLIENT_SECRET ?? ''
+    if (!clientId || !clientSecret) {
+      console.error('CLIENT_ID or CLIENT_SECRET is empty: agy\'s OAuth client, set in antigravity-refresher.yaml')
+      process.exit(4)
+    }
+
+    // Where the refresh token is: antigravity-session if it exists (it rotates), else the SOPS key.
+    let mode, refreshToken
+    const session = await kube('GET', SESSION).catch((error) => error)
+    if (session instanceof Error) {
+      console.error(`reading ${SESSION}: ${session.message}`)
+      process.exit(2)
+    }
+    if (session.ok) {
+      mode = SESSION
+      refreshToken = unb64((await session.json()).data?.refresh_token)
+    } else if (session.status === 404) {
+      mode = 'upstream-credentials'
+      refreshToken = read(process.env.REFRESH_TOKEN_FILE ?? '/etc/antigravity-login/refresh_token')
+    } else {
+      console.error(`reading ${SESSION}: ${session.status}`)
+      process.exit(2)
+    }
+    if (!refreshToken) {
+      console.error(`no refresh token yet (${mode}): the Google login is not done — docs/antigravity-login.md`)
+      process.exit(4)
+    }
+
+    let answer
+    try {
+      answer = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+        body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'refresh_token', refresh_token: refreshToken }),
+        signal: AbortSignal.timeout(30_000),
+      })
+    } catch (error) {
+      console.error(`refresh failed (${mode}): Google's token endpoint unreachable: ${error.message}`)
+      process.exit(1)
+    }
+    if (!answer.ok) {
+      const detail = await answer.json().catch(() => ({}))
+      const why = [detail.error, detail.error_description].filter((s) => typeof s === 'string').join(': ')
+      console.error(`refresh refused (${mode}): ${answer.status} ${why} — invalid_grant means the login is revoked or expired: log in again (docs/antigravity-login.md)`)
+      process.exit(1)
+    }
+    const fresh = await answer.json()
+    if (typeof fresh.access_token !== 'string' || !fresh.access_token || !Number.isFinite(fresh.expires_in)) {
+      console.error(`refresh answered ${answer.status} without an access token or its lifetime`)
+      process.exit(1)
+    }
+    const now = Date.now()
+    const expiresAt = new Date(now + fresh.expires_in * 1000).toISOString()
+    const rotated = typeof fresh.refresh_token === 'string' && fresh.refresh_token !== '' && fresh.refresh_token !== refreshToken
+    let status = 0
+
+    if (rotated && mode === SESSION) {
+      // The previous refresh token may be spent now: the new one is written first, whatever it takes.
+      if (!(await write(SESSION, { refresh_token: b64(fresh.refresh_token), refreshed_at: b64(new Date(now).toISOString()) }, 6))) {
+        console.error(`refreshed, but the new refresh token was not written to ${SESSION}: the login may be lost, log in again`)
+        process.exit(2)
+      }
+    } else if (rotated) {
+      // A SOPS key cannot be rewritten from here: the login rotates, and belongs in antigravity-session.
+      console.error('Google gave a new refresh token: the login rotates — move it to antigravity-session (docs/antigravity-login.md)')
+      status = 3
+    }
+
+    if (!(await write(TOKEN, { access_token: b64(fresh.access_token), expires_at: b64(expiresAt) }, 5))) {
+      console.error(`refreshed, but ${TOKEN} not written: the gateway keeps the previous access token`)
+      process.exit(2)
+    }
+    // A lifetime shorter than two runs and the kubelet's sync would let the token lapse between them.
+    if (fresh.expires_in * 1000 < minLife) {
+      console.error(`the access token lives ${fresh.expires_in} s, under ${minLife / 1000} s: run the job more often`)
+      status = 3
+    }
+    console.log(`refreshed (${mode}): access token valid until ${expiresAt} (${fresh.expires_in} s), refresh token ${rotated ? 'rotated' : 'unchanged'}`)
+    process.exit(status)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: antigravity-refresher
+spec:
+  # An access token lives one hour: every 15 minutes, two runs may fail before it lapses. Off the quarter
+  # hours github-refresher takes.
+  schedule: "7-59/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      # No retry by a new Pod: if the login rotates, a refresh that went through but was not written would be
+      # retried with a spent refresh token. The script retries its writes itself; the next run is 15 minutes away.
+      backoffLimit: 0
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app: antigravity-refresher
+        spec:
+          serviceAccountName: antigravity-refresher
+          restartPolicy: Never
+          priorityClassName: bretagne-low
+          enableServiceLinks: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            # Reads the mounted refresh token (0440).
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresher
+              image: node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+              command: ["node", "/app/refresh.mjs"]
+              env:
+                # The API server's CA, on top of the public roots oauth2.googleapis.com needs.
+                - name: NODE_EXTRA_CA_CERTS
+                  value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                # agy 1.5.13's own OAuth client, Google's, an installed application's: embedded in the binary,
+                # which sends it itself. Public, no credential (agora's docs/specs/credentials.md, "The OAuth
+                # client"): a refresh token is needed to obtain anything with it.
+                - name: CLIENT_ID
+                  value: 1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com
+                - name: CLIENT_SECRET
+                  value: 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
+                # A token must outlive two runs (15 minutes apart) and the kubelet's sync: below 40 minutes,
+                # the run says so.
+                - name: MIN_LIFE_MINUTES
+                  value: "40"
+              resources:
+                requests: { cpu: 10m, memory: 64Mi }
+                limits: { memory: 128Mi }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - { name: script, mountPath: /app, readOnly: true }
+                - { name: login, mountPath: /etc/antigravity-login, readOnly: true }
+          volumes:
+            - name: script
+              configMap:
+                name: antigravity-refresher
+            # The refresh token when it does not rotate: that one key of upstream-credentials, none of the
+            # others. Optional: the key may not be there (the login not done, or kept in antigravity-session).
+            - name: login
+              secret:
+                secretName: upstream-credentials
+                optional: true
+                defaultMode: 0440
+                items:
+                  - { key: antigravity-refresh-token, path: refresh_token }
