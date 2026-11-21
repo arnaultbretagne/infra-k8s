@@ -371,9 +371,13 @@ binds:
                     location: { header: { name: authorization, prefix: "Bearer " } }
             # Agora's own MCP server, for `agora:read` (docs/specs/credentials.md on arnaultbretagne/agora,
             # "Agora's MCP"; docs/specs/mcp.md). `mcp.agora.internal` resolves nowhere: only this route knows
-            # it. No credential: the gateway tells Agora who calls instead — the JWT's subject, `agora
-            # <execution>`, set as x-agora-execution over whatever the sandbox sent — and Agora opens its tools by
-            # the rights it recorded. The server's port 8082 admits the gateway alone (apps/agora/networkpolicy.yaml).
+            # it. No credential: the gateway forwards the execution's JWT instead — the one its CONNECT carried,
+            # read by jwtAuth's own expression, as `Authorization: Bearer` over whatever the sandbox sent —, and
+            # Agora checks it again with its own key and takes the caller from its subject, `agora <execution>`;
+            # it opens its tools by the rights it recorded. x-agora-execution, the JWT's subject over whatever the
+            # sandbox sent, grants nothing on a server that checks the JWT; it stays set, so that no header of the
+            # sandbox's ever reaches a server under that name. The server's port 8082 admits the gateway alone
+            # (apps/agora/networkpolicy.yaml); reaching it proves nothing.
             - name: agora
               hostnames: [mcp.agora.internal]
               backends:
@@ -385,6 +389,7 @@ binds:
                 transformations:
                   request:
                     set:
+                      authorization: '"Bearer " + source.connectHeaders["proxy-authorization"].stripPrefix("Bearer ")'
                       x-agora-execution: 'jwt.sub'
             # The Internet: no hostnames, so agentgateway picks it last, for a host none of the routes
             # above names — those keep their own grants, and their credentials, whatever this one

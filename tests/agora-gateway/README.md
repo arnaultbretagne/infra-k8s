@@ -30,11 +30,12 @@ What it asserts:
 | The gateway's log | Route `vault`, the execution, the tool. |
 
 `agora-route.test.mjs` does the same for the `agora` route — Agora's own MCP server (`docs/specs/mcp.md` on
-arnaultbretagne/agora) — with a stand-in for the server's port 8082 that records each message and the caller named:
+arnaultbretagne/agora) — with a stand-in for the server's port 8082 that records each message, the JWT forwarded and the caller named:
 
 | Case | Expected |
 | --- | --- |
 | `agora:read` | The message reaches the server with `x-agora-execution` set to the token's own subject, whatever the sandbox sent in it. |
+| `agora:read`, the sandbox sending an `Authorization` of its own — another execution's JWT, a `Basic` | The message reaches the server with `Authorization: Bearer` and the JWT its CONNECT carried, byte for byte, never the sandbox's (M15): the proof the server checks. |
 | `internet` alone, `anthropic` alone, no profile; a token used from another address | 403, the server never reached. |
 | `/mcp/`, `/mcp?x=1`, `/api/workstreams`, `..`, `%2e`, `PUT` | 403, the server never reached. |
 | The gateway's log | Route `agora`, the execution. |
