@@ -19,7 +19,7 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 
 | Case | Expected |
 | --- | --- |
-| The manifests | Image = `ha-config-backup`'s; backup every 15 min, verify weekly, both `Forbid`; the PVC `obsidian-data`, subPath `vault`, read-only; the pod security of the criteria; the Secret SOPS-encrypted for `.sops.yaml`'s recipient, nothing in clear; the network policy: DNS, and 443 to `*.r2.cloudflarestorage.com` only, nothing in. |
+| The manifests | Image = `ha-config-backup`'s; backup every 15 min, verify weekly, both `Forbid`; the PVC `obsidian-data`, subPath `vault`, read-only; the pod security of the criteria; the Secret SOPS-encrypted for `.sops.yaml`'s recipient, nothing in clear; the network policy: DNS, and 443 to `*.r2.cloudflarestorage.com` only, nothing in; the host firewall (`bootstrap/bootstrap.sh`, input `policy drop`) accepts from the pod CIDR what Cilium marks for its proxies (`0x200/0xf00`), without which the DNS proxy of that policy never gets a query. |
 | (a) A second pass, nothing changed | `There was nothing to transfer`, 0 B sent, no stored object written, no `history/` folder. |
 | (b) A note modified | `current/` has the new version, `history/<ts of the pass>/` the old one, and only it. |
 | (c) A note deleted | Gone from `current/`, in `history/<ts>/`. |

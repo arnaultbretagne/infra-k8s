@@ -363,6 +363,13 @@ test('the manifests: what is tested is what is deployed', () => {
   assert.deepEqual(Object.keys(out).sort(), ['toFQDNs', 'toPorts']);
   assert.deepEqual(out.toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
   assert.deepEqual(out.toPorts, [{ ports: [{ port: '443', protocol: 'TCP' }] }]);
+  // That DNS rule sends the pod's queries through Cilium's DNS proxy, in the host's network: the host
+  // firewall (bootstrap.sh, input policy drop) must accept what Cilium marks for its proxies
+  // (MagicMarkIsToProxy, 0x200/0xf00), or every query is dropped unanswered (seen live 2026-11-21).
+  assert.deepEqual(dns.toPorts[0].rules, { dns: [{ matchPattern: '*' }] });
+  const nftables = readFileSync(join(repo, 'bootstrap/bootstrap.sh'), 'utf8').match(/cat > \/etc\/nftables\.conf <<'NFTEOF'\n([\s\S]*?)\nNFTEOF/)[1];
+  assert.match(nftables, /chain input \{\n\s*type filter hook input priority 0; policy drop;/);
+  assert.match(nftables, /^\s*ip saddr 10\.244\.0\.0\/16 meta mark & 0x00000f00 == 0x00000200 accept$/m);
 
   // The bucket is dedicated: not cnpg-s3-creds's.
   const env = find('ConfigMap', 'obsidian-vault-backup-env').data;
