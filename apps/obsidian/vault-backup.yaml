@@ -1,5 +1,5 @@
 # The vault's backup (ADR 0005): every 15 min, `rclone sync` of obsidian-data/vault to an rclone
-# crypt remote on the dedicated R2 bucket `bretagne-obsidian-backup`, previous versions kept 7 days
+# crypt remote on the dedicated R2 bucket `obsidian-backup`, previous versions kept 7 days
 # under history/<timestamp>/; every week, `rclone cryptcheck` proves the stored copy still decrypts
 # to the vault. The script is backup/vault-backup.sh (ConfigMap obsidian-vault-backup-scripts,
 # kustomization.yaml); restoring is RESTORE.md, with backup/restore-job.yaml.
@@ -26,7 +26,7 @@ data:
   # gets 403 (ha-config-backup, seen live 2026-09-05).
   RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
   RCLONE_CONFIG_BACKUP_TYPE: crypt
-  RCLONE_CONFIG_BACKUP_REMOTE: r2:bretagne-obsidian-backup
+  RCLONE_CONFIG_BACKUP_REMOTE: r2:obsidian-backup
   # rclone's defaults, written down: a restore must use the same ones (RESTORE.md).
   RCLONE_CONFIG_BACKUP_FILENAME_ENCRYPTION: standard
   RCLONE_CONFIG_BACKUP_DIRECTORY_NAME_ENCRYPTION: "true"

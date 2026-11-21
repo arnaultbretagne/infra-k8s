@@ -7,7 +7,7 @@
 > exists.
 
 The backup (`vault-backup.yaml`, script `backup/vault-backup.sh`) keeps, on the rclone crypt remote
-`backup:` over the bucket `bretagne-obsidian-backup`:
+`backup:` over the bucket `obsidian-backup`:
 
 | Where | What |
 | --- | --- |
@@ -139,13 +139,13 @@ for k in RCLONE_CONFIG_R2_ENDPOINT RCLONE_CONFIG_R2_ACCESS_KEY_ID RCLONE_CONFIG_
 done
 export RCLONE_CONFIG=/dev/null RCLONE_CONFIG_R2_TYPE=s3 RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
   RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true RCLONE_CONFIG_BACKUP_TYPE=crypt \
-  RCLONE_CONFIG_BACKUP_REMOTE=r2:bretagne-obsidian-backup RCLONE_CONFIG_BACKUP_FILENAME_ENCRYPTION=standard \
+  RCLONE_CONFIG_BACKUP_REMOTE=r2:obsidian-backup RCLONE_CONFIG_BACKUP_FILENAME_ENCRYPTION=standard \
   RCLONE_CONFIG_BACKUP_DIRECTORY_NAME_ENCRYPTION=true
 mkdir -p restored-vault
 VAULT_DIR=./restored-vault RESTORE_FROM=current RESTORE_PATH= sh apps/obsidian/backup/vault-backup.sh restore
 ```
 
 Without this repository, the same remotes by hand: an `s3` remote (provider Cloudflare, the endpoint and
-keys) and over it, on `<remote>:bretagne-obsidian-backup`, a `crypt` remote with filename encryption
+keys) and over it, on `<remote>:obsidian-backup`, a `crypt` remote with filename encryption
 `standard`, directory name encryption on, and the two passwords (`rclone config`, password then salt). Then
 `rclone copy <crypt remote>:current ./restored-vault`.

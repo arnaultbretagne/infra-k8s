@@ -348,7 +348,7 @@ test('the manifests: what is tested is what is deployed', () => {
   // The bucket is dedicated: not cnpg-s3-creds's.
   const env = find('ConfigMap', 'obsidian-vault-backup-env').data;
   assert.equal(env.RCLONE_CONFIG_BACKUP_TYPE, 'crypt');
-  assert.match(env.RCLONE_CONFIG_BACKUP_REMOTE, /^r2:bretagne-obsidian-backup$/);
+  assert.match(env.RCLONE_CONFIG_BACKUP_REMOTE, /^r2:obsidian-backup$/);
   assert.ok(!JSON.stringify(objects).includes('cnpg-s3-creds'));
 });
 
