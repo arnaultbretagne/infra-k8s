@@ -25,6 +25,10 @@ VAULT="${VAULT_DIR:?VAULT_DIR is the vault mount}"
 RETENTION_DAYS=7
 # Obsidian's window layout: rewritten on every click, worthless to restore.
 EXCLUDE='/.obsidian/workspace*.json'
+# How long one pass may sync. rclone stops it itself (hard cutoff: listing, checks and transfers),
+# with its own error, inside the Job's activeDeadlineSeconds (840 s, vault-backup.yaml) and after
+# printing its progress every minute; what a pass did not send, the next one sends.
+PASS_BUDGET=7m
 
 # rclone gives up on R2 within seconds, and says so. With its defaults, one request R2 never answers
 # is retried for over an hour without a line at -v: 1 min to connect, 10 low-level retries, each of
@@ -77,10 +81,19 @@ case "${1:-}" in
     reach_r2
     ts="$(date -u +%Y%m%dT%H%M%SZ)"
     echo "==> sync $VAULT -> backup:current (replaced and deleted files -> backup:history/$ts)"
+    rc=0
     rclone sync "$VAULT" backup:current \
       --backup-dir "backup:history/$ts" \
       --exclude "$EXCLUDE" \
-      --fast-list -v
+      --max-duration "$PASS_BUDGET" --cutoff-mode hard \
+      --stats 1m \
+      --fast-list -v || rc=$?
+    if [ "$rc" -eq 10 ]; then
+      # Exit 10, --max-duration. An object is stored whole or not at all, and sync deletes nothing
+      # after an error: the next pass resumes from what this one stored.
+      echo "==> sync stopped at its $PASS_BUDGET budget: the next pass sends the rest" >&2
+    fi
+    [ "$rc" -eq 0 ] || exit "$rc"
     cutoff="$(date -u -d "@$(($(date +%s) - RETENTION_DAYS * 86400))" +%Y%m%dT%H%M%SZ)"
     echo "==> purge history older than $cutoff"
     # Exit 3: no history yet.
