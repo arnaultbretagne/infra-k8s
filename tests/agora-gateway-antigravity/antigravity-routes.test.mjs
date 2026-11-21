@@ -92,11 +92,13 @@ const configMap = (name) => objects.find((o) => o.kind === 'ConfigMap' && new Re
 const deployed = configMap('gateway-config').data['config.yaml']
 const kid = JSON.parse(configMap('grants-jwks').data['jwks.json']).keys[0].kid
 const deployment = objects.find((o) => o.kind === 'Deployment' && o.metadata.name === 'gateway')
+const init = deployment.spec.template.spec.initContainers.find((c) => c.name === 'antigravity-login')
 const { GrantSigner } = await import(process.env.AGORA_GRANTS ?? assert.fail("AGORA_GRANTS: Agora's packages/credentials/src/grants.ts"))
 
 /**
- * The deployed configuration on the binary, its credential files written; `antigravity` the login's volume:
+ * The deployed configuration on the binary, its credential files written; `antigravity` the login's Secret:
  * 'token', 'empty' (the Secret as Flux creates it) or 'absent' (no Secret: the optional volume is an empty dir).
+ * Then the Deployment's own init container, antigravity-login, run as deployed (its paths moved), before the gateway.
  */
 async function startGateway(antigravity) {
   const work = mkdtempSync(join(tmpdir(), 'antigravity-routes-'))
@@ -119,14 +121,17 @@ async function startGateway(antigravity) {
   }
   const text = stringify(config)
   for (const file of new Set([...text.matchAll(new RegExp(`${root}[^ }\\n"']+`, 'g'))].map((m) => m[0]))) {
-    if (file.startsWith(`${root}antigravity/`)) continue
+    if (file.startsWith(`${root}antigravity/`) || file.startsWith(`${root}antigravity-secret/`)) continue
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, `stand-in:${file.slice(root.length)}`)
   }
-  const volume = join(root, 'antigravity')
+  const volume = join(root, 'antigravity-secret')
   if (antigravity === 'token') writeSecretVolume(volume, { access_token: LOGIN })
   else if (antigravity === 'empty') writeSecretVolume(volume, { access_token: '' })
   else mkdirSync(volume, { recursive: true })
+  mkdirSync(join(root, 'antigravity'), { recursive: true })
+  const [command, ...args] = init.command.map((arg) => arg.replaceAll('/etc/agentgateway/', root))
+  const initLog = execFileSync(command, args, { encoding: 'utf8' }).trim()
   const ca = makeCa(join(work, 'etc/ca'))
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   writeFileSync(join(work, 'etc/jwks/jwks.json'), JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid, alg: 'EdDSA', use: 'sig' }] }))
@@ -154,7 +159,7 @@ async function startGateway(antigravity) {
   }
   const signer = new GrantSigner({ proxy: `127.0.0.1:${connectPort}`, keyFile, keyId: kid, issuer: listener.policies.jwtAuth.issuer, audience: listener.policies.jwtAuth.audiences[0] })
   return {
-    upstream, gateway, log, signer, ca, connectPort, volume,
+    upstream, gateway, log, signer, ca, connectPort, volume, initLog,
     close: async () => { gateway.kill('SIGKILL'); await upstream.close(); rmSync(work, { recursive: true, force: true }) },
   }
 }
@@ -195,9 +200,14 @@ describe('the antigravity routes on agentgateway 1.6.0, the login present (C71)'
     const reading = routes.filter((r) => r.policies?.backendAuth?.key?.value?.file === '/etc/agentgateway/antigravity/access_token').map((r) => [r.name, r.hostnames])
     assert.deepEqual(reading, [['antigravity', [CLOUDCODE]], ['antigravity-userinfo', [WWW]]])
     const spec = deployment.spec.template.spec
-    const mount = spec.containers[0].volumeMounts.find((m) => m.name === 'antigravity')
-    assert.equal(mount.mountPath, '/etc/agentgateway/antigravity')
-    const volume = spec.volumes.find((v) => v.name === 'antigravity')
+    const mounts = Object.fromEntries(spec.containers[0].volumeMounts.map((m) => [m.name, m]))
+    assert.deepEqual(mounts.antigravity, { name: 'antigravity', mountPath: '/etc/agentgateway/antigravity', readOnly: true })
+    assert.deepEqual(mounts['antigravity-secret'], { name: 'antigravity-secret', mountPath: '/etc/agentgateway/antigravity-secret', readOnly: true })
+    assert.deepEqual(spec.volumes.find((v) => v.name === 'antigravity').emptyDir, { medium: 'Memory', sizeLimit: '1Mi' })
+    // The init container sees both volumes at the gateway's own paths, so the link it writes resolves the same there.
+    assert.deepEqual(init.volumeMounts.map((m) => [m.name, m.mountPath]), [['antigravity', '/etc/agentgateway/antigravity'], ['antigravity-secret', '/etc/agentgateway/antigravity-secret']])
+    assert.match(gw.initLog, /antigravity-token mounted/)
+    const volume = spec.volumes.find((v) => v.name === 'antigravity-secret')
     assert.deepEqual(volume.secret, { secretName: 'antigravity-token', optional: true, defaultMode: 0o440, items: [{ key: 'access_token', path: 'access_token' }] })
     assert.deepEqual(routes.flatMap((r) => r.hostnames ?? []).filter((h) => /oauth2\.googleapis|play\.googleapis/.test(h)), [], 'no route for the token endpoint nor telemetry')
   })
@@ -286,32 +296,16 @@ describe('the antigravity routes on agentgateway 1.6.0, the login present (C71)'
   })
 })
 
-// What agentgateway 1.6.0 does when the file a route's backendAuth reads does not exist at all (the Secret deleted,
-// the optional volume then an empty directory): said, not asserted — Flux always creates antigravity-token, and
-// the case asserted is the one Flux gives, below.
-describe('the login absent, no Secret at all (information)', () => {
-  it('the gateway at start', async () => {
-    let gw
-    try {
-      gw = await startGateway('absent')
-      const a = await send(gw, ['anthropic'], { host: 'api.anthropic.com', path: '/v1/messages', method: 'POST' })
-      const r = await send(gw, ['antigravity'], { host: CLOUDCODE, path: '/v1internal:loadCodeAssist', method: 'POST' })
-      console.log(`ℹ absent: the gateway starts; anthropic ${a.status}; antigravity ${r.status}, upstream reached ${r.reached}, ${JSON.stringify(r.authorization)}`)
-    } catch (error) {
-      console.log(`ℹ absent: ${String(error.message).replace(/\s+/g, ' ').slice(0, 1500)}`)
-    } finally {
-      await gw?.close()
-    }
-  })
-})
-
-for (const state of ['empty']) {
-  describe('the login as Flux creates it, empty: the gateway starts and the other routes answer as before', () => {
+// agentgateway 1.6.0 exits at start when a file a backendAuth reads is missing ('read resource file …: No such file or
+// directory', seen on this test's first run). With antigravity-login, the routes never read the Secret's own file.
+for (const state of ['empty', 'absent']) {
+  describe(`the login ${state === 'empty' ? 'as Flux creates it, empty' : 'absent, no Secret at all'}: the gateway starts and the other routes answer as before`, () => {
     let gw
     before(async () => { gw = await startGateway(state) })
     after(async () => { await gw?.close() })
 
     it('anthropic, chatgpt, internet: as before', async () => {
+      assert.match(gw.initLog, state === 'absent' ? /antigravity-token absent: an empty token in its place/ : /antigravity-token mounted/)
       const a = await send(gw, ['anthropic'], { host: 'api.anthropic.com', path: '/v1/messages', method: 'POST' })
       assert.deepEqual([a.status, a.authorization], [200, 'Bearer stand-in:credentials/anthropic'])
       const c = await send(gw, ['chatgpt'], { host: 'chatgpt.com', path: '/backend-api/codex/responses', method: 'POST' })
@@ -323,11 +317,19 @@ for (const state of ['empty']) {
     it("agy's routes never send the sandbox's placeholder on", async () => {
       const r = await send(gw, ['antigravity'], { host: CLOUDCODE, path: '/v1internal:loadCodeAssist', method: 'POST' })
       console.log(`ℹ ${state}: ${r.status}, upstream reached: ${r.reached}, authorization: ${JSON.stringify(r.authorization)}`)
-      assert.notEqual(r.authorization, SANDBOX)
+      assert.deepEqual([r.status, r.authorization], [200, 'Bearer'], 'an empty Bearer: Google answers 401, never the placeholder')
       assert.equal(gw.gateway.exitCode, null, 'the gateway still runs')
     })
 
-    it('the login filled in afterwards is used with no restart', async () => {
+    it(state === 'empty' ? 'the login filled in afterwards is used with no restart' : 'the Secret back: used after a restart of the gateway', async () => {
+      if (state === 'absent') {
+        // The fallback is fixed until the Pod restarts; then the init container links the Secret's file.
+        await gw.close()
+        gw = await startGateway('token')
+        const r = await send(gw, ['antigravity'], { host: CLOUDCODE, path: '/v1internal:loadCodeAssist', method: 'POST' })
+        assert.deepEqual([r.status, r.authorization], [200, `Bearer ${LOGIN}`])
+        return
+      }
       writeSecretVolume(gw.volume, { access_token: LOGIN })
       const deadline = Date.now() + 15_000
       let r

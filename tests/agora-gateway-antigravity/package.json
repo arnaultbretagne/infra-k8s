@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The agora-gateway's antigravity routes on the real agentgateway binary, and the Google login's refresher (README.md).",
   "scripts": {
-    "test": "node --test --test-concurrency=1 --test-timeout=120000 antigravity-routes.test.mjs antigravity-refresher.test.mjs"
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 antigravity-routes.test.mjs antigravity-refresher.test.mjs refresher-dns.test.mjs"
   },
   "engines": {
     "node": ">=24"

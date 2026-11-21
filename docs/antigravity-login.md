@@ -8,7 +8,7 @@ login, where its refresh token goes, how to tell it works, how to rotate or revo
 | --- | --- |
 | The pool | `apps/agora-sandboxes/catalogue/antigravity/`: image `agora-harness-antigravity`, base profile `antigravity`, a placeholder token file, no credential. |
 | The routes | `apps/agora-gateway/config/config.yaml`, `antigravity` (`daily-cloudcode-pa.googleapis.com`, `/v1internal:<method>`) and `antigravity-userinfo` (`GET www.googleapis.com/oauth2/v2/userinfo` exactly): `Authorization: Bearer` + `/etc/agentgateway/antigravity/access_token`. No route for `oauth2.googleapis.com` nor `play.googleapis.com`. |
-| The access token | The Secret `antigravity-token`, key `access_token`. Flux creates it empty; `antigravity-refresher` fills it every 15 minutes; the gateway mounts it (optional) and watches it. **Never delete it**: agentgateway 1.6.0 will not start when a credential file is missing, which takes down every route (tests/agora-gateway-antigravity). To cut the token, empty it. |
+| The access token | The Secret `antigravity-token`, key `access_token`. Flux creates it empty; `antigravity-refresher` fills it every 15 minutes; the gateway mounts it (optional) and watches it, through the file its init container `antigravity-login` links. agentgateway 1.6.0 does not start when a credential file is missing: if the Secret is absent when the gateway starts, `antigravity-login` puts an empty file in its place, so every other route answers as before and agy's answer 401 until the gateway restarts with the Secret back (`kubectl -n agora-gateway rollout restart deployment/gateway`). To cut the token, empty it rather than delete it: emptied, the next request carries no token, with no restart. |
 | The refresh token | `antigravity-session` (out of git) **or** `upstream-credentials`, key `antigravity-refresh-token` (SOPS): below. Read by `antigravity-refresher` only. |
 | The OAuth client | agy's own, public, in `apps/agora-gateway/antigravity-refresher.yaml` (`CLIENT_ID`, `CLIENT_SECRET`). |
 
@@ -81,15 +81,26 @@ and says `the login rotates — move it to antigravity-session`: do so with the 
 
 ## Rotate, revoke
 
-- **Rotate** (a new login, the old one kept until then): log in again as above, then replace the value where it
-  lives — `kubectl -n agora-gateway create secret generic antigravity-session --from-file=refresh_token="$HOME/refresh_token" --dry-run=client -o yaml | kubectl replace -f -`, or a commit of the SOPS key —, run the job once
-  (`kubectl create job --from=cronjob/antigravity-refresher …`), check its log, then revoke the old one.
-- **Revoke** at once: in the dedicated account, <https://myaccount.google.com/permissions>, remove access for
-  Antigravity — every refresh token of this client for the account dies; the next run logs `invalid_grant`. Or
-  revoke one token: `curl -d token=<refresh token> https://oauth2.googleapis.com/revoke`. The access token in
-  `antigravity-token` stays good until its expiry (≤ 1 hour); to cut it at once as well, empty it:
-  `kubectl -n agora-gateway patch secret antigravity-token -p '{"data":{"access_token":""}}'` (the gateway
-  sees it within about a minute) and suspend the job: `kubectl -n agora-gateway patch cronjob antigravity-refresher -p '{"spec":{"suspend":true}}'` (the manifest does not set `suspend`, so Flux leaves it; set it back to
-  `false` with the new login).
+Google's revocation is **grant-wide**: revoking the login — from the account's permissions page, or by sending any
+one of its tokens to `https://oauth2.googleapis.com/revoke` — ends the account's authorization of agy's client and
+invalidates every access and refresh token issued under it, including one from a login made just before. So
+never revoke after installing a new login: that would kill the new one too.
+
+- **Rotate** (replace the refresh token, nothing compromised): log in again as above — a new login is a new refresh
+  token under the same grant — and replace the value where it lives: `kubectl -n agora-gateway create secret generic antigravity-session --from-file=refresh_token="$HOME/refresh_token" --dry-run=client -o yaml | kubectl replace -f -`,
+  or a commit of the SOPS key. Run the job once (`kubectl -n agora-gateway create job --from=cronjob/antigravity-refresher antigravity-refresher-rotate`)
+  and check its log. **Do not revoke the old token**: it stops being used, and Google drops it on its own (six months
+  unused, or past 100 refresh tokens of this client for the account).
+- **Revoke** (the login is compromised, or the cluster must lose Google): revoke first, then, if agy must keep
+  working, log in afresh and install the new token.
+  1. Revoke the grant: in the dedicated account, <https://myaccount.google.com/permissions>, remove access for
+     Antigravity (or `curl -d token=<refresh token> https://oauth2.googleapis.com/revoke`: the same grant-wide effect).
+     Every token dies; the next run logs `refresh refused (…): 400 invalid_grant`.
+  2. Cut what the gateway still holds (an access token can outlive the revocation until its expiry, at most an hour):
+     `kubectl -n agora-gateway patch secret antigravity-token -p '{"data":{"access_token":""}}'` — the gateway sees it
+     within about a minute, with no restart; and stop the job: `kubectl -n agora-gateway patch cronjob antigravity-refresher -p '{"spec":{"suspend":true}}'`
+     (the manifest does not set `suspend`, so Flux leaves it).
+  3. To resume: a fresh login (above) **after** the revocation, its refresh token installed where it lives, the job
+     unsuspended (`… -p '{"spec":{"suspend":false}}'`) and run once, its log checked.
 - **Withdraw the harness**: take `antigravity` out of `OFFERED_PROFILES` (`apps/agora/server.yaml`) and the
   folder out of `apps/agora-sandboxes/catalogue/kustomization.yaml`; the routes without a token answer 401.

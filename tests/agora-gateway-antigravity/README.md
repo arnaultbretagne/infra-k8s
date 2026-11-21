@@ -21,8 +21,8 @@ antigravity pool or the offer changes.
 | `antigravity` + `internet` | Google's other hosts and paths leave as the sandbox sent them, never with the login; agy's routes' uncovered paths still 403 (C72). |
 | No profile, `anthropic`, `chatgpt`, `internet` alone; a token used from another address | 403 on both routes. |
 | The access token swapped as the kubelet swaps `..data` | The next request carries the new one, no restart (C73). |
-| The login's volume empty (the Secret as Flux creates it) | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; agy's routes send an empty Bearer, never the placeholder. Then filled: used with no restart. |
-| The login's file absent (no Secret at all) | Said, not asserted (ℹ). agentgateway 1.6.0 **does not start** when a `backendAuth` file is missing (`read resource file …: No such file or directory`, seen in this test's first run): that is why Flux creates `antigravity-token` empty (`IfNotPresent`), which the refresher's test asserts. |
+| Every case | The gateway's files as the Deployment gives them: the Secret mounted as the kubelet mounts it, then the Deployment's own init container `antigravity-login` run as deployed, which links the routes' file to the Secret's, or writes an empty one. |
+| The login's Secret empty (as Flux creates it), or absent | The gateway starts; `anthropic`, `chatgpt`, `internet` answer as before; agy's routes send an empty Bearer, never the placeholder. Empty, then filled: used with no restart. Absent, then back: used after a restart. Without the init container, agentgateway 1.6.0 does not start on a missing file (`read resource file …: No such file or directory`, seen on this test's first run). |
 | The access log | Route `antigravity` / `antigravity-userinfo`, the execution. |
 
 `antigravity-refresher.test.mjs` runs the refresher's script as `apps/agora-gateway/antigravity-refresher.yaml`
@@ -33,6 +33,12 @@ exit 2, nothing half-done). Refused: exit 1, `refresh refused … invalid_grant`
 asked. No token, nor agy's client secret, ever logged. And its manifests: RBAC on `antigravity-token` and
 `antigravity-session` alone, get and update; the one key of `upstream-credentials`, optional; egress to
 `oauth2.googleapis.com` alone.
+
+`refresher-dns.test.mjs` runs the refresher's image (node:24-alpine, musl) in Docker with the Pod's
+`/etc/resolv.conf` as the kubelet writes it (search domains of `agora-gateway`, the Pod's `dnsConfig`), against a
+stand-in for Cilium's DNS proxy under the refresher's policy: the names it lists answered, every other refused
+(REFUSED). As deployed (ndots:1), `oauth2.googleapis.com` is asked first and resolves; at the cluster's ndots:5,
+what musl does is said (ℹ).
 
 Locally (linux-amd64, Node 24, kubectl): `bash ci.sh`, or with your own binary and checkout:
 
