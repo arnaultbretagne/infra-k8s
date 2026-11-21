@@ -1,8 +1,7 @@
 # obsidian-ignis: Ignis in production and in its preview, as rendered
 
-Run by `.github/workflows/obsidian-ignis.yml` on every pull request touching Obsidian, Ignis, the gateway or
-Pocket-ID's clients (until the operator moves it there, the file is `obsidian-ignis.workflow.yml` in this
-directory: a push that adds a workflow needs the `workflows` permission). It reads what this repository deploys, `kubectl kustomize apps/obsidian` (production) and
+Run by the `tests` workflow (`ci.paths`; `tests/README.md`) on every pull request touching Obsidian, Ignis,
+the gateway or Pocket-ID's clients. It reads what this repository deploys, `kubectl kustomize apps/obsidian` (production) and
 `kubectl kustomize apps/ignis/workload` (what the preview applies), and runs the init container's script.
 
 | Case | Expected |
