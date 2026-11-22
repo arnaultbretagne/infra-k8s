@@ -4,7 +4,7 @@
 // the access token to antigravity-token keeping the Secret's other keys, never logs a token, says when it refreshed
 // and when the refresh is refused, and why it stops: 4 no login yet, 1 refused, 2 unable to read or write, 3 a token
 // too short or a rotation the SOPS key cannot follow. And its manifests: RBAC on its own two Secrets alone, the one
-// key of upstream-credentials mounted, optional, egress to Google's token endpoint alone.
+// key of upstream-credentials mounted, optional, egress as claude-refresher's (DNS, the API server, 443 out).
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -236,13 +236,17 @@ describe('the refresher\'s manifests', () => {
     assert.ok(!rendered.some((o) => o.kind === 'Secret' && o.metadata.name === 'antigravity-session'), 'antigravity-session is kept out of git')
   })
 
-  it('its network: DNS, the API server, oauth2.googleapis.com on 443, nothing else', () => {
+  it('its network: DNS, the API server, 443 out — claude-refresher\'s, never by name', () => {
     const policy = rendered.find((o) => o.kind === 'CiliumNetworkPolicy' && o.metadata.name === 'antigravity-refresher')
     assert.deepEqual(policy.spec.endpointSelector, { matchLabels: { app: 'antigravity-refresher' } })
     assert.deepEqual(cronJob.spec.jobTemplate.spec.template.metadata.labels, { app: 'antigravity-refresher' })
     const egress = policy.spec.egress
     assert.equal(egress.length, 3)
     assert.deepEqual(egress[1], { toEntities: ['kube-apiserver'] })
-    assert.deepEqual(egress[2], { toFQDNs: [{ matchName: 'oauth2.googleapis.com' }], toPorts: [{ ports: [{ port: '443', protocol: 'TCP' }] }] })
+    assert.deepEqual(egress[2], { toEntities: ['world'], toPorts: [{ ports: [{ port: '443', protocol: 'TCP' }] }] })
+    assert.equal(egress[0].toPorts[0].rules, undefined, 'no DNS rule: it would send DNS through Cilium\'s proxy')
+    const claude = rendered.find((o) => o.kind === 'CiliumNetworkPolicy' && o.metadata.name === 'claude-refresher')
+    assert.deepEqual(egress, claude.spec.egress)
+    assert.equal(cronJob.spec.jobTemplate.spec.template.spec.dnsConfig, undefined)
   })
 })

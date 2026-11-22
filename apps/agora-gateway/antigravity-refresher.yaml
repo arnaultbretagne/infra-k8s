@@ -218,13 +218,6 @@ spec:
           restartPolicy: Never
           priorityClassName: bretagne-low
           enableServiceLinks: false
-          # Its network policy lets DNS answer oauth2.googleapis.com alone; Cilium refuses every other name. With the
-          # cluster's default ndots:5, musl (Alpine) would first ask for oauth2.googleapis.com.agora-gateway.svc.…,
-          # be refused, and stop there. At ndots:1 the name itself is asked first (tests/agora-gateway-antigravity,
-          # refresher-dns.test.mjs, on this image's resolver). The API server is reached by its address, no DNS.
-          dnsConfig:
-            options:
-              - { name: ndots, value: "1" }
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000

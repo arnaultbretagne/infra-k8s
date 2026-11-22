@@ -31,14 +31,8 @@ key (refreshed, written with its expiry, the Secret's other keys kept; a rotatio
 and `antigravity-session` (preferred; a new refresh token written there first, then the access token; unable to:
 exit 2, nothing half-done). Refused: exit 1, `refresh refused … invalid_grant`. No login: exit 4, Google never
 asked. No token, nor agy's client secret, ever logged. And its manifests: RBAC on `antigravity-token` and
-`antigravity-session` alone, get and update; the one key of `upstream-credentials`, optional; egress to
-`oauth2.googleapis.com` alone.
-
-`refresher-dns.test.mjs` runs the refresher's image (node:24-alpine, musl) in Docker with the Pod's
-`/etc/resolv.conf` as the kubelet writes it (search domains of `agora-gateway`, the Pod's `dnsConfig`), against a
-stand-in for Cilium's DNS proxy under the refresher's policy: the names it lists answered, every other refused
-(REFUSED). As deployed (ndots:1), `oauth2.googleapis.com` is asked first and resolves; at the cluster's ndots:5,
-what musl does is said (ℹ).
+`antigravity-session` alone, get and update; the one key of `upstream-credentials`, optional; egress as
+`claude-refresher`'s (DNS, the API server, 443 out), never by name.
 
 Locally (linux-amd64, Node 24, kubectl): `bash ci.sh`, or with your own binary and checkout:
 

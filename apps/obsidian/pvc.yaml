@@ -1,11 +1,9 @@
-# Stateful exception (ADR 0005): the Obsidian vault + the sync session state.
-# One PVC, two subPaths (vault/, sync-config/), shared by the 3 pods — RWO is
-# node-scoped, fine on single-node; the backup Jobs mount vault/ read-only beside
-# them. The vault is backed up every 15 min, encrypted, to its own R2 bucket
-# (vault-backup.yaml: rclone sync to a crypt remote, replaced and deleted
-# versions kept 7 days under history/, weekly cryptcheck); restoring it is
-# RESTORE.md. sync-config is not backed up: re-issuable by re-running
-# `ob sync-setup` with a fresh token.
+# Stateful exception (ADR 0005): the Obsidian vault, under the vault/ subPath,
+# shared by the MCP server and the clipper — RWO is node-scoped, fine on
+# single-node; the backup Jobs mount vault/ read-only beside them. The vault is
+# backed up every 15 min, encrypted, to its own R2 bucket (vault-backup.yaml:
+# rclone sync to a crypt remote, replaced and deleted versions kept 7 days under
+# history/, weekly cryptcheck); restoring it is RESTORE.md.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

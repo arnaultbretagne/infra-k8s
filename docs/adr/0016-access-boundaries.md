@@ -31,7 +31,7 @@ Strict separation between the GitOps repo (`infra-k8s`) and application code rep
 
 Application code has nothing to do with infrastructure. Mixing them would mean a code change and a deployment manifest change go through the same review process, with the same permissions. Separating them allows different access policies per repo.
 
-Some applications may be further split: reusable components packaged as Helm charts (e.g., obsidian-sync) vs application-specific code (e.g., the MCP server). This is a per-app decision, not an infrastructure one.
+Some applications may be further split: reusable components packaged as Helm charts vs application-specific code (e.g., the MCP server). This is a per-app decision, not an infrastructure one.
 
 ### Access Model
 
