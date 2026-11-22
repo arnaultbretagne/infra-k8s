@@ -309,6 +309,11 @@ net.ipv6.conf.all.accept_redirects = 0
 # Memory: pairs with the swapfile below. Low swappiness = swap only under real
 # pressure (a relief valve), never proactively — anon pages stay in RAM at rest.
 vm.swappiness = 10
+
+# Root runs kubelet, containerd shims and PID 1: 128 inotify instances is not enough
+# (kubelet alone holds ~75). At 128, a systemd re-exec (libc upgrade) gets EMFILE,
+# loses track of mounts and stacks / over itself.
+fs.inotify.max_user_instances = 8192
 EOF
 
 sysctl --system &>/dev/null
