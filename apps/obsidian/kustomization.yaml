@@ -4,7 +4,6 @@ namespace: obsidian
 resources:
   - namespace.yaml
   - pvc.yaml
-  - sync.yaml
   - clipper.yaml
   - mcp-server.yaml
   - httproute.yaml

@@ -1,32 +1,7 @@
-# Default-deny + allow-list (ADR 0020). Three workloads, three boundaries:
-# sync only talks OUT to Obsidian's servers; the clipper renders arbitrary
-# web pages (broad egress by design) but is only reachable from the MCP;
-# the MCP is the only internet-facing piece (via Traefik) and needs Pocket-ID
-# for JWKS.
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: obsidian-sync
-  namespace: obsidian
-spec:
-  endpointSelector:
-    matchLabels:
-      app: obsidian-sync
-  ingress: []                 # nothing ever connects to sync
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
-            k8s:k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - { port: "53", protocol: UDP }
-            - { port: "53", protocol: TCP }
-    # -> Obsidian Sync servers
-    - toEntities: [world]
-      toPorts:
-        - ports: [{ port: "443", protocol: TCP }]
+# Default-deny + allow-list (ADR 0020), one boundary per workload: the clipper
+# renders arbitrary web pages (broad egress by design) but is only reachable
+# from the MCP; the MCP is the only internet-facing piece (via Traefik) and
+# needs Pocket-ID for JWKS; the vault backup's Jobs only reach R2 (last policy).
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

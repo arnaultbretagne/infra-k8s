@@ -68,11 +68,11 @@ first, and the restore waits until it has actually stopped.
    ```sh
    flux suspend kustomization apps
    kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify -p '{"spec":{"suspend":true}}'
-   kubectl -n obsidian scale deployment obsidian-mcp web-clipper obsidian-sync --replicas=0
+   kubectl -n obsidian scale deployment obsidian-mcp web-clipper --replicas=0
    ```
 
-   (Deployments that do not exist any more, such as `obsidian-sync` once retired, are left out of the
-   `scale` and of the selector below; a new writer of the vault, such as Ignis, is added to both.)
+   (The writers are `obsidian-mcp` and `web-clipper`. A new writer of the vault, such as Ignis, is added to
+   both the `scale` and the selector below.)
 
 2. Wait until it has stopped. Suspending a CronJob does not stop a Job it has already started, and a pod
    scaled away may still be terminating: this loop ends only when neither CronJob has an active Job and no
@@ -82,7 +82,7 @@ first, and the restore waits until it has actually stopped.
    ```sh
    until active=$(kubectl -n obsidian get cronjob obsidian-vault-backup obsidian-vault-verify \
            -o jsonpath='{.items[*].status.active[*].name}') &&
-         writers=$(kubectl -n obsidian get pods -l 'app in (obsidian-mcp,web-clipper,obsidian-sync)' -o name) &&
+         writers=$(kubectl -n obsidian get pods -l 'app in (obsidian-mcp,web-clipper)' -o name) &&
          jobs=$(kubectl -n obsidian get pods -l app.kubernetes.io/part-of=obsidian-vault-backup \
            --field-selector=status.phase!=Succeeded,status.phase!=Failed -o name) &&
          [ -z "$active$writers$jobs" ]; do
