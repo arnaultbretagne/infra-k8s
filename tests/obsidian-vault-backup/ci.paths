@@ -1,0 +1,5 @@
+# The backup's manifests and script, and the ha-config-backup image it shares.
+apps/obsidian/*
+apps/home-assistant/config-backup.yaml
+# The host firewall, which must let Cilium's DNS proxy answer the backup's queries.
+bootstrap/bootstrap.sh

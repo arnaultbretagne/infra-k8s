@@ -107,7 +107,7 @@ must be at `/root/.config/sops/age/keys.txt`, and the Flux deploy key at
 The script handles:
 1. Strict preflight (static IP, NTP, deploy key, Age key, and TCP/443)
 2. The node's address made static: `bootstrap/host-network.sh` turns the ifupdown `inet dhcp` stanza holding `PUBLIC_IP` into a static one (same address, gateway, MAC, MTU and resolver), so that a link loss never takes the address away
-3. OS hardening (HTTPS-only nftables firewall, SSH, fail2ban, unattended-upgrades, kernel modules, sysctl)
+3. OS hardening (HTTPS-only nftables firewall, SSH, fail2ban, unattended-upgrades, kernel modules, sysctl), and `bootstrap/grub-guard/`: after every dpkg run and hourly, a check that `grub.cfg` would boot, regenerated if not, alerted on (`HostGrub*`)
 4. Installing k0s, Helm, Flux CLI, age, sops (pinned versions)
 5. Generating or loading the AES key for encryption at rest
 6. Starting k0s, arming netguard, then installing Cilium via Helm (CNI + LB, pre-Flux)
@@ -174,3 +174,6 @@ a controller with CRDs, so it sits in `infrastructure/` with its own Flux instal
 [Agent Vault](apps/agent-vault/README.md) owns credentials and the proxy; it is a
 config-only app and reconciles with the `apps` layer. Its runbook covers owner
 bootstrap, the SSO-gated UI and backups before connecting consumers.
+
+The cluster's own Google login, for Agora's `antigravity` harness (agy): the login, where its
+refresh token goes, rotation and revocation — [`docs/antigravity-login.md`](docs/antigravity-login.md).

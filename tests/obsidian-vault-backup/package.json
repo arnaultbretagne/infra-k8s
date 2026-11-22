@@ -1,0 +1,15 @@
+{
+  "name": "obsidian-vault-backup",
+  "private": true,
+  "type": "module",
+  "description": "The Obsidian vault backup's own script, as kustomize renders it, run in the rclone image of the manifests against a local crypt remote (README.md).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 vault-backup.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

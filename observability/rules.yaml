@@ -115,6 +115,32 @@ spec:
           annotations:
             summary: 'Root filesystem above 80% on {{ $labels.instance }}'
             description: 'PVCs (local-path), the container runtime and kine all share /. Disk pressure evicts pods at random.'
+        # bootstrap/grub-guard/grub-cfg-guard, after every dpkg run and hourly, through node-exporter's
+        # textfile collector. On 2026-11-22 an unattended update-grub wrote a grub.cfg that could not
+        # boot; nothing showed until the next reboot stopped at the GRUB prompt.
+        - alert: HostGrubConfigUnbootable
+          expr: grub_cfg_valid == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'grub.cfg would not boot on {{ $labels.instance }}: do not reboot'
+            description: 'A menu entry loads a kernel or initrd that is not on the /boot filesystem, and grub-cfg-guard could not regenerate a config that would. The next reboot stops at the GRUB prompt. On the host: `journalctl -t grub-cfg-guard` says why; check `findmnt /boot`, then `update-grub` and `grub-cfg-guard --check`.'
+        - alert: HostGrubConfigRepaired
+          expr: time() - grub_cfg_guard_last_repair_timestamp_seconds < 86400
+          labels:
+            severity: warning
+          annotations:
+            summary: 'grub-cfg-guard replaced a grub.cfg that would not boot on {{ $labels.instance }}'
+            description: 'An update-grub wrote a config that would not boot; it was regenerated and checked. The broken one is /boot/grub/grub.cfg.guard-broken. Look at what was wrong with the host at that time (`journalctl -t grub-cfg-guard`, then the journal around it): on 2026-11-22 it was a systemd daemon-reexec failing with "Too many open files". Clears after 24h.'
+        - alert: HostGrubGuardSilent
+          expr: time() - grub_cfg_guard_last_run_timestamp_seconds > 3 * 3600 or absent(grub_cfg_guard_last_run_timestamp_seconds)
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: 'grub-cfg-guard has not reported for 3 hours'
+            description: 'grub.cfg is no longer checked: grub-cfg-guard.timer stopped, the script fails before writing /var/lib/node_exporter/textfile/grub_cfg_guard.prom, or node-exporter no longer reads that directory.'
     - name: certificates
       rules:
         - alert: CertificateExpiringSoon

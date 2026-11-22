@@ -209,6 +209,13 @@ table inet firewall {
     # Cilium agent/operator/Hubble metrics (hostNetwork), scraped by Prometheus pods.
     ip saddr 10.244.0.0/16 tcp dport { 9962, 9963, 9965 } accept
 
+    # Cilium's proxies (hostNetwork): what a pod's L7 policy redirects to them, the DNS proxy of a
+    # toFQDNs policy first (apps/obsidian/networkpolicy.yaml, obsidian-vault-backup). Cilium TPROXYs
+    # those packets to its socket untracked (no ct state) and marks them 0x200/0xf00
+    # (MagicMarkIsToProxy); its own iptables ACCEPT for that mark cannot override this table's drop.
+    # Without this rule every DNS query of such a pod is dropped here, unanswered.
+    ip saddr 10.244.0.0/16 meta mark & 0x00000f00 == 0x00000200 accept
+
     # ICMP
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept
@@ -277,6 +284,12 @@ EOF
 systemctl enable --now unattended-upgrades 2>/dev/null || true
 ok "unattended-upgrades enabled (APT::Periodic configured; no auto-reboot)"
 
+# Those upgrades include GRUB, and the update-grub they run trusts the host as it is at that moment:
+# on 2026-11-22 it wrote a grub.cfg that could not boot, seen only at the next reboot
+# (bootstrap/grub-guard/grub-cfg-guard says how). The guard checks it after every dpkg run.
+"$BOOTSTRAP_DIR/grub-guard/provision.sh"
+ok "grub-cfg-guard: grub.cfg checked after every dpkg run and hourly, regenerated if it would not boot"
+
 # Kubernetes networking modules must exist before bridge sysctls are applied.
 cat > /etc/modules-load.d/k8s.conf <<'EOF'
 overlay
@@ -302,6 +315,11 @@ net.ipv6.conf.all.accept_redirects = 0
 # Memory: pairs with the swapfile below. Low swappiness = swap only under real
 # pressure (a relief valve), never proactively — anon pages stay in RAM at rest.
 vm.swappiness = 10
+
+# Root runs kubelet, containerd shims and PID 1: 128 inotify instances is not enough
+# (kubelet alone holds ~75). At 128, a systemd re-exec (libc upgrade) gets EMFILE,
+# loses track of mounts and stacks / over itself.
+fs.inotify.max_user_instances = 8192
 EOF
 
 sysctl --system &>/dev/null
@@ -817,6 +835,7 @@ printf '    SSH:       password disabled, root key-only\n'
 printf '    fail2ban:  active\n'
 printf '    Swap:      %s (swappiness=10)\n' "$SWAP_STATUS"
 printf '    Updates:   unattended-upgrades active\n'
+printf '    GRUB:      grub-cfg-guard after every dpkg run and hourly\n'
 printf '    Flux:      watching main → %s\n' "$CLUSTER_PATH"
 printf '    SOPS:      age key loaded in flux-system/sops-age\n'
 printf '    Terminal:  dev + NOPASSWD sudo; ttyd host service provisioned\n'

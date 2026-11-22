@@ -1,0 +1,22 @@
+# agy, the Antigravity CLI, over its own ACP server, on the cluster's own Google login: a Google account
+# dedicated to the cluster, never the operator's. The gateway sets its access token (routes antigravity and
+# antigravity-userinfo, kept fresh by apps/agora-gateway/antigravity-refresher.yaml); the image writes a
+# placeholder token file and nothing in the sandbox can refresh it (docs/specs/credentials.md on
+# arnaultbretagne/agora, "Antigravity").
+# `name`, `image`, `versions`, `source` and `inputs` are written by Agora's CI when it proposes a new
+# image (arnaultbretagne/agora, .github/workflows/ci.yml). Added by hand, as main's CI published it at
+# afdf6f6 (the image index its tag afdf6f694c41… names, as the other harnesses pin theirs) with the fingerprint
+# of its inputs at that commit (scripts/inputs.ts): its next proposal comes when those inputs change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: antigravity
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  harness: antigravity
+  name: antigravity-1d914570a293
+  image: ghcr.io/arnaultbretagne/agora-harness-antigravity@sha256:1d914570a293c777de04ae38e6b82ddc718379397d5996ef0038224aad54133a
+  versions: agy 1.5.13
+  source: arnaultbretagne/agora main afdf6f6
+  inputs: "c4744dcea6312321"

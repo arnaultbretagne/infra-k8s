@@ -9,6 +9,8 @@ resources:
   - mcp-server.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - vault-backup.yaml
+  - vault-backup.secrets.yaml
   # Ignis (obsidian.bretagne.dev): Obsidian in a browser, on the same vault, behind its OIDC gate.
   # Its workload is the one a preview applies (catalogue entry ignis); here it gets the real volume.
   - ../ignis/workload
@@ -16,6 +18,14 @@ resources:
   - ignis-oauth2-proxy.yaml
   - ignis-httproute.yaml
   - ignis-networkpolicy.yaml
+configMapGenerator:
+  # The backup's one script (vault-backup.yaml). No hash suffix: backup/restore-job.yaml, applied by
+  # hand outside this kustomization, mounts it by this name; a CronJob reads it at each run anyway.
+  - name: obsidian-vault-backup-scripts
+    files:
+      - backup/vault-backup.sh
+    options:
+      disableNameSuffixHash: true
 patches:
   # The workload's `data` emptyDir becomes the vault's PVC: the vault itself (subPath vault, the folder
   # the MCP server and the clipper use), Ignis's settings (ignis-data) and the Obsidian cache
