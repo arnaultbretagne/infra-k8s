@@ -1,0 +1,73 @@
+# promtool unit tests of the HostGrub* alerts (bretagne-critical, observability/rules.yaml), cut out of
+# `kubectl kustomize observability` by ci.sh. Series as node-exporter's textfile collector gives them
+# from bootstrap/grub-guard/grub-cfg-guard.
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Unbootable after 5m; a repair alerts for 24h; a guard reporting stops being silent.
+  - interval: 1m
+    input_series:
+      - series: 'grub_cfg_valid{job="node-exporter", instance="10.244.0.10:9100"}'
+        values: '1 1 0x20'
+      - series: 'grub_cfg_guard_last_run_timestamp_seconds{job="node-exporter", instance="10.244.0.10:9100"}'
+        values: '0x300'
+      - series: 'grub_cfg_guard_last_repair_timestamp_seconds{job="node-exporter", instance="10.244.0.10:9100"}'
+        values: '60x1600'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: HostGrubConfigUnbootable
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: HostGrubConfigUnbootable
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node-exporter, instance: "10.244.0.10:9100"}
+      - eval_time: 10m
+        alertname: HostGrubConfigRepaired
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node-exporter, instance: "10.244.0.10:9100"}
+      - eval_time: 25h
+        alertname: HostGrubConfigRepaired
+        exp_alerts: []
+      # Last run at t=0: silent from 3h, alerting 30m later.
+      - eval_time: 3h20m
+        alertname: HostGrubGuardSilent
+        exp_alerts: []
+      - eval_time: 3h40m
+        alertname: HostGrubGuardSilent
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node-exporter, instance: "10.244.0.10:9100"}
+
+  # Healthy: nothing fires.
+  - interval: 1m
+    input_series:
+      - series: 'grub_cfg_valid{job="node-exporter", instance="10.244.0.10:9100"}'
+        values: '1x120'
+      - series: 'grub_cfg_guard_last_run_timestamp_seconds{job="node-exporter", instance="10.244.0.10:9100"}'
+        values: '0+60x120'
+    alert_rule_test:
+      - eval_time: 2h
+        alertname: HostGrubConfigUnbootable
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: HostGrubConfigRepaired
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: HostGrubGuardSilent
+        exp_alerts: []
+
+  # Never reported (textfile collector not reading the directory): alerts after 30m.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node-exporter"}'
+        values: '1x60'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HostGrubGuardSilent
+        exp_alerts: []
+      - eval_time: 35m
+        alertname: HostGrubGuardSilent
+        exp_alerts:
+          - exp_labels: {severity: warning}
