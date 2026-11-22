@@ -1,0 +1,4 @@
+# The guard and how the bootstrap installs it.
+bootstrap/grub-guard/*
+# The HostGrub* alerts, and node-exporter's textfile collector that feeds them.
+observability/*

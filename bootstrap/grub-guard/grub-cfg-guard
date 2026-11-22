@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# ============================================================================
+# grub-cfg-guard — keeps /boot/grub/grub.cfg bootable.
+#
+# Why: on 2026-11-22 unattended-upgrades upgraded libc6, whose systemd
+# daemon-reexec half-failed ("Too many open files", the OOM killer, every
+# .mount unit marked inactive), then grub-efi-amd64, whose update-grub wrote
+# menu entries looking for /boot/vmlinuz-* on the root LV. The root LV is
+# LUKS2 + LVM, which GRUB cannot read; /boot is a separate, plain ext4
+# partition. Nothing showed until the next reboot, which stopped at
+#     error: no server is specified.
+#     error: you need to load the kernel first.
+# A config regenerated once the host was healthy again was correct.
+#
+# What it checks: every linux/initrd path of every menu entry exists on the
+# filesystem holding /boot, and every `search --fs-uuid --set=root` of a menu
+# entry targets that filesystem. When the check fails, it regenerates the
+# config into grub.cfg.new and swaps it in only if the new one passes the same
+# check; the broken one is kept as grub.cfg.guard-broken. A regenerated config
+# that fails too is kept as grub.cfg.guard-rejected and the current one is
+# left alone.
+#
+# The result goes to node-exporter's textfile collector (grub_cfg_valid and
+# timestamps), which the HostGrub* alerts of observability/rules.yaml read.
+#
+# Runs after every dpkg run (DPkg::Post-Invoke, called directly: systemd may
+# be the very thing that is degraded) and from an hourly timer. Installed by
+# bootstrap/grub-guard/provision.sh.
+#
+#   grub-cfg-guard          check, regenerate when broken (exit 1 if still broken)
+#   grub-cfg-guard --check  check only, change nothing (exit 1 if broken)
+#
+# Environment (the tests set it): GRUB_CFG, BOOT_DIR, TEXTFILE_DIR,
+# GRUB_MKCONFIG, GRUB_GUARD_LOCK, GRUB_GUARD_BOOT_UUID and
+# GRUB_GUARD_BOOT_SEPARATE (1 or 0) instead of asking the mount table.
+# ============================================================================
+set -uo pipefail
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+GRUB_CFG=${GRUB_CFG:-/boot/grub/grub.cfg}
+BOOT_DIR=${BOOT_DIR:-/boot}
+TEXTFILE_DIR=${TEXTFILE_DIR:-/var/lib/node_exporter/textfile}
+GRUB_MKCONFIG=${GRUB_MKCONFIG:-grub-mkconfig}
+GRUB_GUARD_LOCK=${GRUB_GUARD_LOCK:-/run/lock/grub-cfg-guard.lock}
+TAG=grub-cfg-guard
+
+say() {
+  logger -t "$TAG" -- "$*" 2>/dev/null || true
+  printf '%s: %s\n' "$TAG" "$*" >&2
+}
+
+boot_separate() {
+  if [ -n "${GRUB_GUARD_BOOT_SEPARATE:-}" ]; then
+    [ "$GRUB_GUARD_BOOT_SEPARATE" = 1 ]
+    return
+  fi
+  mountpoint -q "$BOOT_DIR"
+}
+
+boot_uuid() {
+  if [ -n "${GRUB_GUARD_BOOT_UUID:-}" ]; then
+    printf '%s\n' "$GRUB_GUARD_BOOT_UUID"
+    return
+  fi
+  findmnt -no UUID --target "$BOOT_DIR"
+}
+
+# What the menu entries ask for, one "uuid <fs-uuid>" or "file <path>" line
+# each. Only lines inside a menuentry/submenu block count: the font search at
+# the top of grub.cfg legitimately targets the root filesystem.
+entries() {
+  awk '
+    function count(s, c) { return gsub(c, "", s) }
+    {
+      if (!depth && $0 ~ /^[[:space:]]*(menuentry|submenu)[[:space:]]/) inside = 1
+      if (inside) {
+        if ($1 == "search" && $0 ~ /--fs-uuid/ && $0 ~ /--set=root/) print "uuid", $NF
+        if ($1 == "linux") print "file", $2
+        if ($1 == "initrd") for (i = 2; i <= NF; i++) print "file", $i
+      }
+      depth += count($0, "[{]") - count($0, "[}]")
+      if (depth <= 0) { depth = 0; inside = 0 }
+    }
+  ' "$1"
+}
+
+# Prints why the config at $1 would not boot, one reason per line; returns 1
+# if there is any.
+problems() {
+  local cfg=$1 prefix uuid list kind value bad=0
+  if [ ! -s "$cfg" ]; then
+    echo "$cfg is missing or empty"
+    return 1
+  fi
+  # GRUB reads paths relative to the filesystem it searched: / of the /boot
+  # partition when /boot is one, else /boot on the root filesystem.
+  if boot_separate; then prefix=; else prefix=/boot; fi
+  uuid=$(boot_uuid)
+  list=$(entries "$cfg")
+  if ! grep -q '^file ' <<<"$list"; then
+    echo "no menu entry loads a kernel"
+    return 1
+  fi
+  while read -r kind value; do
+    case $kind in
+      uuid)
+        if [ "$value" != "$uuid" ]; then
+          echo "an entry searches filesystem $value, but $BOOT_DIR is on ${uuid:-an unknown filesystem}"
+          bad=1
+        fi
+        ;;
+      file)
+        if [ -n "$prefix" ] && [[ $value != "$prefix"/* ]]; then
+          echo "$value is outside $prefix, though $BOOT_DIR is on the root filesystem"
+          bad=1
+        elif [ ! -f "$BOOT_DIR${value#"$prefix"}" ]; then
+          echo "$value is not on the $BOOT_DIR filesystem"
+          bad=1
+        fi
+        ;;
+    esac
+  done <<<"$list"
+  return "$bad"
+}
+
+# $1: 1 if grub.cfg would boot, else 0; $2: "repaired" when it was just
+# regenerated. No textfile directory (no node-exporter): nothing written.
+write_metrics() {
+  [ -d "$TEXTFILE_DIR" ] || return 0
+  local file="$TEXTFILE_DIR/grub_cfg_guard.prom" tmp repaired
+  repaired=$(awk '$1 == "grub_cfg_guard_last_repair_timestamp_seconds" { print $2 }' "$file" 2>/dev/null)
+  [ "${2:-}" = repaired ] && repaired=$(date +%s)
+  # Not ending in .prom: the collector skips it until it is complete.
+  tmp=$(mktemp "$TEXTFILE_DIR/.grub_cfg_guard.XXXXXX") || return 0
+  {
+    echo '# HELP grub_cfg_valid 1 if every GRUB menu entry loads files that exist on the /boot filesystem.'
+    echo '# TYPE grub_cfg_valid gauge'
+    echo "grub_cfg_valid $1"
+    echo '# HELP grub_cfg_guard_last_run_timestamp_seconds When grub-cfg-guard last checked grub.cfg.'
+    echo '# TYPE grub_cfg_guard_last_run_timestamp_seconds gauge'
+    echo "grub_cfg_guard_last_run_timestamp_seconds $(date +%s)"
+    if [ -n "$repaired" ]; then
+      echo '# HELP grub_cfg_guard_last_repair_timestamp_seconds When grub-cfg-guard last replaced a grub.cfg that would not boot.'
+      echo '# TYPE grub_cfg_guard_last_repair_timestamp_seconds gauge'
+      echo "grub_cfg_guard_last_repair_timestamp_seconds $repaired"
+    fi
+  } >"$tmp"
+  # node-exporter runs as nobody; mktemp creates 0600.
+  chmod 0644 "$tmp" && mv -f "$tmp" "$file"
+}
+
+one_line() { sort -u | paste -sd ';' | sed 's/;/; /g'; }
+
+mode=repair
+case "${1:-}" in
+  "") ;;
+  --check) mode=check ;;
+  *) echo "usage: $TAG [--check]" >&2; exit 2 ;;
+esac
+
+# A host without GRUB has nothing to guard.
+if [ ! -e "$GRUB_CFG" ] && ! command -v "$GRUB_MKCONFIG" >/dev/null 2>&1; then
+  exit 0
+fi
+
+# apt's hook and the timer may meet; a check is quick, a regeneration not.
+if command -v flock >/dev/null 2>&1 && exec 9>"$GRUB_GUARD_LOCK"; then
+  flock -w 300 9 || { say "another run holds $GRUB_GUARD_LOCK"; exit 1; }
+fi
+
+# /boot declared but not mounted: grub.cfg cannot even be looked at, and a
+# kernel installed now would land on the root filesystem, out of GRUB's reach.
+if [ -z "${GRUB_GUARD_BOOT_SEPARATE:-}" ] && findmnt --fstab -n "$BOOT_DIR" >/dev/null 2>&1 \
+  && ! mountpoint -q "$BOOT_DIR"; then
+  say "$BOOT_DIR is in /etc/fstab but not mounted: grub.cfg cannot be checked"
+  [ "$mode" = check ] || write_metrics 0
+  exit 1
+fi
+
+if report=$(problems "$GRUB_CFG"); then
+  [ "$mode" = check ] || write_metrics 1
+  exit 0
+fi
+say "$GRUB_CFG would not boot: $(one_line <<<"$report")"
+[ "$mode" = check ] && exit 1
+
+new="$GRUB_CFG.new"
+if ! "$GRUB_MKCONFIG" -o "$new" >/dev/null 2>&1; then
+  rm -f "$new"
+  say "$GRUB_MKCONFIG failed; $GRUB_CFG left as it is"
+  write_metrics 0
+  exit 1
+fi
+
+if report=$(problems "$new"); then
+  cp -f "$GRUB_CFG" "$GRUB_CFG.guard-broken" 2>/dev/null || true
+  mv -f "$new" "$GRUB_CFG"
+  say "regenerated $GRUB_CFG; the broken one is kept as $GRUB_CFG.guard-broken"
+  write_metrics 1 repaired
+  exit 0
+fi
+
+mv -f "$new" "$GRUB_CFG.guard-rejected"
+say "the regenerated config would not boot either ($(one_line <<<"$report")); $GRUB_CFG left as it is, the new one kept as $GRUB_CFG.guard-rejected"
+write_metrics 0
+exit 1

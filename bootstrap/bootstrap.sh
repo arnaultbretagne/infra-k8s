@@ -284,6 +284,12 @@ EOF
 systemctl enable --now unattended-upgrades 2>/dev/null || true
 ok "unattended-upgrades enabled (APT::Periodic configured; no auto-reboot)"
 
+# Those upgrades include GRUB, and the update-grub they run trusts the host as it is at that moment:
+# on 2026-11-22 it wrote a grub.cfg that could not boot, seen only at the next reboot
+# (bootstrap/grub-guard/grub-cfg-guard says how). The guard checks it after every dpkg run.
+"$BOOTSTRAP_DIR/grub-guard/provision.sh"
+ok "grub-cfg-guard: grub.cfg checked after every dpkg run and hourly, regenerated if it would not boot"
+
 # Kubernetes networking modules must exist before bridge sysctls are applied.
 cat > /etc/modules-load.d/k8s.conf <<'EOF'
 overlay
@@ -829,6 +835,7 @@ printf '    SSH:       password disabled, root key-only\n'
 printf '    fail2ban:  active\n'
 printf '    Swap:      %s (swappiness=10)\n' "$SWAP_STATUS"
 printf '    Updates:   unattended-upgrades active\n'
+printf '    GRUB:      grub-cfg-guard after every dpkg run and hourly\n'
 printf '    Flux:      watching main → %s\n' "$CLUSTER_PATH"
 printf '    SOPS:      age key loaded in flux-system/sops-age\n'
 printf '    Terminal:  dev + NOPASSWD sudo; ttyd host service provisioned\n'
