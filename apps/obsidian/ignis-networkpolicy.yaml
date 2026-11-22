@@ -1,19 +1,13 @@
 # Ignis and its gate (ADR 0020): default-deny plus the flows that exist. Traefik -> the gate -> Ignis,
-# nothing else in. Out: DNS, and HTTPS to named hosts only (toFQDNs), never flux-system nor the
-# kube-apiserver. Kubelet probes come from the node, which Cilium always lets reach its local Pods, so
-# no rule opens anything to `host`.
+# nothing else in. Out: DNS and HTTPS (443), by address as every app here (docs/hosting-an-app.md: no
+# toFQDNs, whose DNS proxy this node's host firewall drops), never flux-system nor the kube-apiserver.
+# Kubelet probes come from the node, which Cilium always lets reach its local Pods, so no rule opens
+# anything to `host`.
 #
-# Ignis's hosts, all on 443, are the ones Obsidian and the init container need:
-#   - github.com, objects.githubusercontent.com, release-assets.githubusercontent.com: the Obsidian
-#     release the init container downloads, and the community plugins and themes Obsidian installs
-#     (GitHub release assets; github.com redirects the download to one of the other two);
-#   - raw.githubusercontent.com: the lists and manifests of the community plugins and themes;
-#   - registry.npmjs.org: @electron/asar, which the init container runs to unpack the release.
-# No *.obsidian.md: Obsidian Sync's servers are all under it (Obsidian refuses a Sync server outside
-# .obsidian.md), and so are its account API (api.obsidian.md, the sign-in Sync needs), Publish and
-# releases.obsidian.md. Ignis sends Obsidian's cross-origin requests through its server (/api/proxy),
-# so this policy is where they stop: no second sync client can sign in from here. Any other host is
-# closed too, which keeps that proxy from being an open relay.
+# What Ignis reaches on 443: the Obsidian release the init container downloads (GitHub release assets),
+# registry.npmjs.org for @electron/asar, and the community plugins and themes Obsidian installs. The
+# network does not keep Obsidian Sync out: no Sync client is installed or run (tests/obsidian-ignis), and
+# Obsidian's own Sync needs a sign-in in Ignis. Ignis's /api/proxy reaches any HTTPS host, behind the gate.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -31,7 +25,6 @@ spec:
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
   egress:
-    # DNS, through Cilium's DNS proxy: what lets toFQDNs below learn the hosts' addresses
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system
@@ -40,22 +33,14 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-          rules:
-            dns:
-              - matchPattern: "*"
-    - toFQDNs:
-        - matchName: github.com
-        - matchName: objects.githubusercontent.com
-        - matchName: release-assets.githubusercontent.com
-        - matchName: raw.githubusercontent.com
-        - matchName: registry.npmjs.org
+    - toEntities: [world]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]
 ---
-# The gate: Traefik in; out, Ignis and Pocket-ID (id.bretagne.dev, OIDC discovery, keys and tokens).
-# id.bretagne.dev resolves to the line's public address, which the router sends back to the node: the
-# named host on 443. Should the node or Cilium translate it on the way, it reaches Traefik as `host`
-# on 443 or as the Traefik Pod on 8443, the two other paths every gate allows (apps/rss, apps/agora).
+# The gate: Traefik in; out, Ignis and Pocket-ID (id.bretagne.dev, OIDC discovery, keys and tokens), as
+# every gate (apps/rss, apps/agora): id.bretagne.dev resolves to the line's public address, `world` on
+# 443, which the router sends back to the node; translated on the way, it reaches Traefik as `host` on
+# 443 or as the Traefik Pod on 8443.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -81,19 +66,12 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-          rules:
-            dns:
-              - matchPattern: "*"
     - toEndpoints:
         - matchLabels:
             app: ignis
       toPorts:
         - ports: [{ port: "8080", protocol: TCP }]
-    - toFQDNs:
-        - matchName: id.bretagne.dev
-      toPorts:
-        - ports: [{ port: "443", protocol: TCP }]
-    - toEntities: [host]
+    - toEntities: [world, host]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]
     - toEndpoints:

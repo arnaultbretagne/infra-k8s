@@ -180,20 +180,6 @@ describe('no second sync client (criterion 3)', () => {
     const sync = prod.filter(o => /obsidian-sync/.test(o.metadata.name) || /obsidian-sync/.test(JSON.stringify(o.spec?.selector ?? {})))
     assert.deepEqual(sync.map(o => `${o.kind}/${o.metadata.name}`), [], 'merge fix/obsidian-remove-sync first, then update this branch')
   })
-
-  it('Ignis\'s egress names no *.obsidian.md host, and no wider destination than named hosts', () => {
-    const cnp = find(prod, 'CiliumNetworkPolicy', 'ignis')
-    const names = cnp.spec.egress.flatMap(r => r.toFQDNs || []).map(f => f.matchName)
-    assert.deepEqual(names.sort(), ['github.com', 'objects.githubusercontent.com', 'raw.githubusercontent.com',
-      'registry.npmjs.org', 'release-assets.githubusercontent.com'])
-    for (const r of cnp.spec.egress) {
-      assert.ok(!r.toEntities && !r.toCIDR && !r.toCIDRSet && !r.toServices, JSON.stringify(r))
-      for (const f of r.toFQDNs || []) {
-        assert.ok(!f.matchPattern, 'names, not patterns')
-        assert.doesNotMatch(f.matchName, /obsidian\.md$/)
-      }
-    }
-  })
 })
 
 describe('the route and the gate (criterion 4)', () => {
@@ -264,39 +250,40 @@ describe('network policies (criterion 6)', () => {
     assert.deepEqual(gp.spec.ingress, [{ fromEndpoints: [{ matchLabels: { 'k8s:io.kubernetes.pod.namespace': 'traefik' } }], toPorts: [{ ports: [{ port: '4180', protocol: 'TCP' }] }] }])
   })
 
-  it('Ignis goes out to DNS and to named hosts on 443, nothing else', () => {
+  it('Ignis goes out to DNS and to 443, nothing else', () => {
     assert.equal(ign.spec.egress.length, 2)
-    const [dns, hosts] = ign.spec.egress
+    const [dns, out] = ign.spec.egress
     assert.deepEqual(dns.toEndpoints, [DNS])
     assert.deepEqual(ports(dns), ['53/TCP', '53/UDP'])
-    assert.ok(hosts.toFQDNs.length > 0 && Object.keys(hosts).sort().join() === 'toFQDNs,toPorts')
-    assert.deepEqual(ports(hosts), ['443/TCP'])
+    assert.deepEqual(out, { toEntities: ['world'], toPorts: [{ ports: [{ port: '443', protocol: 'TCP' }] }] })
   })
 
-  it('the gate goes out to DNS, Ignis, and id.bretagne.dev on 443 (by name, or its in-cluster paths to Traefik)', () => {
-    const [dns, toIgnis, idp, host, traefik] = gp.spec.egress
-    assert.equal(gp.spec.egress.length, 5)
+  it('the gate goes out to DNS, Ignis, and id.bretagne.dev on 443 (its public address, or its in-cluster paths to Traefik)', () => {
+    const [dns, toIgnis, idp, traefik] = gp.spec.egress
+    assert.equal(gp.spec.egress.length, 4)
     assert.deepEqual(dns.toEndpoints, [DNS])
     assert.deepEqual(toIgnis.toEndpoints, [{ matchLabels: { app: 'ignis' } }])
     assert.deepEqual(ports(toIgnis), ['8080/TCP'])
-    assert.deepEqual(idp.toFQDNs, [{ matchName: 'id.bretagne.dev' }])
+    assert.deepEqual(idp.toEntities, ['world', 'host'])
     assert.deepEqual(ports(idp), ['443/TCP'])
-    assert.deepEqual(host.toEntities, ['host'])
-    assert.deepEqual(ports(host), ['443/TCP'])
     assert.deepEqual(traefik.toEndpoints, [{ matchLabels: { 'k8s:io.kubernetes.pod.namespace': 'traefik' } }])
     assert.deepEqual(ports(traefik), ['8443/TCP'])
   })
 
-  it('neither reaches flux-system, the kube-apiserver, the world at large or the whole cluster', () => {
+  it('neither reaches flux-system, the kube-apiserver or the whole cluster; the world on 443 only', () => {
     for (const p of [ign, gp]) {
       const s = JSON.stringify(p.spec.egress)
-      assert.doesNotMatch(s, /flux-system|kube-apiserver|"world"|"all"|"cluster"|"remote-node"|0\.0\.0\.0/)
+      assert.doesNotMatch(s, /flux-system|kube-apiserver|"all"|"cluster"|"remote-node"|0\.0\.0\.0/)
+      for (const r of p.spec.egress) if (r.toEntities?.includes('world')) assert.deepEqual(ports(r), ['443/TCP'])
       for (const r of p.spec.egress) for (const e of r.toEndpoints || []) assert.notDeepEqual(e, {}, 'no empty selector')
     }
   })
 
-  it('a DNS rule that lets Cilium learn the addresses of the named hosts', () => {
-    for (const p of [ign, gp]) assert.deepEqual(p.spec.egress[0].toPorts[0].rules, { dns: [{ matchPattern: '*' }] })
+  it("no toFQDNs and no DNS rule: Cilium's DNS proxy is dropped by the node's firewall (docs/hosting-an-app.md)", () => {
+    for (const p of [ign, gp]) {
+      assert.doesNotMatch(JSON.stringify(p.spec.egress), /toFQDNs/)
+      assert.equal(p.spec.egress[0].toPorts[0].rules, undefined)
+    }
   })
 })
 
