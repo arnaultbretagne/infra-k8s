@@ -1,0 +1,81 @@
+# Ignis and its gate (ADR 0020): default-deny plus the flows that exist. Traefik -> the gate -> Ignis,
+# nothing else in. Out: DNS and HTTPS (443), by address as every app here (docs/hosting-an-app.md: no
+# toFQDNs, whose DNS proxy this node's host firewall drops), never flux-system nor the kube-apiserver.
+# Kubelet probes come from the node, which Cilium always lets reach its local Pods, so no rule opens
+# anything to `host`.
+#
+# What Ignis reaches on 443: the Obsidian release the init container downloads (GitHub release assets),
+# registry.npmjs.org for @electron/asar, and the community plugins and themes Obsidian installs. The
+# network does not keep Obsidian Sync out: no Sync client is installed or run (tests/obsidian-ignis), and
+# Obsidian's own Sync needs a sign-in in Ignis. Ignis's /api/proxy reaches any HTTPS host, behind the gate.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ignis
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app: ignis
+  ingress:
+    # its gate only
+    - fromEndpoints:
+        - matchLabels:
+            app: ignis-oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    - toEntities: [world]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+---
+# The gate: Traefik in; out, Ignis and Pocket-ID (id.bretagne.dev, OIDC discovery, keys and tokens), as
+# every gate (apps/rss, apps/agora): id.bretagne.dev resolves to the line's public address, `world` on
+# 443, which the router sends back to the node; translated on the way, it reaches Traefik as `host` on
+# 443 or as the Traefik Pod on 8443.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ignis-oauth2-proxy
+  namespace: obsidian
+spec:
+  endpointSelector:
+    matchLabels:
+      app: ignis-oauth2-proxy
+  ingress:
+    # Traefik serves obsidian.bretagne.dev -> the gate :4180
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - { port: "53", protocol: UDP }
+            - { port: "53", protocol: TCP }
+    - toEndpoints:
+        - matchLabels:
+            app: ignis
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

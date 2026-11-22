@@ -1,0 +1,15 @@
+{
+  "name": "obsidian-ignis",
+  "private": true,
+  "type": "module",
+  "description": "Ignis in production (apps/obsidian) and in its preview (apps/ignis/workload), as kubectl kustomize renders them (README.md).",
+  "scripts": {
+    "test": "node --test ignis.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}
