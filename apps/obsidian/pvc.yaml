@@ -1,6 +1,9 @@
 # Stateful exception (ADR 0005): the Obsidian vault, under the vault/ subPath,
-# shared by the MCP server and the clipper — RWO is node-scoped, fine on
-# single-node; the backup Jobs mount vault/ read-only beside them. The vault is
+# shared by the MCP server, the clipper and Ignis (obsidian.bretagne.dev) — RWO
+# is node-scoped, fine on single-node; the backup Jobs mount vault/ read-only
+# beside them. Ignis also keeps its settings (ignis-data/) and its Obsidian
+# cache (obsidian-app/) here; neither is backed up (the cache is downloaded
+# again when missing). The vault is
 # backed up every 15 min, encrypted, to its own R2 bucket (vault-backup.yaml:
 # rclone sync to a crypt remote, replaced and deleted versions kept 7 days under
 # history/, weekly cryptcheck); restoring it is RESTORE.md.
