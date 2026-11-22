@@ -1,11 +1,12 @@
-# Catalogue entry (ADR 0017 v4 §2): Ignis (github.com/Nystik-gh/ignis), Obsidian as a web app. Not in
-# production yet: this entry exists to try it. Label an infra-k8s PR `preview/ignis` to get
-# https://pr-<n>-ignis.preview.bretagne.dev.
+# Catalogue entry (ADR 0017 v4 §2): Ignis (github.com/Nystik-gh/ignis), Obsidian as a web app. In
+# production at https://obsidian.bretagne.dev on the real vault (apps/obsidian, which lists the same
+# workload and gives it the PVC obsidian-data). Label an infra-k8s PR `preview/ignis` to try a change
+# to it at https://pr-<n>-ignis.preview.bretagne.dev.
 #
-# The preview works on an empty vault, never on the real one: a preview gets no PVC, the vault's PVC
-# lives in `obsidian`, and plugging Obsidian Sync in would need its token in the preview namespace and
-# make a second sync writer on the vault. Ignis has no authentication of its own; the preview's gate is
-# its only lock, which is the gate's job (ADR 0017 v4 §7).
+# The preview works on an empty vault, never on the real one: a preview gets no PVC, and the vault's
+# PVC lives in `obsidian`. The workload's `data` volume is an emptyDir, started from scratch at every
+# restart; only production replaces it with the PVC. Ignis has no authentication of its own; the
+# preview's gate is its only lock, which is the gate's job (ADR 0017 v4 §7).
 #
 # internet: the workload downloads Obsidian from its official GitHub releases at start (Obsidian is
 # not in the image, its licence forbids it), and Obsidian fetches community plugins and themes. With
