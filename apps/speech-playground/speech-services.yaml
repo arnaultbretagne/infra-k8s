@@ -1,0 +1,19 @@
+# The names the playground's config gives the cluster's speech bricks (workload/services.json: http://stt,
+# http://tts), pointed at them in production: namespace `speech` (apps/speech). Outside the workload on
+# purpose (docs/hosting-an-app.md §14.2: no production host name in the workload): in a preview, the bricks
+# run in the preview's own namespace, as the Services `stt` and `tts`, and these are not there.
+apiVersion: v1
+kind: Service
+metadata:
+  name: stt
+spec:
+  type: ExternalName
+  externalName: stt.speech.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tts
+spec:
+  type: ExternalName
+  externalName: tts.speech.svc.cluster.local

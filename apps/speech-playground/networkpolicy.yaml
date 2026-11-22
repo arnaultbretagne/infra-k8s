@@ -1,0 +1,93 @@
+# Default-deny plus the flows that exist (docs/hosting-an-app.md §7): Traefik → oauth2-proxy → the
+# playground; the playground → the model services of namespace `speech` and → api.xiaomimimo.com:443,
+# nothing else.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+# The playground: in, only from the oauth2-proxy (which Traefik reaches) and the kubelet's probes;
+# out, DNS, the services of `speech` and Xiaomi MiMo's API. The DNS rule sends its lookups through
+# Cilium's DNS proxy, which is what lets the toFQDNs rule learn api.xiaomimimo.com's addresses.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: speech-playground
+spec:
+  endpointSelector:
+    matchLabels:
+      app: speech-playground
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: oauth2-proxy
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+          rules:
+            dns:
+              - matchPattern: "*"
+    # The model services (stt.speech, tts.speech): any port of their Pods, which their own feature
+    # chooses; their namespace's policy decides what it admits.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: speech
+    - toFQDNs:
+        - matchName: api.xiaomimimo.com
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: oauth2-proxy
+spec:
+  endpointSelector:
+    matchLabels:
+      app: oauth2-proxy
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "4180", protocol: TCP }]
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            app: speech-playground
+      toPorts:
+        - ports: [{ port: "8080", protocol: TCP }]
+    # -> id.bretagne.dev (OIDC discovery/token): the public IP resolves to the node, then kube-proxy
+    # DNATs to Traefik — both paths, as for the other gates.
+    - toEntities: [world, host]
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: traefik
+      toPorts:
+        - ports: [{ port: "8443", protocol: TCP }]

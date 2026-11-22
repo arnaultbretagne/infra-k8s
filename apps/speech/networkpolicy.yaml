@@ -1,0 +1,53 @@
+# Default-deny plus the flows that exist (docs/hosting-an-app.md §7, ADR 0020).
+#   in:  the playground (namespace speech-playground) and the kubelet's probes, on the server port only.
+#   out: DNS, and the Hugging Face hosts the models are downloaded from, by name, on 443 only.
+# Nothing else: no flux-system, no kube-apiserver, no other namespace, no world.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  endpointSelector: {}
+  ingress:
+    - {}
+  egress:
+    - {}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: speech
+spec:
+  endpointSelector:
+    matchExpressions:
+      - { key: app, operator: In, values: [stt, tts] }
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: speech-playground
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+    - fromEntities: [host] # kubelet probes
+      toPorts:
+        - ports: [{ port: "8000", protocol: TCP }]
+  egress:
+    # DNS, through Cilium's DNS proxy: the toFQDNs rule below learns its addresses from these answers.
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }]
+          rules:
+            dns:
+              - matchPattern: "*"
+    # The model downloads. huggingface.co answers the API and the file resolution, then redirects the bytes
+    # to its storage: Xet (cas-bridge / cas-server / transfer.xethub.hf.co) or the LFS CDN (cdn-lfs*.hf.co).
+    # A Cilium `*` covers one DNS label, hence one pattern per depth.
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchPattern: "*.huggingface.co"
+        - matchPattern: "*.hf.co"
+        - matchPattern: "*.xethub.hf.co"
+      toPorts:
+        - ports: [{ port: "443", protocol: TCP }]

@@ -1,0 +1,9 @@
+# What the preview of a PR runs (catalogue entry speech-playground, ADR 0017 v4): the playground's workload and
+# the speech bricks' workload (apps/speech/workload), side by side in the preview's namespace. The playground
+# names the bricks stt and tts (workload/services.json): here those are the bricks' own Services. Production does
+# not list this folder: apps/speech-playground and apps/speech each list their own workload.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../workload
+  - ../../speech/workload

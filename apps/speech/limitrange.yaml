@@ -1,0 +1,11 @@
+# Defaults only (docs/hosting-an-app.md §8): a backstop for a container that forgets its resources. The two
+# Deployments set their own.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest: { cpu: 10m, memory: 64Mi }
+      default: { memory: 256Mi }
