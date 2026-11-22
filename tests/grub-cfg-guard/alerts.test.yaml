@@ -24,10 +24,16 @@ tests:
         alertname: HostGrubConfigUnbootable
         exp_alerts:
           - exp_labels: {severity: critical, job: node-exporter, instance: "10.244.0.10:9100"}
+            exp_annotations:
+              summary: 'grub.cfg would not boot on 10.244.0.10:9100: do not reboot'
+              description: 'A menu entry loads a kernel or initrd that is not on the /boot filesystem, and grub-cfg-guard could not regenerate a config that would. The next reboot stops at the GRUB prompt. On the host: `journalctl -t grub-cfg-guard` says why; check `findmnt /boot`, then `update-grub` and `grub-cfg-guard --check`.'
       - eval_time: 10m
         alertname: HostGrubConfigRepaired
         exp_alerts:
           - exp_labels: {severity: warning, job: node-exporter, instance: "10.244.0.10:9100"}
+            exp_annotations:
+              summary: 'grub-cfg-guard replaced a grub.cfg that would not boot on 10.244.0.10:9100'
+              description: 'An update-grub wrote a config that would not boot; it was regenerated and checked. The broken one is /boot/grub/grub.cfg.guard-broken. Look at what was wrong with the host at that time (`journalctl -t grub-cfg-guard`, then the journal around it): on 2026-11-22 it was a systemd daemon-reexec failing with "Too many open files". Clears after 24h.'
       - eval_time: 25h
         alertname: HostGrubConfigRepaired
         exp_alerts: []
@@ -39,6 +45,9 @@ tests:
         alertname: HostGrubGuardSilent
         exp_alerts:
           - exp_labels: {severity: warning, job: node-exporter, instance: "10.244.0.10:9100"}
+            exp_annotations:
+              summary: 'grub-cfg-guard has not reported for 3 hours'
+              description: 'grub.cfg is no longer checked: grub-cfg-guard.timer stopped, the script fails before writing /var/lib/node_exporter/textfile/grub_cfg_guard.prom, or node-exporter no longer reads that directory.'
 
   # Healthy: nothing fires.
   - interval: 1m
@@ -71,3 +80,6 @@ tests:
         alertname: HostGrubGuardSilent
         exp_alerts:
           - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: 'grub-cfg-guard has not reported for 3 hours'
+              description: 'grub.cfg is no longer checked: grub-cfg-guard.timer stopped, the script fails before writing /var/lib/node_exporter/textfile/grub_cfg_guard.prom, or node-exporter no longer reads that directory.'
