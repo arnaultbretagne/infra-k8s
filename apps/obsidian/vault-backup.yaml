@@ -7,7 +7,7 @@
 # Same image as ha-config-backup. Reads the PVC read-only; RWO is node-scoped, so these pods may
 # mount it beside the MCP server and the clipper on this single node. Credentials: the SOPS Secret
 # obsidian-vault-backup (vault-backup.secrets.yaml), its own R2 token, not cnpg-s3-creds. Egress: DNS
-# and R2's port 443 only (networkpolicy.yaml, obsidian-vault-backup).
+# and 443 out, as home-assistant-jobs (networkpolicy.yaml, obsidian-vault-backup).
 #
 # In the bucket, names and contents are encrypted, current/ and history/ included: without the two
 # crypt passwords the backup cannot be read by anyone, the operator included.

@@ -69,7 +69,7 @@ and says `the login rotates — move it to antigravity-session`: do so with the 
 | Exit | Log | Do |
 | --- | --- | --- |
 | 1 | `refresh refused (…): 400 invalid_grant: …` | The login was revoked, expired (six months unused) or superseded: log in again, replace the token. |
-| 1 | `refresh failed (…): Google's token endpoint unreachable` | Network: the policy `antigravity-refresher` (DNS and `oauth2.googleapis.com` only), or Google. The access token lives an hour: two more runs before it lapses. |
+| 1 | `refresh failed (…): Google's token endpoint unreachable` | Network: the policy `antigravity-refresher` (DNS, the API server and 443 out, as `claude-refresher`), or Google. The access token lives an hour: two more runs before it lapses. |
 | 2 | `reading/writing antigravity-…: <status>` | The API server or the RBAC. `refreshed, but the new refresh token was not written` is the one case where the login may be lost: log in again. |
 | 3 | `the login rotates — …` or `the access token lives … s` | Written all the same; follow the message. |
 | 4 | `no refresh token yet` / `CLIENT_ID or CLIENT_SECRET is empty` | The login is not done, or the client is missing. Until then agy's turns end on Google's 401; nothing else is affected. |

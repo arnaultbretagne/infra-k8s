@@ -80,7 +80,7 @@ spec:
       toPorts:
         - ports: [{ port: "3000", protocol: TCP }]
     # R2, where Agora's files live (Agora's docs/specs/files.md): the bucket `agora-files` on
-    # *.r2.cloudflarestorage.com. HTTPS to the world, as for the other apps until toFQDNs is adopted.
+    # *.r2.cloudflarestorage.com. HTTPS to the world, as for the other apps (no toFQDNs: docs/hosting-an-app.md).
     # Also id.bretagne.dev, Pocket-ID's discovery document and keys (server.yaml, IDENTITY_ISSUER): over
     # HTTPS by its public name, the address its discovery document gives, so the keys are the ones its
     # certificate vouches for — the in-cluster Service is plain HTTP on 1411. The name resolves to the

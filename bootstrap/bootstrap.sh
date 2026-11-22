@@ -209,13 +209,6 @@ table inet firewall {
     # Cilium agent/operator/Hubble metrics (hostNetwork), scraped by Prometheus pods.
     ip saddr 10.244.0.0/16 tcp dport { 9962, 9963, 9965 } accept
 
-    # Cilium's proxies (hostNetwork): what a pod's L7 policy redirects to them, the DNS proxy of a
-    # toFQDNs policy first (apps/obsidian/networkpolicy.yaml, obsidian-vault-backup). Cilium TPROXYs
-    # those packets to its socket untracked (no ct state) and marks them 0x200/0xf00
-    # (MagicMarkIsToProxy); its own iptables ACCEPT for that mark cannot override this table's drop.
-    # Without this rule every DNS query of such a pod is dropped here, unanswered.
-    ip saddr 10.244.0.0/16 meta mark & 0x00000f00 == 0x00000200 accept
-
     # ICMP
     ip protocol icmp accept
     ip6 nexthdr icmpv6 accept

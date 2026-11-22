@@ -55,7 +55,7 @@ Tight egress allow-lists cannot be written blind. Hubble (enabled now — this *
 ### Allow-list design
 
 - Plain `NetworkPolicy` for L3/L4 (portable, simple) — the common case.
-- `CiliumNetworkPolicy` only where it earns it: **FQDN egress** (R2 backups, GitHub, Let's Encrypt) and L7/DNS filtering.
+- `CiliumNetworkPolicy` only where it earns it: entities (`world`, `host`, `kube-apiserver`) that plain `NetworkPolicy` cannot name. **No FQDN egress**: a `toFQDNs` rule sends the pod's DNS through Cilium's DNS proxy, which the node's host firewall (input `policy drop`) drops, and whose answers never reach a Kata guest (`docs/hosting-an-app.md`).
 
 ### What we are deliberately NOT doing yet
 
@@ -68,9 +68,9 @@ Tight egress allow-lists cannot be written blind. Hubble (enabled now — this *
 - `pocket-id` / `preview` / app namespaces get default-deny + explicit allow-lists first; platform namespaces follow after observation
 - **Hubble is enabled** (~100-150MB, amends ADR 0006) — used in audit mode to build allow-lists, later feeding Grafana (ADR 0014)
 - **`flux-system` PSS is raised from `warn` to `enforce: restricted`** (it currently only warns — a gap found during this review)
-- Pocket-ID egress is restricted to its PG + DNS; its PG egress to R2 (`*.r2.cloudflarestorage.com:443`) + DNS
+- Pocket-ID egress is restricted to its PG + DNS; its PG egress to R2 (`world`:443) + DNS
 - `preview` carries a standing default-deny + ResourceQuota; per-PR allows are injected by the ResourceSet (ADR 0017)
-- Adding a new external dependency means adding an explicit FQDN egress rule — a deliberate, reviewed change
+- Adding a new external dependency means opening its port to `world` explicitly (443, not all) — a deliberate, reviewed change
 - Removing MetalLB (ADR 0007 superseded) is one fewer namespace to police
 - Implementation is sequenced in the migration plan, right after the cluster is brought up empty — guardrails land before app workloads
 

@@ -270,9 +270,12 @@ spec:
       toPorts: [{ ports: [{ port: "53", protocol: UDP }, { port: "53", protocol: TCP }] }]   # DNS — always
     # + its DB (toEndpoints cnpg.io/cluster=<cluster>:5432), + external HTTPS (toEntities:[world]:443)…
 ```
-Rules of thumb: **DNS egress is never omitted**; `world` egress only as broad as truly needed (prefer
-`toFQDNs`); **never** allow an app egress to `flux-system` or the kube-apiserver — that's the pivot
-path we deliberately block.
+Rules of thumb: **DNS egress is never omitted**; `world` egress only on the ports truly needed (443,
+as `home-assistant-jobs`); **no `toFQDNs`** (nor a `rules.dns` on the DNS egress): it sends the pod's
+DNS through Cilium's DNS proxy, which this node's host firewall (`bootstrap.sh`, input `policy drop`)
+drops, and whose answers never reach a Kata VM either (`apps/agora-sandboxes/networkpolicy.yaml`);
+**never** allow an app egress to `flux-system` or the kube-apiserver — that's the pivot path we
+deliberately block.
 
 ---
 

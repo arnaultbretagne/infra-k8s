@@ -66,20 +66,6 @@ ts_number() {
 # rclone's error in the log within seconds, not a pass that waits for its deadline. Exit 3 (nothing
 # stored yet) is an answer too.
 reach_r2() {
-  # The network policy lets out *.r2.cloudflarestorage.com, one DNS label (networkpolicy.yaml): any
-  # other endpoint is dropped there. Said here, without the account id.
-  if [ "${RCLONE_CONFIG_R2_TYPE:-}" = s3 ]; then
-    host="${RCLONE_CONFIG_R2_ENDPOINT:-}"
-    host="${host#https://}"
-    host="${host%%/*}"
-    label="${host%.r2.cloudflarestorage.com}"
-    case "$label" in
-      "$host" | '' | *.* | *:*)
-        echo "WARNING: the R2 endpoint's host (<id>.${host#*.}) is not one label under r2.cloudflarestorage.com: the network policy (toFQDNs *.r2.cloudflarestorage.com) drops it" >&2
-        ;;
-      *) echo "==> R2 endpoint: <id>.r2.cloudflarestorage.com, as the network policy allows" ;;
-    esac
-  fi
   echo "==> reach R2: list backup:"
   rc=0
   rclone lsf --max-depth 1 --low-level-retries 1 backup: > /dev/null || rc=$?
