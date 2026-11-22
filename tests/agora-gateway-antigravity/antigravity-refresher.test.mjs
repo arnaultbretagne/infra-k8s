@@ -4,7 +4,7 @@
 // the access token to antigravity-token keeping the Secret's other keys, never logs a token, says when it refreshed
 // and when the refresh is refused, and why it stops: 4 no login yet, 1 refused, 2 unable to read or write, 3 a token
 // too short or a rotation the SOPS key cannot follow. And its manifests: RBAC on its own two Secrets alone, the one
-// key of upstream-credentials mounted, optional, egress to Google's token endpoint alone.
+// key of upstream-credentials mounted, optional, egress as claude-refresher's (DNS, the API server, 443 out).
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
