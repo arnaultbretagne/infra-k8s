@@ -70,7 +70,7 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-    # -> Resend SMTP (email: verification / login codes). Tighten to toFQDNs later.
+    # -> Resend SMTP (email: verification / login codes).
     - toEntities: [world]
       toPorts:
         - ports: [{ port: "587", protocol: TCP }]
@@ -133,7 +133,7 @@ spec:
         - ports:
             - { port: "53", protocol: UDP }
             - { port: "53", protocol: TCP }
-    # barman backups -> S3 / Cloudflare R2 (external HTTPS). Tighten to toFQDNs later.
+    # barman backups -> S3 / Cloudflare R2 (external HTTPS).
     - toEntities: [world]
       toPorts:
         - ports: [{ port: "443", protocol: TCP }]

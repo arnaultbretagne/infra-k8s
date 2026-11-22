@@ -19,7 +19,7 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 
 | Case | Expected |
 | --- | --- |
-| The manifests | Image = `ha-config-backup`'s; backup every 15 min, verify weekly, both `Forbid`; the PVC `obsidian-data`, subPath `vault`, read-only; the pod security of the criteria; the Secret SOPS-encrypted for `.sops.yaml`'s recipient, nothing in clear; the network policy: DNS, and 443 to `*.r2.cloudflarestorage.com` only, nothing in; the host firewall (`bootstrap/bootstrap.sh`, input `policy drop`) accepts from the pod CIDR what Cilium marks for its proxies (`0x200/0xf00`), without which the DNS proxy of that policy never gets a query. |
+| The manifests | Image = `ha-config-backup`'s; backup every 15 min, verify weekly, both `Forbid`; the PVC `obsidian-data`, subPath `vault`, read-only; the pod security of the criteria; the Secret SOPS-encrypted for `.sops.yaml`'s recipient, nothing in clear; the network policy: DNS and 443 out, nothing in, the egress of `home-assistant-jobs` (by address, `world`, never `toFQDNs`: its DNS proxy is dropped by this node's host firewall). |
 | (a) A second pass, nothing changed | `There was nothing to transfer`, 0 B sent, no stored object written, no `history/` folder. |
 | (b) A note modified | `current/` has the new version, `history/<ts of the pass>/` the old one, and only it. |
 | (c) A note deleted | Gone from `current/`, in `history/<ts>/`. |
@@ -31,7 +31,6 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 | An empty vault | Refused, nothing in the bucket touched. |
 | A crypt password still `REPLACE-ME` | Refused. |
 | R2 drops the connection (SYN unanswered, as a Cilium deny does), or accepts it and never answers | The manifests' own `r2` remote (s3), its endpoint a port of the test that never accepts (its queue full, for the drop): the pass fails within seconds (~20 s), before `==> sync`, with rclone's `ERROR` (`dial tcp …: i/o timeout`, `TLS handshake timeout`). Waited 90 s at most, far inside the Job's 840 s: the script as it hung on the cluster (`MUTATE=silent`) had still not written a line. |
-| The R2 endpoint | The script says whether the endpoint's host is one label under `r2.cloudflarestorage.com`, as the network policy's `toFQDNs` needs: yes for `<32 hex>.r2.cloudflarestorage.com`, a WARNING for `….r2.cloudflarestorage.net`, `<id>.eu.r2…` and `r2.cloudflarestorage.com`; that line never holds the account id. |
 | The budget | One `rclone sync`, all checks first, then one transfer at a time, the largest first, `PASS_BUDGET` soft: no transfer started after it, none cut. `2 × PASS_BUDGET` leaves 2 min of the Job's deadline. |
 | The history | One sync per pass (one read of the vault per `history/<ts>`), no size or age filter. A 5 MiB version replaced by a 1 MiB one: `history/<ts>` holds the 5 MiB one byte for byte, `current/` the new one, `verify` 0 differences. |
 | Convergence, conditions constant | The script at 1/30 of its durations (budget 12 s, the deadline 28 s), R2 at 32 KiB/s at every pass: a 512 KiB file (16 s, longer than the budget) is sent whole by the first pass, three 128 KiB files by the next; no pass reaches the deadline, each stores something, the last ends at exit 0, and `verify` finds 0 differences. |

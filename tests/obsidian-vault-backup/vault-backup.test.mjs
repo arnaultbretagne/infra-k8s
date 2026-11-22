@@ -355,7 +355,9 @@ test('the manifests: what is tested is what is deployed', () => {
   const secret = find('Secret', 'obsidian-vault-backup');
   assert.equal(secret.metadata.namespace, 'obsidian');
 
-  // Criterion 8: DNS and R2's 443 out, nothing in.
+  // Criterion 8: DNS and HTTPS out, nothing in — the egress of home-assistant-jobs, by address (world),
+  // never by name: a toFQDNs rule sends the pod's DNS through Cilium's proxy, which this node's host
+  // firewall drops (seen live 2026-11-21).
   const cnp = find('CiliumNetworkPolicy', 'obsidian-vault-backup');
   assert.deepEqual(cnp.spec.endpointSelector.matchLabels, podOf(backupJob).metadata.labels);
   assert.deepEqual(cnp.spec.enableDefaultDeny, { ingress: true, egress: true });
@@ -364,16 +366,10 @@ test('the manifests: what is tested is what is deployed', () => {
   const [dns, out] = cnp.spec.egress;
   assert.deepEqual(dns.toEndpoints, [{ matchLabels: { 'k8s:io.kubernetes.pod.namespace': 'kube-system', 'k8s:k8s-app': 'kube-dns' } }]);
   assert.deepEqual(dns.toPorts[0].ports, [{ port: '53', protocol: 'UDP' }, { port: '53', protocol: 'TCP' }]);
-  assert.deepEqual(Object.keys(out).sort(), ['toFQDNs', 'toPorts']);
-  assert.deepEqual(out.toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
-  assert.deepEqual(out.toPorts, [{ ports: [{ port: '443', protocol: 'TCP' }] }]);
-  // That DNS rule sends the pod's queries through Cilium's DNS proxy, in the host's network: the host
-  // firewall (bootstrap.sh, input policy drop) must accept what Cilium marks for its proxies
-  // (MagicMarkIsToProxy, 0x200/0xf00), or every query is dropped unanswered (seen live 2026-11-21).
-  assert.deepEqual(dns.toPorts[0].rules, { dns: [{ matchPattern: '*' }] });
-  const nftables = readFileSync(join(repo, 'bootstrap/bootstrap.sh'), 'utf8').match(/cat > \/etc\/nftables\.conf <<'NFTEOF'\n([\s\S]*?)\nNFTEOF/)[1];
-  assert.match(nftables, /chain input \{\n\s*type filter hook input priority 0; policy drop;/);
-  assert.match(nftables, /^\s*ip saddr 10\.244\.0\.0\/16 meta mark & 0x00000f00 == 0x00000200 accept$/m);
+  assert.deepEqual(dns.toPorts[0].rules, undefined);
+  assert.deepEqual(out, { toEntities: ['world'], toPorts: [{ ports: [{ port: '443', protocol: 'TCP' }] }] });
+  const haJobs = render('apps/home-assistant').find((o) => o.kind === 'CiliumNetworkPolicy' && o.metadata.name === 'home-assistant-jobs');
+  assert.deepEqual(cnp.spec.egress, haJobs.spec.egress);
 
   // The bucket is dedicated: not cnpg-s3-creds's.
   const env = find('ConfigMap', 'obsidian-vault-backup-env').data;
@@ -631,7 +627,6 @@ for (const [what, full, error] of [
       assert.match(r.out, /ERROR : .*ListObjectsV2/, 'rclone says what failed');
       assert.match(r.out, error);
       assert.match(r.out, /R2 did not answer/);
-      assert.match(r.out, /WARNING: the R2 endpoint's host \(<id>\.0\.0\.1:\d+\) is not one label under r2\.cloudflarestorage\.com/);
       assert.doesNotMatch(r.out, /==> sync|backup DONE/);
       console.log(`# R2 that ${what}: the pass failed after ${seconds}s, with rclone's error (deadline: ${deadline}s)`);
     } finally {
@@ -639,28 +634,6 @@ for (const [what, full, error] of [
     }
   });
 }
-
-test('the R2 endpoint is checked against the network policy, the check without the account id', () => {
-  const env = { RCLONE_CONFIG_R2_TYPE: r2Type };
-  const runs = {
-    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com': true,
-    'https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.net': false,
-    'https://0123456789abcdef0123456789abcdef.eu.r2.cloudflarestorage.com': false,
-    'https://r2.cloudflarestorage.com': false,
-  };
-  for (const [endpoint, matches] of Object.entries(runs)) {
-    // No network: the check is printed, then R2 is unreachable at once.
-    const r = backup({ timeout: QUICK, env: { ...env, RCLONE_CONFIG_R2_ENDPOINT: endpoint } });
-    assert.ok(!r.timedOut, r.out);
-    const check = r.out.split('\n').filter((l) => /R2 endpoint/.test(l));
-    assert.equal(check.length, 1, r.out);
-    assert.doesNotMatch(check[0], /0123456789abcdef/, 'the check does not print the account id');
-    if (matches) assert.match(r.out, /==> R2 endpoint: <id>\.r2\.cloudflarestorage\.com, as the network policy allows/, endpoint);
-    else assert.match(r.out, /WARNING: the R2 endpoint's host .* is not one label under r2\.cloudflarestorage\.com/, endpoint);
-  }
-  // The pattern checked is the policy's.
-  assert.deepEqual(find('CiliumNetworkPolicy', 'obsidian-vault-backup').spec.egress[1].toFQDNs, [{ matchPattern: '*.r2.cloudflarestorage.com' }]);
-});
 
 // The budget: no transfer started after it, none cut (soft), and a pass's worst case inside the
 // Job's deadline: 2 x PASS_BUDGET, plus what PR #397 accounts for.
