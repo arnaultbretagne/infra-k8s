@@ -6,7 +6,7 @@
 // Inputs (environment): KUBECTL, kubectl (default `kubectl`).
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { after, describe, it } from 'node:test'
@@ -55,7 +55,7 @@ describe('the Deployment ignis and the vault (criterion 1)', () => {
     const mounts = server.volumeMounts.filter(m => m.name === 'data')
     assert.deepEqual(mounts.map(m => m.subPath).sort(), ['ignis-data', 'obsidian-app', 'vault'])
     const vault = mounts.find(m => m.subPath === 'vault')
-    assert.match(vault.mountPath, /^\/vaults\/[^/]+$/)
+    assert.equal(vault.mountPath, '/vaults/Arvault', 'the vault is named Arvault in Ignis')
     assert.ok(!vault.readOnly)
     assert.equal(mounts.find(m => m.subPath === 'ignis-data').mountPath, env(server, 'DATA_ROOT'))
     const cache = mounts.find(m => m.subPath === 'obsidian-app')
@@ -120,7 +120,8 @@ describe('the init container downloads Obsidian only when the cache lacks the pi
     assert.match(r.calls[1], /^npx --yes @electron\/asar@4\.3\.2 extract /)
     assert.equal(readFileSync(join(root, 'app', '.obsidian-version'), 'utf8'), '1.14.4\n')
     assert.ok(existsSync(join(root, 'app', 'index.html')))
-    assert.equal(readlinkSync(join(root, 'index', 'Vault')), '/vaults/Vault')
+    assert.equal(readlinkSync(join(root, 'index', 'Arvault')), '/vaults/Arvault')
+    assert.deepEqual(readdirSync(join(root, 'index')), ['Arvault'], 'the index holds that one vault only')
   })
 
   it('the pinned version already in the cache: downloads nothing, keeps the cache as it is', () => {
@@ -132,7 +133,7 @@ describe('the init container downloads Obsidian only when the cache lacks the pi
     assert.deepEqual(r.calls, [])
     assert.match(r.stdout, /Obsidian 1\.14\.4 already in the cache/)
     assert.ok(existsSync(join(root, 'app', 'kept')))
-    assert.equal(readlinkSync(join(root, 'index', 'Vault')), '/vaults/Vault')
+    assert.equal(readlinkSync(join(root, 'index', 'Arvault')), '/vaults/Arvault')
   })
 
   it('another version in the cache (an image bump): clears it, downloads the new pin', () => {

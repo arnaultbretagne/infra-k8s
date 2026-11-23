@@ -15,18 +15,21 @@
 # run. The vault must never have a second sync client.
 #
 # Everything lives on one volume, `data`, in three subPaths:
-#   - vault         the vault, at /vaults/Vault: the folder itself, no copy;
+#   - vault         the vault, at /vaults/Arvault: the folder itself, no copy;
 #   - ignis-data    Ignis's settings (DATA_ROOT);
 #   - obsidian-app  the Obsidian cache (OBSIDIAN_ASSETS_PATH).
 # Here `data` is an emptyDir, which is what a preview gets: an empty vault, started from scratch on
 # every restart. Production (apps/obsidian/kustomization.yaml) puts the PVC obsidian-data in its place,
 # the one the MCP server and the clipper use.
 #
-# VAULT_ROOT is not /vaults but /vault-index: a folder holding nothing but a link, Vault ->
-# /vaults/Vault, written by the init container and mounted read-only in the server. Ignis's "remove
+# VAULT_ROOT is not /vaults but /vault-index: a folder holding nothing but a link, Arvault ->
+# /vaults/Arvault, written by the init container and mounted read-only in the server. Ignis's "remove
 # vault" (Obsidian's "Remove from list") deletes the vault's folder recursively, files included; on a
 # link it can only delete the link, and on a read-only folder not even that: create, rename and remove
-# all fail, so the vault stays the only one.
+# all fail, so the vault stays the only one. The link's name, Arvault, is the vault's name in Ignis and
+# its id: Ignis and Obsidian key their per-vault state by it (trusted vaults in ignis-data, the
+# browser's localStorage and IndexedDB), so renaming it starts that state afresh. The files and the
+# vault's own .obsidian/ settings stay where they are.
 #
 # WS_ORIGINS is the public origin; a preview replaces it with its own (catalogue entry, urlEnv), so
 # Ignis refuses a WebSocket opened by another site.
@@ -63,7 +66,7 @@ spec:
             - |
               v="$IGNIS_OBSIDIAN_PIN"
               app=/app/obsidian-app
-              ln -sfn /vaults/Vault /vault-index/Vault
+              ln -sfn /vaults/Arvault /vault-index/Arvault
               if [ -f "$app/index.html" ] && [ "$(cat "$app/.obsidian-version" 2>/dev/null)" = "$v" ]; then
                 echo "Obsidian $v already in the cache"
                 exit 0
@@ -155,7 +158,7 @@ spec:
             periodSeconds: 10
           volumeMounts:
             - name: data
-              mountPath: /vaults/Vault
+              mountPath: /vaults/Arvault
               subPath: vault
             - name: data
               mountPath: /data
