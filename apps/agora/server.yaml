@@ -128,6 +128,11 @@ spec:
           # PUSH_VAPID_PUBLIC_KEY, PUSH_VAPID_PRIVATE_KEY, PUSH_SUBJECT, PUBLIC_URL — all four from one Secret, or none:
           # Agora's server refuses to start with some of them (docs/specs/notifications.md, "Configuration"). It sends
           # to the push services (web.push.apple.com, fcm.googleapis.com…) over HTTPS to the world (networkpolicy.yaml).
+          # The server reads them once, at start, and envFrom does not follow a changed Secret: to rotate the key pair,
+          # replace push.secrets.yaml, let Flux apply it, then restart the server —
+          #   sudo -n k0s kubectl -n agora rollout restart deployment/server
+          # (Recreate: a few seconds without the server) and wait for it to be ready; each client subscribes again with
+          # the new key the next time it opens.
           envFrom:
             - secretRef:
                 name: log
