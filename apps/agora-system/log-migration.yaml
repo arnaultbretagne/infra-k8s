@@ -2,11 +2,11 @@
 # image). Idempotent, in one transaction; named after the schema it applies, so a new schema is a new
 # Job, applied before the server that needs it. The owner's password reaches node-postgres through
 # PGUSER/PGPASSWORD: the URL names no credential.
-# 013: 001.sql as of agora 00c69f4, the native sub-agents (agora docs/specs/log.md, "Native sub-agents"): workstreams.host with its index and its grants, transcript() giving no first header to a turn no prompt started; additive, the server before keeps working
+# 014: 001.sql as of agora aaec7a6, the notifications (agora docs/specs/notifications.md): push_subscriptions and push_notifications, their indexes and the projector's grants on them; additive, the server before keeps working
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: agora-log-migrate-013
+  name: agora-log-migrate-014
   namespace: agora-system
 spec:
   backoffLimit: 10
@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/arnaultbretagne/agora-server@sha256:77e0922f5f1d8b1d84b46c6148ca76f0fcaaeb3486b6318c3a46cc688711dbcd # main 00c69f4
+          image: ghcr.io/arnaultbretagne/agora-server@sha256:fff4ea34153c62dffa2316ae1f3559309e331950b3fcb601325ec3899100d2dd # main aaec7a6
           command: [node, /app/packages/log/scripts/migrate.ts]
           env:
             - { name: LOG_MIGRATION_URL, value: "postgresql://agora-pg-rw.agora-system.svc.cluster.local:5432/agora" }
