@@ -10,8 +10,8 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   harness: mock
-  name: mock-431f7189ec60
-  image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:431f7189ec6015abf50b6b353a93a44f22b1ea2d50fce709db650c6fb14d0fa9
+  name: mock-c0a47949be94
+  image: ghcr.io/arnaultbretagne/agora-harness-mock@sha256:c0a47949be9464cb148197336887af2992801efc3a0cf1e81c86b19678b64d4f
   versions: agora-mock-agent
-  source: arnaultbretagne/agora main c388cbe
-  inputs: "1d283a2ff10bf497"
+  source: arnaultbretagne/agora main aaec7a6
+  inputs: "1f4b796c998a1fea"
