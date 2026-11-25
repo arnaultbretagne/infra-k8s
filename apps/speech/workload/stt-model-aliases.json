@@ -1,0 +1,5 @@
+{
+    "parakeet-tdt-0.6b-v3": "istupakov/parakeet-tdt-0.6b-v3-onnx",
+    "whisper-large-v3-turbo": "deepdml/faster-whisper-large-v3-turbo-ct2",
+    "whisper-1": "deepdml/faster-whisper-large-v3-turbo-ct2"
+}

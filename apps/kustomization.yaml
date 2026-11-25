@@ -25,3 +25,5 @@ resources:
   - agent-vault
   - home-assistant
   - terminal
+  # Speech (STT and TTS, OpenAI audio API), in-cluster only: backends for the speech playground.
+  - speech
