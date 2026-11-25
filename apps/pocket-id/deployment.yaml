@@ -43,6 +43,10 @@ spec:
               value: production
             - name: TRUST_PROXY
               value: "true"
+            # No daily heartbeat to analytics.pocket-id.org: the egress policy drops it, and its retries
+            # feed NetworkPolicyDrops every night.
+            - name: ANALYTICS_DISABLED
+              value: "true"
             - name: DB_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:
