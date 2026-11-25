@@ -1,8 +1,8 @@
 # Default-deny + allow-list (ADR 0020).
 #
-# HA reaches exactly six things: DNS, its own Postgres, the Zigbee coordinator, the LG TV, SSDP
-# multicast (discovery), and HTTPS out (Pocket-ID discovery/JWKS via the public IP, PyPI + wheels.
-# home-assistant.io for the one-time custom-component deps install, HA's own integrations).
+# HA reaches exactly seven things: DNS, its own Postgres, the Zigbee coordinator, the LG TV, SSDP
+# and mDNS multicast (discovery), and HTTPS out (Pocket-ID discovery/JWKS via the public IP, PyPI +
+# wheels.home-assistant.io for the one-time custom-component deps install, HA's own integrations).
 # Nothing intra-cluster beyond CNPG.
 #
 # The Zigbee coordinator is an SLZB-06p10 on the IoT VLAN (10.10.40.10, serial-over-TCP :6638); the
@@ -83,6 +83,13 @@ spec:
         - 255.255.255.255/32
       toPorts:
         - ports: [{ port: "1900", protocol: UDP }]
+    # -> mDNS discovery (default_config's zeroconf integration): UDP 5353 to the mDNS group, nothing
+    #    else, for the same reason (a query every 56 min). No device hears it: the pod lives on the
+    #    vxlan overlay (README.md, "Known limits").
+    - toCIDR:
+        - 224.0.0.251/32
+      toPorts:
+        - ports: [{ port: "5353", protocol: UDP }]
     # -> id.bretagne.dev (OIDC discovery, token, JWKS) + PyPI/wheels (init) + HA integrations.
     #    The public IP resolves to the home line; kube-proxy/host may DNAT it to the Traefik pod
     #    — same three-way allow as the oauth2-proxy CNPs.
