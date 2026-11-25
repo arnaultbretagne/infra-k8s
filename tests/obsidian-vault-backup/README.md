@@ -27,6 +27,7 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 | (e) The bucket | No plain name (`current`, `history`, folders, notes, timestamps) in any path; every object starts with rclone crypt's magic and holds no note text. |
 | (f) `verify` | `0 differences found`, exit 0; one stored byte flipped (same size and time): exit 1, `1 differences found`; back to 0 once restored; a note not stored yet: exit 1. |
 | (g) Restore | `RESTORE.md`'s own `… restore-job.yaml … kubectl set env --local …` commands, run as written up to `kubectl create`: the versions of a note listed; the note restored identical byte for byte (and modification time), the other notes untouched; the same for a path holding `&`, `|`, `"`, `'`, `\`, `$`, `:` and `#`; its previous version from `history/<ts>/`. The whole vault, `restore-job.yaml` as it is, onto an empty volume: the same tree, bytes and times, then `verify` finds 0 differences. |
+| (h) The drill | The vault as stored: every file identical, the newest `history/<ts>` restored and compared, nothing written to the vault or the bucket. A note edited, added or deleted since the last passes: said, not a failure; without the tolerance (`DRILL_TOLERANCE=0`), a failure that names it. A stored byte flipped in `current/` or in `history/<ts>/`, or another note's bytes under a note's name: a failure. No `history/` yet: not one. An empty vault: one. |
 | Retention | `history/` folders of passes older than 7 days purged, newer kept, others left alone; a month-old note replaced today stays (by pass time, not file age). |
 | An empty vault | Refused, nothing in the bucket touched. |
 | A crypt password still `REPLACE-ME` | Refused. |
@@ -35,9 +36,10 @@ The proof that the Obsidian vault backup (`apps/obsidian/vault-backup.yaml`) doe
 | The history | One sync per pass (one read of the vault per `history/<ts>`), no size or age filter. A 5 MiB version replaced by a 1 MiB one: `history/<ts>` holds the 5 MiB one byte for byte, `current/` the new one, `verify` 0 differences. |
 | Convergence, conditions constant | The script at 1/30 of its durations (budget 12 s, the deadline 28 s), R2 at 32 KiB/s at every pass: a 512 KiB file (16 s, longer than the budget) is sent whole by the first pass, three 128 KiB files by the next; no pass reaches the deadline, each stores something, the last ends at exit 0, and `verify` finds 0 differences. |
 
-`MUTATE=exclude|backup-dir|cryptcheck|retention|silent|budget|hard` breaks that part of the rendered script
+`MUTATE=exclude|backup-dir|cryptcheck|retention|silent|budget|hard|drill|tolerance` breaks that part of the rendered script
 (`silent`: rclone's default timeouts and retries, no check of R2 first; `budget`: no `--max-duration`;
-`hard`: its cutoff hard, which cuts the transfer running);
+`hard`: its cutoff hard, which cuts the transfer running; `drill`: differences let through; `tolerance`: every
+difference taken for the vault's own edit);
 `ci.sh` runs each and requires the test to fail. The slow cases only run when unmutated or under their own
 mutation.
 

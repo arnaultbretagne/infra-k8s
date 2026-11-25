@@ -1,6 +1,6 @@
 #!/bin/sh
 # The Obsidian vault's backup, encrypted by rclone crypt on the dedicated R2 bucket (vault-backup.yaml).
-# One script, three modes, run by busybox sh in the rclone/rclone image:
+# One script, five modes, run by busybox sh in the rclone/rclone image:
 #
 #   backup   every 15 min: `rclone sync` of the vault to backup:current. A file this pass replaces or
 #            deletes is moved, not lost, to backup:history/<UTC timestamp of the pass>/; history
@@ -8,6 +8,10 @@
 #   verify   weekly: `rclone cryptcheck` of the vault against backup:current. Any difference (a file
 #            changed, missing on either side, or a stored object that no longer decrypts to the
 #            vault's bytes) exits non-zero, so the Job fails and CronJobLastRunFailed fires.
+#   drill    daily: the restore below, for real, from R2 into a throwaway folder of the pod, then
+#            compared byte for byte with the vault; and the newest history/<ts>, compared with what
+#            is stored. Any difference the vault's own edits do not explain exits non-zero
+#            (ObsidianRestoreDrillFailed). The vault is only read.
 #   restore  by hand (restore-job.yaml, apps/obsidian/RESTORE.md): RESTORE_PATH from RESTORE_FROM
 #            (`current` or `history/<ts>`) into the vault; the whole of RESTORE_FROM when
 #            RESTORE_PATH is empty.
@@ -34,6 +38,9 @@ EXCLUDE='/.obsidian/workspace*.json'
 # activeDeadlineSeconds (840 s, vault-backup.yaml); what it did not start, the next pass sends. PR
 # #397 has the arithmetic.
 PASS_BUDGET=6m
+# drill: a difference is the vault's own edit if the vault changed there in the last 45 min, three
+# passes; older than that, a pass has stored it.
+DRILL_TOLERANCE=2700
 
 # rclone gives up on R2 within seconds, and says so. With its defaults, one request R2 never answers
 # is retried for over an hour without a line at -v: 1 min to connect, 10 low-level retries, each of
@@ -73,6 +80,14 @@ reach_r2() {
     echo "R2 did not answer (rclone exit $rc, its error above): nothing done" >&2
     exit 1
   fi
+}
+
+# The vault's file $1 or, deleted, the nearest folder left changed at or after $2 (seconds). By ctime:
+# a copy keeps its source's modification time.
+changed_since() {
+  p="$VAULT/$1"
+  while [ ! -e "$p" ] && [ "$p" != "$VAULT" ]; do p="${p%/*}"; done
+  [ "$(stat -c %Z "$p")" -ge "$2" ]
 }
 
 case "${1:-}" in
@@ -124,6 +139,53 @@ case "${1:-}" in
     rclone cryptcheck "$VAULT" backup:current --exclude "$EXCLUDE" -v
     echo "==> verify DONE: the stored copy matches the vault"
     ;;
+  drill)
+    reach_r2
+    since=$(($(date +%s) - DRILL_TOLERANCE))
+    out="$(mktemp -d)"
+    trap 'rm -rf "$out"' EXIT
+    mkdir "$out/current" "$out/history"
+
+    # RESTORE.md's restore itself: this script's restore mode, into the pod's own folder.
+    VAULT_DIR="$out/current" RESTORE_FROM=current RESTORE_PATH='' sh "$0" restore
+    echo "==> compare the restored copy with $VAULT, byte for byte"
+    rc=0
+    rclone check "$out/current" "$VAULT" --download --exclude "$EXCLUDE" --combined "$out/report" || rc=$?
+    same=0 edited=0 bad=0
+    # "= path" identical; "* path" different, "+ path" not in the vault, "- path" not restored, "! path" unreadable.
+    while IFS= read -r line; do
+      case "$line" in
+        '= '*) same=$((same + 1)) ;;
+        *)
+          if changed_since "${line#? }" "$since"; then
+            edited=$((edited + 1))
+            echo "edited since the last passes: $line"
+          else
+            bad=$((bad + 1))
+            echo "NOT AS BACKED UP: $line" >&2
+          fi
+          ;;
+      esac
+    done < "$out/report"
+    echo "==> $same identical, $edited edited since, $bad not as backed up"
+    if [ "$bad" -ne 0 ] || [ "$same" -eq 0 ] || { [ "$rc" -ne 0 ] && [ "$edited" -eq 0 ]; }; then
+      echo "drill FAILED: the restored copy is not the vault (rclone check exit $rc)" >&2
+      exit 1
+    fi
+
+    # Exit 3: no history yet.
+    dirs="$(rclone lsf --dirs-only backup:history)" || [ $? -eq 3 ]
+    ts="$(printf '%s\n' "$dirs" | grep -E '^[0-9]{8}T[0-9]{6}Z/$' | sort | tail -n 1)"
+    ts="${ts%/}"
+    if [ -n "$ts" ]; then
+      VAULT_DIR="$out/history" RESTORE_FROM="history/$ts" RESTORE_PATH='' sh "$0" restore
+      echo "==> compare it with backup:history/$ts, byte for byte"
+      rclone check "backup:history/$ts" "$out/history" --download
+    else
+      echo "==> no version in history/: none to restore"
+    fi
+    echo "==> drill DONE: the stored copy restores to the vault"
+    ;;
   restore)
     from="${RESTORE_FROM:-current}"
     path="${RESTORE_PATH:-}"
@@ -153,7 +215,7 @@ case "${1:-}" in
       echo "no stored version of $path"
     ;;
   *)
-    echo "usage: $0 backup|verify|restore|versions" >&2
+    echo "usage: $0 backup|verify|drill|restore|versions" >&2
     exit 2
     ;;
 esac

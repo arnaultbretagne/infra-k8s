@@ -14,7 +14,7 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync,
+  cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { connect } from 'node:net';
@@ -40,6 +40,7 @@ const find = (kind, name) => {
 };
 const backupJob = find('CronJob', 'obsidian-vault-backup');
 const verifyJob = find('CronJob', 'obsidian-vault-verify');
+const drillJob = find('CronJob', 'obsidian-vault-restore-test');
 const restoreJob = parse(readFileSync(join(repo, 'apps/obsidian/backup/restore-job.yaml'), 'utf8'));
 const podOf = (cronJob) => cronJob.spec.jobTemplate.spec.template;
 const sopsFile = parse(readFileSync(join(repo, 'apps/obsidian/vault-backup.secrets.yaml'), 'utf8'));
@@ -78,6 +79,9 @@ const MUTATIONS = {
   silent: [['export RCLONE_CONTIMEOUT=', 'true RCLONE_CONTIMEOUT='], ['reach_r2() {\n', 'reach_r2() {\n  return 0\n']],
   // The sync without its budget; with a hard one, which cuts the transfer running.
   budget: [['      --max-duration "$PASS_BUDGET" --cutoff-mode soft \\\n', '']],
+  // The drill that lets any difference through, and the one that takes any for the vault's own edit.
+  drill: [['[ "$bad" -ne 0 ] || ', '']],
+  tolerance: [['[ "$(stat -c %Z "$p")" -ge "$2" ]', 'true']],
   hard: [['--max-duration "$PASS_BUDGET" --cutoff-mode soft', '--max-duration "$PASS_BUDGET" --cutoff-mode hard']],
 };
 const replaceAll = (content, pairs, what) => pairs.reduce((c, [from, to]) => {
@@ -181,6 +185,7 @@ function run(template, { args, env: extra = {}, pvcDir = pvc, mounts = [], timeo
 
 const backup = (opts) => run(podOf(backupJob), opts);
 const verify = (opts) => run(podOf(verifyJob), opts);
+const drill = (opts) => run(podOf(drillJob), opts);
 
 // RESTORE.md's own commands: each `job=$(... restore-job.yaml ... | kubectl -n obsidian create -f - -o name)` is
 // run up to that last pipe (`kubectl set env --local` needs no cluster), with its variables, and the Job it
@@ -324,6 +329,20 @@ test('the manifests: what is tested is what is deployed', () => {
   assert.deepEqual(restoreJob.spec.template.metadata.labels, podOf(backupJob).metadata.labels);
   assert.deepEqual(podOf(verifyJob).spec, { ...b, containers: [{ ...b.containers[0], name: 'verify', command: podOf(verifyJob).spec.containers[0].command }] },
     'verify runs the backup pod, its command aside');
+  assert.match(drillJob.spec.schedule, /^\d+ \d+ \* \* \*$/, 'daily');
+  assert.equal(drillJob.spec.timeZone, 'Etc/UTC');
+  assert.equal(drillJob.spec.concurrencyPolicy, 'Forbid');
+  assert.deepEqual(podOf(drillJob).spec.containers[0].command, ['/bin/sh', '/scripts/vault-backup.sh', 'drill']);
+  assert.deepEqual(podOf(drillJob).metadata.labels, podOf(backupJob).metadata.labels);
+  assert.deepEqual(podOf(drillJob).spec, {
+    ...b,
+    containers: [{ ...b.containers[0], name: 'drill', command: podOf(drillJob).spec.containers[0].command }],
+    volumes: b.volumes.map((v) => (v.name === 'tmp' ? { name: 'tmp', emptyDir: { sizeLimit: '1Gi' } } : v)),
+  }, 'the drill runs the backup pod, its command and the size of /tmp aside: the vault read-only');
+  // The two alerts name these CronJobs.
+  const rules = readFileSync(join(repo, 'observability/rules.yaml'), 'utf8');
+  assert.match(rules, /cronjob:last_run_failed\{namespace="obsidian", cronjob="obsidian-vault-restore-test"\} > 0/);
+  assert.match(rules, /kube_cronjob_status_last_successful_time\{job="kube-state-metrics", namespace="obsidian", cronjob="obsidian-vault-backup"\} > 7200/);
 
   for (const t of [podOf(backupJob), podOf(verifyJob)]) {
     const pod = t.spec;
@@ -550,6 +569,120 @@ test('retention: history/ older than 7 days is purged, by the pass time, not the
   assert.ok(dirs.includes(passes.modified.ts));
   assert.ok(dirs.includes(passes.deleted.ts));
   assert.match(r.out, new RegExp(`purge backup:history/${eightDays}`));
+});
+
+// The drill without its tolerance: every difference older than the second counts.
+const STRICT = { rewrite: [['DRILL_TOLERANCE=2700\n', 'DRILL_TOLERANCE=0\n']] };
+const object = (path) => join(bucket, rcloneOk(['cryptdecode', '--reverse', 'backup:', path]).trim().split('\t').pop().trim());
+// Runs `body` with a file of the vault or the bucket changed by `change`, then puts it back, bytes and times.
+async function changed(file, change, body) {
+  const original = readFileSync(file);
+  const s = statSync(file);
+  change(file, original);
+  try {
+    await body();
+  } finally {
+    writeFileSync(file, original);
+    utimesSync(file, s.atime, s.mtime);
+    await sleep(1100);
+  }
+}
+const flip = (file, bytes) => {
+  const altered = Buffer.from(bytes);
+  altered[altered.length - 5] ^= 0x01;
+  writeFileSync(file, altered);
+};
+
+test('(h) the drill restores current/ and the newest history/<ts>, and writes nothing but its own folder', async () => {
+  await sleep(1100);
+  const before = [snapshot(), walk(vault).map((e) => e.path).sort()];
+  const files = walk(vault).filter((e) => !e.dir && !WORKSPACE.includes(e.path)).length;
+  const r = drill(STRICT);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, new RegExp(`==> ${files} identical, 0 edited since, 0 not as backed up`));
+  assert.match(r.out, new RegExp(`==> compare it with backup:history/${passes.deleted.ts}, byte for byte`));
+  assert.match(r.out, /==> drill DONE/);
+  assert.deepEqual([snapshot(), walk(vault).map((e) => e.path).sort()], before);
+});
+
+test('(h) a note edited, added or deleted since the last passes is not a failure; older, it is', async () => {
+  const cases = [
+    ['edited', join(vault, IDEA), (f) => writeFileSync(f, 'edited since\n'), `\\* ${IDEA}`],
+    ['deleted', join(vault, 'Inbox.md'), (f) => rmSync(f), '\\+ Inbox\\.md'],
+  ];
+  for (const [what, file, change, line] of cases) {
+    await changed(file, change, async () => {
+      const tolerated = drill();
+      assert.equal(tolerated.code, 0, `${what}:\n${tolerated.out}`);
+      assert.match(tolerated.out, new RegExp(`edited since the last passes: ${line}`));
+      await sleep(1100);
+      const r = drill(STRICT);
+      assert.notEqual(r.code, 0, `${what}:\n${r.out}`);
+      assert.match(r.out, new RegExp(`NOT AS BACKED UP: ${line}`));
+      assert.doesNotMatch(r.out, /drill DONE/);
+    });
+  }
+  // Both at once: the recent edit does not hide the old difference.
+  await changed(join(vault, IDEA), cases[0][2], async () => {
+    await sleep(6000);
+    await changed(join(vault, 'Inbox.md'), (f) => writeFileSync(f, 'edited just now\n'), () => {
+      const r = drill({ rewrite: [['DRILL_TOLERANCE=2700\n', 'DRILL_TOLERANCE=4\n']] });
+      assert.notEqual(r.code, 0, r.out);
+      assert.match(r.out, /edited since the last passes: \* Inbox\.md/);
+      assert.match(r.out, new RegExp(`NOT AS BACKED UP: ${cases[0][3]}`));
+    });
+  });
+  write('Unsent.md', 'marker-unsent\n', MONTH_AGO); // an old modification time: the file is new all the same
+  const tolerated = drill();
+  assert.equal(tolerated.code, 0, tolerated.out);
+  await sleep(1100);
+  const r = drill(STRICT);
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /NOT AS BACKED UP: - Unsent\.md/);
+  rmSync(join(vault, 'Unsent.md'));
+});
+
+test('(h) a stored file that no longer decrypts, or is not the vault\'s, fails the drill', async () => {
+  await changed(object(`current/${IDEA}`), flip, () => {
+    const r = drill();
+    assert.notEqual(r.code, 0, `an altered object restored:\n${r.out}`);
+    assert.doesNotMatch(r.out, /drill DONE/);
+  });
+  await changed(object(`history/${passes.deleted.ts}/${DELETED}`), flip, () => {
+    const r = drill();
+    assert.notEqual(r.code, 0, `an altered version restored:\n${r.out}`);
+    assert.doesNotMatch(r.out, /drill DONE/);
+  });
+  // Another note's bytes, well encrypted, under this note's name.
+  const seed = join(work, 'seed-drill');
+  mkdirSync(seed);
+  writeFileSync(join(seed, 'note.md'), 'not this note\n');
+  const stored = object('current/Inbox.md');
+  await changed(stored, () => rcloneOk(['copyto', '/seed/note.md', 'backup:current/Inbox.md'], { mounts: [[seed, '/seed', true]] }), () => {
+    const r = drill(STRICT);
+    assert.notEqual(r.code, 0, r.out);
+    assert.match(r.out, /NOT AS BACKED UP: \* Inbox\.md/);
+  });
+  assert.equal(drill(STRICT).code, 0, 'passes again once put back');
+});
+
+test('(h) no history yet is not a failure; an empty vault is', () => {
+  const history = object('history');
+  const aside = join(work, 'history-aside');
+  renameSync(history, aside);
+  try {
+    const r = drill();
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /no version in history\//);
+    assert.match(r.out, /drill DONE/);
+  } finally {
+    renameSync(aside, history);
+  }
+  const empty = join(work, 'empty-drill');
+  mkdirSync(join(empty, 'vault'), { recursive: true });
+  const r = drill({ pvcDir: empty });
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /==> 0 identical/);
 });
 
 test('an empty vault (lost or unmounted volume) is refused, nothing touched', () => {

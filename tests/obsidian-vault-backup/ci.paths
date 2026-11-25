@@ -1,4 +1,5 @@
-# The backup's manifests and script, and ha-config-backup's image and network policy it shares.
+# The backup's manifests and script, ha-config-backup's image and network policy it shares, its alerts.
 apps/obsidian/*
 apps/home-assistant/config-backup.yaml
 apps/home-assistant/networkpolicy.yaml
+observability/rules.yaml
