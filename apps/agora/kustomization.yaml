@@ -14,6 +14,8 @@ resources:
   - oauth2-proxy.secrets.yaml
   - log.secrets.yaml
   - files.secrets.yaml
+  # The notifications' VAPID key pair, subject and origin (Agora's docs/specs/notifications.md).
+  - push.secrets.yaml
   # Who may call the server without a browser: one service token per caller, each standing for one
   # identity (Agora's docs/specs/log.md, "Identity"). `operator`, the person's e-mail: operator tools run
   # from g4; `live-cases`, the cases' owner c45e0000-…: apps/server/scripts/live-cases.ts. Each key is a

@@ -124,12 +124,23 @@ spec:
             # A caller without a browser — a script, an operator tool on the node — presents a service token
             # (service-tokens.secrets.yaml), read once at start: a changed token takes a restart.
             - { name: IDENTITY_TOKENS_DIR, value: /etc/agora/service-tokens }
-          # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL; FILES_ACCESS_KEY_ID, FILES_SECRET_ACCESS_KEY.
+          # LOG_WRITER_URL, LOG_PROJECTOR_URL, LOG_ANCHORS_URL; FILES_ACCESS_KEY_ID, FILES_SECRET_ACCESS_KEY;
+          # PUSH_VAPID_PUBLIC_KEY, PUSH_VAPID_PRIVATE_KEY, PUSH_SUBJECT, PUBLIC_URL — all four from one Secret, or none:
+          # Agora's server refuses to start with some of them (docs/specs/notifications.md, "Configuration"). It sends
+          # to the push services (web.push.apple.com, fcm.googleapis.com…) over HTTPS to the world (networkpolicy.yaml).
+          # The server reads them once, at start, and envFrom does not follow a changed Secret: to rotate the key pair,
+          # replace push.secrets.yaml, let Flux apply it, then restart the server —
+          #   sudo -n k0s kubectl -n agora rollout restart deployment/server
+          # (Recreate: a few seconds without the server) and wait for it to be ready; each client subscribes again with
+          # the new key the next time it opens.
           envFrom:
             - secretRef:
                 name: log
             - secretRef:
                 name: files
+            - secretRef:
+                name: push
+                optional: true
           # A projector version bump rebuilds every projection before the server answers: about 61 s
           # for 490,000 entries in 2026-11 (Agora PR #214). 300 s leaves room for the log to grow.
           startupProbe:
