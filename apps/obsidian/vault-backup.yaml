@@ -1,7 +1,7 @@
 # The vault's backup (ADR 0005): every 15 min, `rclone sync` of obsidian-data/vault to an rclone
 # crypt remote on the dedicated R2 bucket `obsidian-backup`, previous versions kept 7 days
 # under history/<timestamp>/; every week, `rclone cryptcheck` proves the stored copy still decrypts
-# to the vault. The script is backup/vault-backup.sh (ConfigMap obsidian-vault-backup-scripts,
+# to the vault; every day, the restore drill restores it for real and compares. The script is backup/vault-backup.sh (ConfigMap obsidian-vault-backup-scripts,
 # kustomization.yaml); restoring is RESTORE.md, with backup/restore-job.yaml.
 #
 # Same image as ha-config-backup. Reads the PVC read-only; RWO is node-scoped, so these pods may
@@ -174,3 +174,78 @@ spec:
             - name: tmp
               emptyDir:
                 sizeLimit: 64Mi
+---
+# The restore drill (docs/hosting-an-app.md §9.4: an untested backup is not a backup): the restore of
+# RESTORE.md, from R2, with the real passwords, into the pod's own /tmp, compared byte for byte with the
+# vault, which stays mounted read-only. A note edited in the last 45 min is not a failure. It downloads
+# and decrypts everything, where verify compares hashes. 06:20 UTC, after the 06:15 pass and the
+# databases' drills. A failure is critical (ObsidianRestoreDrillFailed, observability/rules.yaml). By
+# hand: `kubectl -n obsidian create job --from=cronjob/obsidian-vault-restore-test drill-manual`.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: obsidian-vault-restore-test
+spec:
+  schedule: "20 6 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: obsidian-vault-backup   # networkpolicy.yaml
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: drill
+              image: rclone/rclone:1.75.1
+              command: ["/bin/sh", "/scripts/vault-backup.sh", "drill"]
+              envFrom:
+                - configMapRef:
+                    name: obsidian-vault-backup-env
+                - secretRef:
+                    name: obsidian-vault-backup
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: vault
+                  mountPath: /vault
+                  subPath: vault
+                  readOnly: true
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: vault
+              persistentVolumeClaim:
+                claimName: obsidian-data
+                readOnly: true
+            - name: scripts
+              configMap:
+                name: obsidian-vault-backup-scripts
+            - name: tmp
+              emptyDir:
+                sizeLimit: 1Gi               # the restored vault (15 MB in November 2026)

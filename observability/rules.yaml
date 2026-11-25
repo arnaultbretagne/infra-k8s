@@ -105,6 +105,30 @@ spec:
           annotations:
             summary: 'Backup restore drill FAILED ({{ $labels.namespace }}/{{ $labels.cronjob }})'
             description: 'The latest restore of this database''s S3 backup did not pass its health query. Treat the backup as NOT restorable until verified by hand — disaster recovery is broken.'
+    - name: obsidian-backup
+      rules:
+        - alert: ObsidianBackupTooOld
+          # A pass every 15 min: 2 h is eight of them. CronJobLastRunFailed sees a pass that fails,
+          # not one that no longer runs: suspended (RESTORE.md does it by hand), or deleted (absent).
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{job="kube-state-metrics", namespace="obsidian", cronjob="obsidian-vault-backup"} > 7200
+              or
+            absent(kube_cronjob_status_last_successful_time{job="kube-state-metrics", namespace="obsidian", cronjob="obsidian-vault-backup"})
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Obsidian vault: no successful backup for more than 2 h'
+            description: 'What is written to the vault now is not backed up. `kubectl -n obsidian get cronjob obsidian-vault-backup` (SUSPEND: RESTORE.md step 5), then its Jobs'' logs.'
+        - alert: ObsidianRestoreDrillFailed
+          # As CNPGRestoreDrillFailed, for the vault's drill (apps/obsidian/vault-backup.yaml).
+          expr: cronjob:last_run_failed{namespace="obsidian", cronjob="obsidian-vault-restore-test"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: 'Obsidian vault: the restore drill FAILED'
+            description: 'The latest backup did not restore to the vault. Treat it as NOT restorable until verified by hand: the drill''s log names each file (`NOT AS BACKED UP`).'
     - name: host
       rules:
         - alert: HostRootDiskUsageHigh

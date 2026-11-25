@@ -18,6 +18,9 @@ So a note can be brought back as it was at the last pass, or as it was before an
 7 days. A whole vault comes back from `current/` only: `history/` holds the files that changed, not
 snapshots.
 
+`obsidian-vault-restore-test` runs the whole restore every day, from R2 into a throwaway folder, and compares
+it with the vault; a failure is a critical alert (`ObsidianRestoreDrillFailed`).
+
 Both restores below run `backup/restore-job.yaml`: the backup's own pod (image, script, Secret, network
 policy) with the vault mounted read-write. It is not in `kustomization.yaml`; you create it, Flux never
 does. `tests/obsidian-vault-backup` runs this Job's script and command, with these variables, and checks
@@ -67,7 +70,7 @@ first, and the restore waits until it has actually stopped.
 
    ```sh
    flux suspend kustomization apps
-   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify -p '{"spec":{"suspend":true}}'
+   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify obsidian-vault-restore-test -p '{"spec":{"suspend":true}}'
    kubectl -n obsidian scale deployment obsidian-mcp web-clipper ignis --replicas=0
    ```
 
@@ -75,12 +78,12 @@ first, and the restore waits until it has actually stopped.
    the vault is added to both the `scale` and the selector below.)
 
 2. Wait until it has stopped. Suspending a CronJob does not stop a Job it has already started, and a pod
-   scaled away may still be terminating: this loop ends only when neither CronJob has an active Job and no
+   scaled away may still be terminating: this loop ends only when no CronJob has an active Job and no
    pod of a writer or of the backup's Jobs is left, terminating ones included. A failed `kubectl` call
    counts as not stopped.
 
    ```sh
-   until active=$(kubectl -n obsidian get cronjob obsidian-vault-backup obsidian-vault-verify \
+   until active=$(kubectl -n obsidian get cronjob obsidian-vault-backup obsidian-vault-verify obsidian-vault-restore-test \
            -o jsonpath='{.items[*].status.active[*].name}') &&
          writers=$(kubectl -n obsidian get pods -l 'app in (obsidian-mcp,web-clipper,ignis)' -o name) &&
          jobs=$(kubectl -n obsidian get pods -l app.kubernetes.io/part-of=obsidian-vault-backup \
@@ -122,7 +125,7 @@ first, and the restore waits until it has actually stopped.
    unset it yourself.
 
    ```sh
-   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify -p '{"spec":{"suspend":false}}'
+   kubectl -n obsidian patch cronjob obsidian-vault-backup obsidian-vault-verify obsidian-vault-restore-test -p '{"spec":{"suspend":false}}'
    flux resume kustomization apps
    ```
 
