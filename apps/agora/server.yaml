@@ -97,10 +97,9 @@ spec:
             # reaches the previews through their gateway gate (route `previews`), and a judge is given it;
             # `agora:read` opens Agora's own MCP server to the agent — search and read its person's Workstreams (route `agora`);
             # `agora:delegate` lets it hand work to another agent there, a sub-stream of its Workstream, rights beyond its own
-            # waiting for the person's Approve (Agora's docs/specs/delegation.md). `antigravity` opens Cloud Code and
-            # the user info on the cluster's own Google login (routes `antigravity`, `antigravity-userinfo`) to an
-            # execution on any harness, not only agy's pool, whose base profile it is.
-            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,antigravity,vault:write,kubernetes:read,previews,agora:read,agora:delegate" }
+            # waiting for the person's Approve (Agora's docs/specs/delegation.md). Not offered: a harness's base profile
+            # (`antigravity`, `anthropic`, …), given only to its own pool (agora.bretagne.dev/base-profiles).
+            - { name: OFFERED_PROFILES, value: "github:arnaultbretagne/agora:write,github:arnaultbretagne/infra-k8s:write,internet,vault:write,kubernetes:read,previews,agora:read,agora:delegate" }
             # Agora's docs/specs/credentials.md, "Limits": the server reads each account's limits
             # through the gateway, with a grant bound to its own address, checked against the
             # gateway's root (gateway-ca.yaml).

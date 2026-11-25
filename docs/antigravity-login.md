@@ -102,5 +102,4 @@ never revoke after installing a new login: that would kill the new one too.
      (the manifest does not set `suspend`, so Flux leaves it).
   3. To resume: a fresh login (above) **after** the revocation, its refresh token installed where it lives, the job
      unsuspended (`… -p '{"spec":{"suspend":false}}'`) and run once, its log checked.
-- **Withdraw the harness**: take `antigravity` out of `OFFERED_PROFILES` (`apps/agora/server.yaml`) and the
-  folder out of `apps/agora-sandboxes/catalogue/kustomization.yaml`; the routes without a token answer 401.
+- **Withdraw the harness**: take the folder out of `apps/agora-sandboxes/catalogue/kustomization.yaml`; the routes without a token answer 401.
