@@ -40,11 +40,7 @@ patches:
           agora.bretagne.dev/session-config: mode=agent-full-access,model=gpt-6.1-sol,reasoning_effort=high
   - target: { kind: SandboxTemplate }
     patch: |-
-      # codex is a Rust binary: it reads its roots from SSL_CERT_FILE, not NODE_EXTRA_CA_CERTS; and the
-      # account its placeholder login names.
-      - op: add
-        path: /spec/podTemplate/spec/containers/0/env/-
-        value: { name: SSL_CERT_FILE, value: /etc/agora/credential-proxy/ca.pem }
+      # The account codex's placeholder login names (its roots, SSL_CERT_FILE, come from the base).
       - op: add
         path: /spec/podTemplate/spec/containers/0/env/-
         value: { name: CODEX_ACCOUNT_ID, valueFrom: { secretKeyRef: { name: codex-account, key: account_id } } }
