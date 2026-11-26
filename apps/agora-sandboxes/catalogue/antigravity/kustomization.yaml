@@ -37,9 +37,3 @@ patches:
           # The base profiles (docs/specs/credentials.md): agy opens its Sessions against Cloud Code and
           # reads the account's user info, both on the cluster's Google login.
           agora.bretagne.dev/base-profiles: antigravity
-  - target: { kind: SandboxTemplate }
-    patch: |-
-      # agy is a Go binary: it reads its roots from SSL_CERT_FILE, not NODE_EXTRA_CA_CERTS.
-      - op: add
-        path: /spec/podTemplate/spec/containers/0/env/-
-        value: { name: SSL_CERT_FILE, value: /etc/agora/credential-proxy/ca.pem }

@@ -56,6 +56,17 @@ spec:
             # fetches or pushes goes through the gateway.
             - name: GIT_SSL_CAINFO
               value: /etc/agora/credential-proxy/ca.pem
+            # The same root for the other tools: OpenSSL, Go and rustls-native-certs read SSL_CERT_FILE
+            # (agy, codex, cargo, uv, Python's ssl); Python requests reads REQUESTS_CA_BUNDLE; curl reads
+            # CURL_CA_BUNDLE. Each replaces the system bundle rather than adding to it, which is right
+            # here: the gateway terminates every tunnel to :443 and there is no other way out, so its
+            # root is the only one a sandbox ever meets. Chromium reads none of them (NSS).
+            - name: SSL_CERT_FILE
+              value: /etc/agora/credential-proxy/ca.pem
+            - name: REQUESTS_CA_BUNDLE
+              value: /etc/agora/credential-proxy/ca.pem
+            - name: CURL_CA_BUNDLE
+              value: /etc/agora/credential-proxy/ca.pem
             # Who commits: the GitHub App that pushes (docs/specs/credentials.md on arnaultbretagne/agora,
             # "GitHub identities"), by its bot user's noreply address (id 354025670, read from GitHub's API on
             # 2026-11-08), so GitHub shows each commit as agora-contributor[bot], never the operator. Pushing is
