@@ -15,8 +15,8 @@ metadata:
     config.kubernetes.io/local-config: "true"
 data:
   harness: antigravity
-  name: antigravity-77934bbdb84e
-  image: ghcr.io/arnaultbretagne/agora-harness-antigravity@sha256:77934bbdb84e2a399ecc6ce0a494afbd4e2808407390621a681b793ce239c25f
+  name: antigravity-b80a61dbaaf8
+  image: ghcr.io/arnaultbretagne/agora-harness-antigravity@sha256:b80a61dbaaf88ee593822467fa4bede9c29bbcd328f877ad6b1b8dd7e61aa77a
   versions: agy 1.5.13
-  source: arnaultbretagne/agora main 7e5e67d
-  inputs: "49e1d1b10166aaf3"
+  source: arnaultbretagne/agora main 9c9c9dc
+  inputs: "b10469025be155e3"
