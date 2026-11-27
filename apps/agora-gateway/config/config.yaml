@@ -107,6 +107,27 @@ binds:
                   key:
                     value: { file: /etc/agentgateway/credentials/zai }
                     location: { header: { name: authorization, prefix: "Bearer " } }
+            # Xiaomi MiMo Token Plan, Europe (ams): the operator's `tp-` key (upstream-credentials, `xiaomi`), as a
+            # Bearer. For the plan's consumption Agora's server reads itself (`GET /v1/platform/token_plan`, its
+            # `limits` grant; docs/specs/credentials.md on arnaultbretagne/agora, "Limits"). The route takes the
+            # whole host, its rule only what a grant covers: every other path, method or query is refused here
+            # (403), never sent on with the key — `internet` included (tests/agora-gateway-xiaomi).
+            - name: xiaomi
+              hostnames: [token-plan-ams.xiaomimimo.com]
+              backends:
+                - dynamic: {}
+                  policies:
+                    backendTLS: {}
+              policies:
+                authorization:
+                  rules:
+                    # One rule for every composition: from the Pod the JWT is bound to, no path tricks,
+                    # and some grant of the JWT covers this host, path and query, and method.
+                    - allow: 'jwt.ip == source.address && !request.pathAndQuery.matches("(?i)(/[.][.]?(/|[?]|$)|%2e|%2f)") && jwt.grants.exists(g, g.host == request.host && (!has(g.path) || request.pathAndQuery.matches(g.path)) && (!has(g.methods) || request.method in g.methods))'
+                backendAuth:
+                  key:
+                    value: { file: /etc/agentgateway/credentials/xiaomi }
+                    location: { header: { name: authorization, prefix: "Bearer " } }
             # The vault's MCP server (apps/obsidian), for `vault:read` and `vault:write`. agentgateway
             # speaks MCP here: it opens its own session with the server, so it reads each tools/list and
             # tools/call and applies mcpAuthorization to them — a tool the grants do not cover is left

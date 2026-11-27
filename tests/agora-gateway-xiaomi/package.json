@@ -1,0 +1,17 @@
+{
+  "name": "agora-gateway-xiaomi",
+  "private": true,
+  "type": "module",
+  "description": "The agora-gateway's xiaomi route (Xiaomi MiMo Token Plan's consumption) on the real agentgateway binary (README.md).",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 xiaomi-route.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "node-forge": "1.4.1",
+    "undici": "8.12.3",
+    "yaml": "2.9.1"
+  }
+}
