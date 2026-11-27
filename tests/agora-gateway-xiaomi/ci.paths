@@ -1,0 +1,3 @@
+# The gateway's configuration, its Deployment and the Secret the key comes from, as `kubectl kustomize
+# apps/agora-gateway` renders them.
+apps/agora-gateway/*
